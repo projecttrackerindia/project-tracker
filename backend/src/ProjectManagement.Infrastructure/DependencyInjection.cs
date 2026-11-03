@@ -215,6 +215,8 @@ public static class DependencyInjection
         services.AddHostedService<AutomationWorker>();
         services.AddHostedService<WhatsAppDeliveryWorker>();
         services.AddHostedService<SupportReplyWorker>();
+        services.Configure<ProjectManagement.Application.Features.Desk.DeskOptions>(config.GetSection(ProjectManagement.Application.Features.Desk.DeskOptions.Section));
+        services.AddHostedService<DeskWorker>();
         services.Configure<ReminderOptions>(config.GetSection(ReminderOptions.Section));
         services.AddHostedService<ReminderWorker>();
         // Push notifications to devices (Web Push with VAPID; keys are made on first use).

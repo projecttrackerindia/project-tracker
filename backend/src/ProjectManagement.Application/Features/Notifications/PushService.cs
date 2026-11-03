@@ -49,6 +49,11 @@ public record PushDelivery(int TtlSeconds, string Urgency)
 public record PushKeysRequest(string? P256dh, string? Auth);
 public record PushSubscribeRequest(string? Endpoint, PushKeysRequest? Keys);
 public record PushStatusDto(string PublicKey, int Devices, bool NativeEnabled = false);
+/// <summary>One device's answer to a test push: the push service's HTTP status (201 = accepted) and what it means, in words.</summary>
+public record PushTestDevice(string Device, bool ThisDevice, int? Status, bool Accepted, string Message);
+/// <summary>"Send test notification": what the server did, step by step (keys, devices, each push service's answer).</summary>
+public record PushTestDto(bool KeysReady, int Devices, bool ThisDeviceKnown, IReadOnlyList<PushTestDevice> Results, string Tag);
+public record PushTestRequest(string? Endpoint);
 public record NativePushRequest(string? Token);
 
 public static class Base64Url
@@ -66,7 +71,7 @@ public static class Base64Url
 /// The server's VAPID key pair is made on first use and kept in the platform settings (the private half encrypted). A person's devices are
 /// theirs across workspaces; each notification that uses the "desktop" channel is pushed to them by <see cref="PushDispatcher"/>.
 /// </summary>
-public class PushService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector protector, IOptions<AppOptions> app, IOptions<PushOptions> options)
+public class PushService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ISecretProtector protector, IOptions<AppOptions> app, IOptions<PushOptions> options, IServiceProvider services)
 {
     public const string KeyPublic = "vapid_public", KeyPrivate = "vapid_private";
 
@@ -94,7 +99,19 @@ public class PushService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             }
             return new VapidKeys(pub, d, subject);
         }
-        return new VapidKeys(pub, protector.Unprotect(priv), subject);
+        string plain;
+        try { plain = protector.Unprotect(priv); }
+        catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException or OverflowException)
+        {
+            // The private half was sealed with a different server key (Mfa:EncryptionKey / Jwt:SigningKey changed, e.g. a move to new
+            // hosting). Every push would fail from here on, silently: make a new pair instead. Browsers subscribed with the old public key
+            // re-subscribe by themselves the next time the app opens (the page compares keys, frontend/src/features/reminders/device.ts).
+            db.PlatformSettings.RemoveRange(rows);
+            await db.SaveChangesAsync(ct);
+            foreach (var e in db.PlatformSettings.Local.Where(s => s.Key is KeyPublic or KeyPrivate).ToList()) db.PlatformSettings.Entry(e).State = EntityState.Detached;
+            return await KeysAsync(db, protector, subject, ct);
+        }
+        return new VapidKeys(pub, plain, subject);
     }
 
     public static string SubjectOf(PushOptions o, AppOptions app) =>
@@ -152,6 +169,62 @@ public class PushService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
     public const string NativePrefix = "fcm:";
     public static string NativeEndpoint(string token) => NativePrefix + token;
     public static bool IsNative(string endpoint) => endpoint.StartsWith(NativePrefix, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Sends a test push to every device of the signed-in person now (not through the queue), and reports each push service's answer, so
+    /// the settings page can show where delivery stops: no keys, no devices, this device unknown to the server, or a refusal (403 = the
+    /// device subscribed with another server key, 404/410 = gone).
+    /// </summary>
+    public async Task<PushTestDto> TestAsync(PushTestRequest req, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var keys = await KeysAsync(db, protector, SubjectOf(options.Value, app.Value), ct);
+        var subs = await db.PushSubscriptions.Where(s => s.UserId == uid).OrderByDescending(s => s.CreatedAt).ToListAsync(ct);
+        var mine = req.Endpoint?.Trim();
+        var tag = $"pt-test-{Guid.NewGuid():N}";
+        var results = new List<PushTestDevice>();
+        var sender = services.GetService(typeof(IWebPushSender)) as IWebPushSender;
+        var payload = JsonSerializer.Serialize(new { title = "Test notification", body = "Push works on this device.", link = "/settings/notifications/device", tag, type = "Test", category = NotificationCategories.Work },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        foreach (var s in subs.Take(10))
+        {
+            var device = Describe(s.UserAgent, s.Endpoint);
+            var me = mine is { Length: > 0 } && s.Endpoint == mine;
+            if (sender is null) { results.Add(new PushTestDevice(device, me, null, false, "The server has no push sender.")); continue; }
+            int? status;
+            try { status = await sender.SendAsync(s, payload, keys, new PushDelivery(120, "high"), ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { status = null; }
+            var ok = status is >= 200 and < 300;
+            if (ok) { s.LastSuccessAt = DateTime.UtcNow; s.Failures = 0; }
+            else if (status is 404 or 410) db.PushSubscriptions.Remove(s);
+            results.Add(new PushTestDevice(device, me, status, ok, Explain(status, IsNative(s.Endpoint))));
+        }
+        await db.SaveChangesAsync(ct);
+        return new PushTestDto(true, subs.Count, mine is { Length: > 0 } && subs.Any(s => s.Endpoint == mine), results, tag);
+    }
+
+    /// <summary>What a push service's answer means, for the person.</summary>
+    public static string Explain(int? status, bool native) => status switch
+    {
+        >= 200 and < 300 => "Accepted by the push service.",
+        null when native => "Android push is not set up on this server (Push:FcmServiceAccountJson).",
+        null => "The push service could not be reached.",
+        400 => "The push service rejected the message.",
+        401 or 403 => "Refused: this device signed up with a different server key. Open the app on it once to sign up again.",
+        404 or 410 => "This device's sign-up has expired; it was removed. Turn push on again there.",
+        413 => "The message was too large.",
+        429 => "The push service is limiting us; try again in a minute.",
+        _ => $"The push service answered {status}.",
+    };
+
+    private static string Describe(string? ua, string endpoint)
+    {
+        if (IsNative(endpoint)) return "Android app";
+        var u = ua ?? "";
+        var browser = u.Contains("ProjectTrackerDesktop/") ? "Desktop app" : u.Contains("Edg/") ? "Edge" : u.Contains("Firefox/") ? "Firefox" : u.Contains("Chrome/") ? "Chrome" : u.Contains("Safari/") ? "Safari" : "Browser";
+        var os = u.Contains("Windows") ? "Windows" : u.Contains("Mac OS") ? "macOS" : u.Contains("Android") ? "Android" : u.Contains("iPhone") || u.Contains("iPad") ? "iOS" : u.Contains("Linux") ? "Linux" : "";
+        return os.Length > 0 ? $"{browser} on {os}" : browser;
+    }
 
     public async Task<PushStatusDto> UnsubscribeAsync(string? endpoint, CancellationToken ct = default)
     {
@@ -222,10 +295,15 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
                 {
                     int? status;
                     try { status = await sender.SendAsync(s, payload, keys, ring ? PushDelivery.Ring : PushDelivery.Default, ct); }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { log.LogDebug(ex, "Push to a device failed"); status = null; }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Push to a device failed"); status = null; }
                     if (status is >= 200 and < 300) { s.LastSuccessAt = now; s.Failures = 0; sent++; }
                     else if (status is 404 or 410) db.PushSubscriptions.Remove(s);   // the device unsubscribed or expired
-                    else s.Failures++;
+                    else
+                    {
+                        s.Failures++;
+                        // Visible in the server log: a 401/403 means the device holds an old server key, null a network or set-up problem.
+                        log.LogWarning("Push not accepted: status {Status}, failures {Failures}, native {Native}", status, s.Failures, PushService.IsNative(s.Endpoint));
+                    }
                 }
             }
         }

@@ -185,3 +185,12 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'pm-read') event.waitUntil(closeRead(event.data.tags, event.data.links));
 });
 
+
+// The push service replaced or dropped this device's subscription (it expired, or the browser rotated it): subscribe again with the same
+// server key, then ask an open page to send the new one to the server (the worker holds no sign-in). The page also re-checks on every start.
+self.addEventListener('pushsubscriptionchange', (event) => {
+  const key = event.oldSubscription && event.oldSubscription.options && event.oldSubscription.options.applicationServerKey;
+  event.waitUntil((key ? self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }).catch(() => null) : Promise.resolve(null))
+    .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+    .then((wins) => { for (const w of wins) w.postMessage({ type: 'pm-push-resubscribe' }); }));
+});

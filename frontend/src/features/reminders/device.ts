@@ -24,6 +24,11 @@ const keyBytes = (b64: string) => {
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
 };
 
+type DesktopBridge = { notify?: (n: { title: string; body: string; link: string; tag: string; silent: boolean; urgent: boolean }) => void; closeNotifications?: (tags: string[]) => void };
+const desktopBridge = () => (typeof window === 'undefined' ? undefined : (window as unknown as { ptDesktop?: DesktopBridge }).ptDesktop);
+/** The desktop app's native notifications for these tags close (read somewhere). */
+export function closeDesktopNotifications(tags: string[]) { try { desktopBridge()?.closeNotifications?.(tags); } catch { /* not the desktop app */ } }
+
 const canNotify = () => typeof Notification !== 'undefined';
 const canPush = () => typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof window !== 'undefined' && 'PushManager' in window;
 
@@ -111,14 +116,7 @@ export async function enableDeviceAlerts(): Promise<DeviceAlerts> {
         ? 'The notification service worker could not start. Reload the page and try again.'
         : 'Push needs the production build (development builds have no service worker). Notifications still show while this tab is open.';
     } else {
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        const { publicKey } = await pushApi.status();
-        if (!publicKey) throw new Error('The server has no push key yet.');
-        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
-      }
-      const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-      await pushApi.subscribe({ endpoint: json.endpoint, keys: json.keys });
+      await subscribeWith(reg);
       serverConfirmed = true;
     }
   } catch (e) {
@@ -128,6 +126,32 @@ export async function enableDeviceAlerts(): Promise<DeviceAlerts> {
   }
   const detail = await deviceDetail();
   return announce(detail.state);
+}
+
+/** Whether a subscription was made with this server key (a subscription made with an older key is refused by the push service: 403). */
+export function sameKey(sub: Pick<PushSubscription, 'options'> | null, publicKey: string): boolean {
+  const k = sub?.options?.applicationServerKey;
+  if (!k) return true;   // the browser does not say: assume it matches
+  const a = new Uint8Array(k), b = keyBytes(publicKey);
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+/** Subscribes (again, if the server key changed) and tells the server - the one place a device signs up for push. */
+async function subscribeWith(reg: ServiceWorkerRegistration): Promise<string> {
+  const { publicKey } = await pushApi.status();
+  if (!publicKey) throw new Error('The server has no push key yet.');
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && !sameKey(sub, publicKey)) { await sub.unsubscribe().catch(() => false); sub = null; }
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
+  const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+  await pushApi.subscribe({ endpoint: json.endpoint, keys: json.keys });
+  return json.endpoint;
+}
+
+/** This device's push endpoint (to pick it out in the test results), or null. */
+export async function thisEndpoint(): Promise<string | null> {
+  if (isNativeApp()) return nativeEndpoint();
+  try { const reg = canPush() ? await navigator.serviceWorker.getRegistration() : undefined; return (await reg?.pushManager.getSubscription())?.endpoint ?? null; } catch { return null; }
 }
 
 /** Turns push off for this device (the browser permission stays as it is - only the browser can take that back). */
@@ -150,15 +174,21 @@ export const lastDeviceError = () => lastReason;
 export const pushCoversThisDevice = () => subscribed === true && serverConfirmed;
 
 /** A notification from the operating system, shown by the page itself (the tab is open but someone is in another app). */
-export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders', opts: { sticky?: boolean; waitForPush?: boolean; shouldShow?: () => boolean } = {}): Promise<boolean> {
+export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders', opts: { sticky?: boolean; waitForPush?: boolean; shouldShow?: () => boolean; /** Let the OS play its sound (the page did not). */ osSound?: boolean } = {}): Promise<boolean> {
   if (opts.waitForPush && await waitForPushReceipt(tag)) return true;
   if (opts.shouldShow && !opts.shouldShow()) return false;
   if (!canNotify() || Notification.permission !== 'granted') return false;
+  // The desktop app: Electron cannot show a service worker's notifications (showNotification resolves and nothing appears - the reason
+  // they never arrived there), so the main process shows a native one (Windows toast / macOS Notification Center) that opens the link.
+  const desk = desktopBridge();
+  if (isDesktopApp() && desk?.notify) {
+    try { desk.notify({ title, body: body ?? '', link, tag, silent: opts.osSound !== true, urgent: opts.sticky ?? false }); return true; } catch { /* fall through */ }
+  }
   // Urgent ones (reminders by default) stay on screen until dismissed; the rest go away by themselves. The page plays its own sound, so
   // the system one is silent (two sounds for one alert would be noise); renotify makes a repeated tag pop up again instead of updating quietly.
   const sticky = opts.sticky ?? true;
   const options: NotificationOptions & { renotify?: boolean; vibrate?: number[] } = {
-    body: body ?? '', tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: sticky, silent: true, renotify: true,
+    body: body ?? '', tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: sticky, silent: opts.osSound !== true, renotify: true,
     data: { link: orgHref(link) },
   };
   try {

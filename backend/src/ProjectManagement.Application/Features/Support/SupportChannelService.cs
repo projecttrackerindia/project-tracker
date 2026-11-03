@@ -74,7 +74,7 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
     IAiClient ai, AiCreditService credits, EntitlementService entitlements, IOptions<AiOptions> aiOptions, IOptions<SupportOptions> options,
     IOptions<AppOptions> app, IHttpClientFactory http, WorkTaskService workTasks, WorkTypeService workTypes, NotificationService notifications, Recorder recorder, ILogger<SupportChannelService> log,
     IChatNotifier live, IFileStorage files, VoiceSpeechService speech, SupportKnowledge knowledge, ConnectorCaller connectors,
-    IOptions<ProjectManagement.Application.Features.Integrations.WhatsAppOptions> whatsApp)
+    IOptions<ProjectManagement.Application.Features.Integrations.WhatsAppOptions> whatsApp, ProjectManagement.Application.Features.Desk.DeskInboundQueue deskQueue)
 {
     /// <summary>The live event the inbox listens for: a chat changed, look again.</summary>
     public const string LiveEvent = "support";
@@ -487,6 +487,8 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         }
         await db.SaveChangesAsync(ct);
         await PushAsync(chat, ct);
+        // Desk intake (when the workspace turned it on): the message joins the durable queue once, keyed by Meta's message id. One-time codes never do.
+        if (codeNote is null) await deskQueue.EnqueueAsync(channel.TenantId, channel.Id, chat.Id, providerId, media?.Kind ?? "text", now, ct);
     }
 
     /// <summary>Tells everyone with the inbox open that this chat changed, so it updates at once instead of on the next poll.</summary>
@@ -1366,5 +1368,55 @@ public class SupportChannelService(IAppDbContext db, ICurrentContext ctx, AppClo
         var text = answer.Text.Trim().Trim('"').Trim();
         if (text.Length == 0) throw new ConflictException("No suggestion this time. Try again.");
         return new(text.Length > 4000 ? text[..4000] : text);
+    }
+
+    /// <summary>The WhatsApp chat behind a ticket (its whole thread), for the Desk's ticket view; null when the ticket did not come from WhatsApp.</summary>
+    public async Task<SupportConversationDto?> TicketChatAsync(Guid workTaskId, CancellationToken ct)
+    {
+        await permissions.RequireAsync(Permissions.WorkEdit, ct);
+        var id = await db.SupportConversations.AsNoTracking().Where(c => c.WorkTaskId == workTaskId).OrderByDescending(c => c.LastMessageAt).Select(c => (Guid?)c.Id).FirstOrDefaultAsync(ct);
+        return id is { } chat ? await ConversationAsync(chat, ct) : null;
+    }
+
+    // ------------------------------------------------------------------ Desk intake (called by the Desk pipeline, inside the chat's workspace)
+
+    /// <summary>The chat's messages (decrypted) for the Desk pipeline and the ticket's WhatsApp panel.</summary>
+    internal List<SupportMessageDto> MessagesFor(SupportConversation c) => Messages(c);
+
+    /// <summary>The customer's number in full (only for matching them to a workspace member; never returned to the browser by the Desk).</summary>
+    internal string NumberOf(SupportConversation c) => secrets.Unprotect(c.ContactProtected);
+
+    /// <summary>Sends a Desk message (acknowledgement) on the chat and keeps it in the history as an update.</summary>
+    internal async Task SendDeskMessageAsync(SupportConversation c, string text, string by, CancellationToken ct)
+    {
+        var channel = await db.SupportChannels.AsNoTracking().FirstAsync(x => x.Id == c.ChannelId, ct);
+        if (c.LastInboundAt is not { } at || at < clock.Now.AddHours(-24)) return;   // outside WhatsApp's 24-hour window only templates are allowed
+        await SendAsync(channel, secrets.Unprotect(c.ContactProtected), text, ct);
+        var messages = Messages(c);
+        messages.Add(new("update", text, clock.Now, by));
+        Save(c, messages);
+        c.LastMessageAt = clock.Now; c.UpdatedAt = clock.Now;
+        await db.SaveChangesAsync(ct);
+        await PushAsync(c, ct);
+    }
+
+    /// <summary>Raises the chat's ticket when it has none (the whole chat goes into it); returns the ticket id.</summary>
+    internal async Task<Guid> EnsureDeskTicketAsync(SupportConversation c, string title, string? summary, Priority priority, CancellationToken ct)
+    {
+        if (c.WorkTaskId is { } existing) return existing;
+        var channel = await db.SupportChannels.FirstAsync(x => x.Id == c.ChannelId, ct);
+        await RaiseTicketAsync(channel, c, Messages(c), title, summary, priority, ct);
+        await db.SaveChangesAsync(ct);
+        await PushAsync(c, ct);
+        return c.WorkTaskId!.Value;
+    }
+
+    /// <summary>A file the customer sent, for copying onto the ticket.</summary>
+    internal async Task<(byte[] Bytes, string Mime, string FileName)> DeskMediaAsync(SupportConversation c, SupportMediaDto media, CancellationToken ct)
+    {
+        var (bytes, mime) = await MediaBytesAsync(c, media, ct);
+        var ext = mime switch { "image/jpeg" => ".jpg", "image/png" => ".png", "image/webp" => ".webp", "audio/ogg" => ".ogg", "audio/mpeg" => ".mp3", "audio/mp4" => ".m4a",
+            "video/mp4" => ".mp4", "video/3gpp" => ".3gp", "application/pdf" => ".pdf", _ => ".bin" };
+        return (bytes, mime, media.FileName ?? $"whatsapp-{media.Kind}-{media.Id}{ext}");
     }
 }

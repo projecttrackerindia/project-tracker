@@ -19,6 +19,9 @@ import { clock, deskRing, firstLine, initials, leftLabel, type DeskTone } from '
 import './desk-page.css';
 import { BulkEditBar } from '../platform/BulkEditBar';
 import { SavedViewsBar } from '../platform/SavedViews';
+import { Link, useSearchParams } from 'react-router-dom';
+import { AvailabilitySwitch, RoutingCard, VoiceCard, WhatsAppBubbles } from './DeskIntelligence';
+import { useDeskSettings, useWhatsAppThread } from './deskAiHooks';
 
 type Tab = 'queue' | 'mine' | 'solved';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -91,7 +94,10 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2
 
 export function DeskPage() {
   const [tab, setTab] = useState<Tab>('queue');
-  const [selected, setSelected] = useState<string | null>(null);
+  const [params] = useSearchParams();
+  // A Desk notice links to its ticket (/desk?ticket=…).
+  const [selected, setSelected] = useState<string | null>(() => params.get('ticket'));
+  const deskSettings = useDeskSettings();
   const [prio, setPrio] = useState<'all' | 'urgent'>('all');
   const [unassigned, setUnassigned] = useState(false);
   const [selecting, setSelecting] = useState(false);
@@ -168,6 +174,8 @@ export function DeskPage() {
             </button>
           ))}
         </div>
+        <AvailabilitySwitch meId={me?.id ?? null} />
+        {deskSettings && <Link className="dai-link dai-ilink" to="/desk/integrations" aria-label="Integrations" title="Desk integrations"><span aria-hidden="true">⚙︎</span><b>Integrations</b></Link>}
       </ToolbarSeg>
 
       {critical && <Incident row={critical} now={now} />}
@@ -227,7 +235,7 @@ export function DeskPage() {
         </section>
 
         {current ? <Conversation key={current.id} row={current} me={me?.id ?? null} /> : <AllClear tab={tab} onSolved={() => { setTab('solved'); setSelected(null); }} />}
-        {current ? <Context key={`c-${current.id}`} row={current} /> : <div className="dq-ctx" />}
+        {current ? <Context key={`c-${current.id}`} row={current} now={now} /> : <div className="dq-ctx" />}
       </div>
       {selecting && <BulkEditBar rows={pickedRows} onClear={() => setPicked(new Set())} onDone={() => { setSelecting(false); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }} />}
     </div>
@@ -299,7 +307,10 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
 
   const channel = w?.channel ?? null;
   const reporter = w?.reporter?.id ?? null;
-  const items = [...(w?.activity ?? [])].reverse().filter((a) => a.type === 'comment' || a.type === 'file' || a.type === 'ai');
+  // A ticket raised from WhatsApp shows the live chat (every message since, both ways) instead of the copy taken when it was raised.
+  const thread = useWhatsAppThread(row.id, channel === 'whatsapp');
+  // With the live WhatsApp chat shown, the "told the customer" copies are already in it.
+  const items = [...(w?.activity ?? [])].reverse().filter((a) => (a.type === 'comment' && !(thread && a.body?.startsWith('📣 Told the customer on WhatsApp'))) || a.type === 'file' || a.type === 'ai');
   const type = (w?.detail as { workType?: string } | undefined)?.workType ?? row.typeName;
   const prio = row.priority;
 
@@ -316,7 +327,8 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
         <h2 className="dq-title">{row.title}</h2>
       </div>
       <div className="dq-msgs">
-        {w && w.description && (
+        {thread && <WhatsAppBubbles thread={thread} />}
+        {w && w.description && !thread && (
           <>
             <div className="dq-m-meta">{channel === 'whatsapp' ? <WhatsAppGlyph /> : <ChannelIcon channel={channel} size={15} />}{[w.reporter?.name, fmtTime(w.createdAt)].filter(Boolean).join(' · ')}</div>
             <div className="dq-m in">{w.description}</div>
@@ -420,7 +432,7 @@ function Bubble({ a, prev, reporter, channel }: { a: WorkActivity; prev: WorkAct
 }
 
 /** Right column: who raised it, the linked project, similar solved tickets and a suggested reply. */
-function Context({ row }: { row: WorkRow }) {
+function Context({ row, now }: { row: WorkRow; now: number }) {
   const qc = useQueryClient();
   const wid = useWorkspaceId();
   const ai = useAi();
@@ -467,6 +479,8 @@ function Context({ row }: { row: WorkRow }) {
         <div className="dq-kv"><span>Owner</span><b>{row.assignee && <Face userId={row.assignee.id} name={row.assignee.name} className="dq-own-av" />}{row.assignee?.name ?? 'unassigned'}</b></div>
         <div className="dq-kv"><span>Status</span><b>{row.status}</b></div>
       </div>
+      <RoutingCard ticketId={row.id} now={now} />
+      <VoiceCard ticketId={row.id} />
       <div className="dq-card dq-cc" data-testid="dq-customer">
         <div className="dq-lbl">Account</div>
         {facts.length === 0 && pastCount === 0 ? <div className="dq-faint dq-s12">No account details in the ticket.</div> : <>

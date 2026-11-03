@@ -23,6 +23,10 @@ public class PushController(PushService push, ProjectManagement.Application.Feat
     public async Task<IActionResult> SubscribeNative([FromBody] NativePushRequest req, CancellationToken ct) =>
         Ok(await push.SubscribeNativeAsync(req, Request.Headers.UserAgent.ToString(), ct));
 
+    /// <summary>Sends a test push to the person's devices now and reports each push service's answer (Settings → Notifications).</summary>
+    [HttpPost("test")]
+    public async Task<IActionResult> Test([FromBody] PushTestRequest req, CancellationToken ct) => Ok(await push.TestAsync(req, ct));
+
     [HttpPost("unsubscribe")]
     public async Task<IActionResult> Unsubscribe([FromBody] PushEndpointRequest req, CancellationToken ct) => Ok(await push.UnsubscribeAsync(req.Endpoint, ct));
 

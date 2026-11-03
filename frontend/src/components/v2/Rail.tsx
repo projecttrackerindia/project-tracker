@@ -24,6 +24,8 @@ import { useMailUnread } from '../../features/mail/useMail';
 import { get } from '../../api/client';
 import { Popover } from '../../lib/popover';
 import { PALETTES, avatarBg, meshOf, themeOf, type PersonThemeId } from '../../lib/personTheme';
+import { useTabBadges } from '../../features/notifications/centre/NotificationCentre';
+import type { Destination } from '../../features/notifications/centre/tabBadges';
 import './v2.css';
 
 /** The cache key of my /me/ui/profile (the card theme); the theme picker writes it too. */
@@ -123,23 +125,27 @@ function useSideGroups(): SideGroup[] {
   };
   const clean = (g: SideGroup) => ({ ...g, items: g.items.filter(Boolean) as SideItem[] });
   const home = pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/approve/');
+  // docs/badges.md: a red number = unread notifications that belong to this place (they add up to the bell); with none, a place may keep
+  // a calm grey count of what is open there (not a notification, not in the total).
+  const tabs = useTabBadges();
+  const red = (d: Destination, calm?: number): Partial<SideItem> => (tabs[d] > 0 ? { badge: tabs[d], calm: false } : calm ? { badge: calm, calm: true } : {});
   return [
-    clean({ title: null, items: [mk('/', 'home', 'Today', 'sun', TINT.blue, home && tab !== 'calendar', { badge: inbox.count, calm: !inbox.urgent })] as SideItem[] }),
+    clean({ title: null, items: [mk('/', 'home', 'Today', 'sun', TINT.blue, home && tab !== 'calendar', red('today', inbox.count))] as SideItem[] }),
     clean({ title: 'Work', items: [
-      mk('/work', 'work', 'My Work', 'checkCircle', TINT.orange, pathname === '/work', { badge: myOpen, calm: true }),
-      mk('/desk', 'desk', 'Desk', 'target', TINT.red, pathname === '/desk' || pathname.startsWith('/desk/'), { badge: deskOpen, calm: true }),
+      mk('/work', 'work', 'My Work', 'checkCircle', TINT.orange, pathname === '/work', red('work', myOpen)),
+      mk('/desk', 'desk', 'Desk', 'target', TINT.red, pathname === '/desk' || pathname.startsWith('/desk/'), red('desk', deskOpen)),
       mk('/quality', 'quality', 'Quality', 'bug', 'linear-gradient(180deg,#cf7bf0,#af52de)', pathname === '/quality' || pathname.startsWith('/quality/')),
     ] as SideItem[] }),
     clean({ title: 'Plan', items: [
       mk('/work/projects', 'projects', 'Projects', 'folder', TINT.indigo, onProjects && !portfolio, { badge: projectCount, calm: true }),
-      mk('/work/projects?view=portfolio', 'portfolio', 'Portfolio', 'monitor', TINT.teal, portfolio),
-      mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', TINT.red, home && tab === 'calendar'),
+      mk('/work/projects?view=portfolio', 'portfolio', 'Portfolio', 'monitor', TINT.teal, portfolio, red('portfolio')),
+      mk('/?tab=calendar', 'calendar', 'Calendar', 'calendar', TINT.red, home && tab === 'calendar', red('calendar')),
     ] as SideItem[] }),
     clean({ title: 'Together', items: [
-      mk('/meetings', 'meetings', 'Meetings', 'video', TINT.teal, pathname === '/meetings' || pathname.startsWith('/calls/meeting/')),
-      mk('/messages', 'talk', 'Messages', 'message', TINT.green, pathname === '/messages' || pathname.startsWith('/messages/') || (pathname.startsWith('/calls/') && !pathname.startsWith('/calls/meeting/')), { badge: talk.n, dot: talk.dot }),
-      mk('/mail', 'mail', 'Mail', 'mail', TINT.blue, pathname === '/mail' || pathname.startsWith('/mail/'), { badge: mailUnread, calm: true }),
-      mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault),
+      mk('/meetings', 'meetings', 'Meetings', 'video', TINT.teal, pathname === '/meetings' || pathname.startsWith('/calls/meeting/'), red('meetings')),
+      mk('/messages', 'talk', 'Messages', 'message', TINT.green, pathname === '/messages' || pathname.startsWith('/messages/') || (pathname.startsWith('/calls/') && !pathname.startsWith('/calls/meeting/')), { ...red('messages'), dot: tabs.messages === 0 && talk.dot }),
+      mk('/mail', 'mail', 'Mail', 'mail', TINT.blue, pathname === '/mail' || pathname.startsWith('/mail/'), red('mail', mailUnread)),
+      mk('/library', 'library', 'Library', 'note', TINT.amber, (pathname === '/library' || pathname.startsWith('/library/')) && !vault, red('library')),
       mk('/library/vault', 'vault', 'Vault', 'key', TINT.gray, vault),
       mk('/people', 'people', 'People & Roles', 'users', 'linear-gradient(180deg,#7d7bff,#5e5ce6)', pathname === '/people' || pathname.startsWith('/people/')),
       mk('/insights', 'insights', 'Insights', 'chart', TINT.pink, pathname === '/insights' || pathname.startsWith('/insights/') || pathname === '/activity'),
@@ -196,7 +202,7 @@ export function Rail() {
               <Link key={i.key} to={i.to} className={`v2-rail-item ${i.on ? 'on' : ''}`} aria-current={i.on ? 'page' : undefined} title={i.hint ?? i.label} data-place={i.key}>
                 <span className="v2-tile" style={{ background: i.tint }}><Icon name={i.icon} size={13} /></span>
                 <span className="v2-rail-label">{i.label}</span>
-                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} data-badge={i.key} aria-label={i.key === 'home' ? `${i.badge} waiting on you` : i.key === 'talk' || i.key === 'mail' ? `${i.badge} unread` : `${i.badge} open`}>{i.badge > 99 ? '99+' : i.badge}</em>}
+                {!!i.badge && <em className={`v2-badge${i.calm ? ' calm' : ''}`} data-badge={i.key} aria-label={!i.calm ? `${i.badge} new` : i.key === 'home' ? `${i.badge} waiting on you` : i.key === 'talk' || i.key === 'mail' ? `${i.badge} unread` : `${i.badge} open`}>{i.badge > 99 ? '99+' : i.badge}</em>}
                 {!i.badge && i.dot && <em className="v2-badge-dot" data-badge={i.key} aria-label="New messages in muted conversations" />}
               </Link>
             ))}
