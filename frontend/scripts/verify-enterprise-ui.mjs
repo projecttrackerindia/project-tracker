@@ -100,6 +100,11 @@ try {
  await capture('account-notifications-redirect','/account/notifications','[data-setting="notifications.overview"]',1440,1000);
  assert.match(new URL(page.url()).pathname,/\/settings\/notifications$/,'/account/notifications must open Settings › Notifications');
  for(const [section,tab] of [['','Profile'],['/mobile','Mobile app'],['/integrations','Connected accounts'],['/resumes','Profile']]) {
+  if(tab==='Profile'){ // Your profile (shot 54) is its own calm pane; Mobile app, Aura and the rest sit in its ⋯
+   await capture('account-navigation-'+(section.slice(1)||'profile'),'/account'+section,'.cs-head',1440,1000);
+   assert.match(new URL(page.url()).pathname,/\/settings\/profile$/,`/account${section} opens Your profile`);
+   assert.equal(await page.getByText('Resume',{exact:true}).count(),0,'Resume studio is gone'); continue;
+  }
   await capture('account-navigation-'+(section.slice(1)||'profile'),'/account'+section,'.set-place-head',1440,1000);
   const tabs=page.getByRole('tablist',{name:'Profile & sign-in sections'});
   assert.equal(await tabs.getByRole('tab').count(),4);   // Profile, Mobile app, Connected accounts, Assistant (sign-in security is its own section now)

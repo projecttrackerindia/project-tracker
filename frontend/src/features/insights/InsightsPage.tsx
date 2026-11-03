@@ -534,7 +534,7 @@ function Reports({ tabs }: { tabs: React.ReactNode }) {
 
   return (
     <>
-      <div className="calm-ins-head"><CalmHero title="Reports." second={`${KIND_INFO[kind].label} is ready to set up.`} />{tabs}</div>
+      <div className="calm-ins-head"><CalmHero title="Reports." second="Generate, schedule and share." />{tabs}</div>
       {canReports && (
         <>
           <div className="calm-bar-row ins-rep-links"><span className="calm-sp" /><button type="button" className="calm-link" onClick={() => setSaying((v) => !v)}>Describe a report ›</button><Link className="calm-link" to="/settings/integrations/status-page">Status page ›</Link></div>
