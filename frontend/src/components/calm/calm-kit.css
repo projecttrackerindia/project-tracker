@@ -141,3 +141,31 @@ a.calm-row:focus-visible, button.calm-row:focus-visible { outline: 2px solid var
 .calm-ins > i { font-style: normal; color: var(--calm-ink3); }
 .calm-foot { display: flex; flex-direction: column; gap: 14px; align-items: center; margin-top: 24px; }
 @media (max-width: 768px) { .calm-ins { font-size: 12.5px; gap: 6px; } }
+
+/* CalmSplit / CalmRail: main column plus a rail of small cards; the rail drops under the main column below 1100px */
+.calm-split { display: flex; gap: 24px; align-items: stretch; min-width: 0; flex: 1; }
+.calm-split-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.calm-rail { width: 380px; flex: none; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.calm-rc { background: var(--calm-card); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); padding: 14px 18px 12px; min-width: 0; }
+.calm-rc > h4 { margin: 0 0 6px; font-size: 12.5px; font-weight: 600; color: var(--calm-ink3-text); display: flex; align-items: center; }
+.calm-rc-aside { margin-left: auto; font-weight: 500; }
+.calm-rc.tip { display: flex; gap: 12px; align-items: flex-start; font-size: 13.5px; line-height: 1.45;
+  background: linear-gradient(135deg, color-mix(in srgb, #a35cff 10%, var(--calm-solid)), color-mix(in srgb, #3a8bff 8%, var(--calm-solid))); }
+.calm-rc.tip .calm-orb { margin-top: 2px; }
+.calm-rc.tip button, .calm-rc.tip a { border: 0; background: none; padding: 0; font: inherit; color: var(--calm-accent-text); font-weight: 600; cursor: pointer; text-decoration: none; }
+.calm-rr { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 13.5px; width: 100%; border: 0; background: none; font-family: inherit; text-align: left; color: var(--calm-ink); min-width: 0; }
+.calm-rr + .calm-rr { box-shadow: 0 -1px 0 var(--calm-fill); }
+button.calm-rr { cursor: pointer; border-radius: 8px; }
+button.calm-rr:hover { background: var(--calm-fill); }
+button.calm-rr:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: -2px; }
+.calm-rr-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.calm-rr-t small { display: block; font-size: 12px; color: var(--calm-ink2); overflow: hidden; text-overflow: ellipsis; }
+.calm-rr-r { font-size: 12.5px; color: var(--calm-ink2); white-space: nowrap; }
+.calm-av { width: 22px; height: 22px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 650; color: #fff;
+  background: var(--calm-av, var(--calm-p1)); letter-spacing: 0; }
+.calm-av.m { width: 30px; height: 30px; font-size: 11px; }
+@media (max-width: 1599px) { .calm-rail { width: 340px; } }
+@media (max-width: 1099px) {
+  .calm-split { flex-direction: column; }
+  .calm-rail { width: 100%; }
+}
