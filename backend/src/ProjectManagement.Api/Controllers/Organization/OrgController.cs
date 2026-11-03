@@ -10,8 +10,20 @@ namespace ProjectManagement.Api.Controllers.Organization;
 
 /// <summary>The organization chart: job roles, who holds which role and who reports to whom.</summary>
 [Route("api/v1/org"), RequireWorkspace, RequireModule(Modules.Organization)]
-public class OrgController(OrgService org, AccessService access) : ApiControllerBase
+public class OrgController(OrgService org, AccessService access, OrgMoveService moves) : ApiControllerBase
 {
+    /// <summary>The reporting tree for the org chart canvas: people with their manager and teams, and teams with their parent team.</summary>
+    [HttpGet("tree")]
+    public async Task<IActionResult> Tree(CancellationToken ct) => Ok(await moves.TreeAsync(ct));
+
+    /// <summary>What moving a person (under a new manager) or a team (under a new parent) would change. Changes nothing.</summary>
+    [HttpPost("move/preview")]
+    public async Task<IActionResult> PreviewMove([FromBody] OrgMoveRequest req, CancellationToken ct) => Ok(await moves.PreviewAsync(req, ct));
+
+    /// <summary>Confirm a move. Audit-logged as org.member_moved / org.team_moved.</summary>
+    [HttpPost("move")]
+    public async Task<IActionResult> Move([FromBody] OrgMoveRequest req, CancellationToken ct) => Ok(await moves.MoveAsync(req, ct));
+
     [HttpGet]
     public async Task<IActionResult> Structure(CancellationToken ct) => Ok(await org.GetAsync(ct));
 

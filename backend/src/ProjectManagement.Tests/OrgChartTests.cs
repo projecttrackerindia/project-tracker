@@ -307,4 +307,40 @@ public class OrgChartTests(ApiFactory factory)
         foreach (var expected in new[] { "org.role_created", "org.role_updated", "org.role_moved", "org.role_deleted", "org.role_restored", "org.member_role_assigned" })
             Assert.Contains(expected, actions);
     }
+
+    [Fact]
+    public async Task The_tree_moves_people_with_a_preview_and_audits_every_move()
+    {
+        var (owner, org) = await NewOrg();
+        var lead = await owner.AddMemberAsync(factory, TenantRole.Member, "Lena");
+        var dev = await owner.AddMemberAsync(factory, TenantRole.Member, "Dan");
+        await ReportsTo(owner, dev.UserId, lead.UserId);
+
+        var preview = await owner.Post("/api/v1/org/move/preview", new { kind = "person", id = lead.UserId, newParentId = owner.UserId });
+        Assert.True(preview.Ok, preview.ToString());
+        Assert.Equal(1, preview.Data!["movesWith"]!.GetValue<int>());
+        Assert.Null(Person(await Structure(owner), lead.UserId)["reportsToUserId"]);   // preview changes nothing
+
+        Assert.Equal("ORG_CYCLE", (await owner.Post("/api/v1/org/move/preview", new { kind = "person", id = lead.UserId, newParentId = dev.UserId })).ErrorCode);
+
+        var move = await owner.Post("/api/v1/org/move", new { kind = "person", id = lead.UserId, newParentId = owner.UserId });
+        Assert.True(move.Ok, move.ToString());
+        var tree = await owner.Get("/api/v1/org/tree");
+        Assert.True(tree.Ok, tree.ToString());
+        var node = tree.Data!["people"]!.AsArray().First(p => p!["userId"]!.GetValue<string>() == lead.UserId.ToString())!;
+        Assert.Equal(owner.UserId.ToString(), node["managerId"]!.GetValue<string>());
+
+        var team = await owner.Post("/api/v1/teams", new { name = "Platform" });
+        var dept = await owner.Post("/api/v1/teams", new { name = "Engineering" });
+        var teamId = team.Data!["id"]!.GetValue<string>();
+        var deptId = dept.Data!["id"]!.GetValue<string>();
+        Assert.True((await owner.Post("/api/v1/org/move", new { kind = "team", id = teamId, newParentId = deptId })).Ok);
+
+        // A member without the org-structure permission cannot move anyone.
+        Assert.Equal(HttpStatusCode.Forbidden, (await dev.Post("/api/v1/org/move", new { kind = "person", id = dev.UserId, newParentId = owner.UserId })).Status);
+
+        var actions = factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().Where(x => x.TenantId == org).Select(x => x.Action).ToList());
+        Assert.Contains("org.member_moved", actions);
+        Assert.Contains("org.team_moved", actions);
+    }
 }
