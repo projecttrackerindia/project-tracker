@@ -173,6 +173,21 @@ public class PlanSheetTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Slip_counts_from_the_first_due_date_after_several_moves()
+    {
+        // B was first due two days ago; moved to +3, then to +6: the slip is measured from the first date (8 days), not the latest move (3).
+        var s = await SeedAsync();
+        foreach (var (days, reason) in new[] { (3, "Auditor slot moved"), (6, "Auditor slot moved again") })
+        {
+            var moved = await s.C.Post("/api/v1/portfolio/sheet/bulk", new { dueDateReason = reason, changes = new object[] { new { id = s.B, version = await Version(s.C, s.B), dueDate = Iso(Today.AddDays(days)) } } });
+            Assert.True(moved.Data!["rows"]![0]!["ok"]!.GetValue<bool>(), moved.ToString());
+        }
+        var rows = (await s.C.Get("/api/v1/portfolio/sheet")).Data!["rows"]!.AsArray();
+        Assert.Equal(8, rows.Single(r => S(r!["id"]) == s.B.ToString())!["slipDays"]!.GetValue<int>());
+        Assert.Null(rows.Single(r => S(r!["id"]) == s.A.ToString())!["slipDays"]?.GetValue<int?>());
+    }
+
+    [Fact]
     public async Task A_dragged_row_moves_within_its_project_or_into_another_one()
     {
         var s = await SeedAsync();

@@ -28,9 +28,11 @@ grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$STATE/railway-api.env" \
 LEFT=$(grep -E 'railway\.(app|internal)' "$STATE/railway-api.env" | cut -d= -f1 | tr '\n' ' ' || true)
 [ -z "$LEFT" ] || echo "Left out (they pointed at Railway): $LEFT"
 GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"   # served by Vertex AI in Mumbai; check with ./ai-check.sh
+# Connections the API may hold open. Cloud SQL's db-f1-micro allows about 25 in all (3 kept for admins), so 40 let a burst of page loads
+# fail with "too many clients"; 20 makes extra requests wait a moment for a free one instead. Raise DB_POOL with a larger DB_TIER.
 cat >> "$OUT" <<ENV
 Database__Provider=Postgres
-ConnectionStrings__Default=Host=cloudsql;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD};SSL Mode=Disable;Maximum Pool Size=40
+ConnectionStrings__Default=Host=cloudsql;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD};SSL Mode=Disable;Maximum Pool Size=${DB_POOL:-20}
 App__WebBaseUrl=https://${DOMAIN}
 Cors__Origins__0=https://${DOMAIN}
 Proxy__Trust=true

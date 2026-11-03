@@ -1,20 +1,19 @@
 import { ToolbarSeg as ToolbarSlot } from '../../components/v2/ToolbarSeg';
-import { useCallback, useEffect, useMemo } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { projectApi, teamApi, workApi, workItemApi, workspaceApi } from '../../api/endpoints';
 import type { WorkItem, WorkItemKind } from '../../api/types';
 import type { WorkListFilters, WorkRow } from '../../api/workItemsApi';
 import { Icon } from '../../components/Icon';
-import { PageHead, Segmented } from '../../components/ui';
+import { PageHead, PageLoader, Segmented } from '../../components/ui';
 import { openNew } from '../../components/v2/state';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth, useCan, useIsPersonal, useModule } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { saveOfflineSnapshot } from '../offline/storage';
 import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
-import { WorkloadPage } from '../workitems/WorkloadPage';
-import { useRebalance } from '../insights/InsightsPage';
+import { useRebalance } from '../insights/rebalance';
 import { AutomationsPage } from './Automations';
 import { WorkItemPanel } from './WorkItemPanel';
 import { WorkList } from './WorkList';
@@ -22,12 +21,15 @@ import { MyWork } from './MyWork';
 import { MyActionItems } from '../meet/MyActionItems';
 import { openSchedule } from '../meet/scheduleStore';
 import { ProjectWorkTab } from './ProjectWorkTab';
-import { WorkTasksPage, type OpsView } from './WorkTasksPage';
+import type { OpsView } from './WorkTasksPage';
 import { useWorkKinds, useWorkList } from './workUi';
 import './work.css';
 
 type Tab = 'mine' | 'team' | 'tickets' | 'automations';
 /** The ticket desk's own views (the queue with SLA views and bulk edit, the board, insights, channels, settings), kept one ··· away. */
+// The ticket desk (with its charts) and Team's workload view load only when opened, so My work does not download the chart library.
+const WorkTasksPage = lazy(() => import('./WorkTasksPage').then((m) => ({ default: m.WorkTasksPage })));
+const WorkloadPage = lazy(() => import('../workitems/WorkloadPage').then((m) => ({ default: m.WorkloadPage })));
 const OPS_VIEWS: OpsView[] = ['queue', 'board', 'insights', 'whatsapp', 'voice', 'settings'];
 const KIND_V1: Record<WorkRow['kind'], WorkItemKind> = { task: 'Task', issue: 'Issue', action: 'ActionItem', ticket: 'Operational' };
 
@@ -138,8 +140,8 @@ export function WorkPage() {
   );
   const panel = item && <WorkItemPanel id={item} onClose={close} />;
   // A drill-down (the ticket desk's views, Team's workload): its own page under Work, with the way back above it.
-  if (opsView) return <div className="wk wk-sub">{back('Work · Tickets', { view: null, item: null })}<WorkTasksPage embedded onOpenItem={open} />{panel}</div>;
-  if (section) return <div className="wk wk-sub">{back('Work · Team', { s: null, scope: null })}<WorkloadPage section={section} />{panel}</div>;
+  if (opsView) return <div className="wk wk-sub">{back('Work · Tickets', { view: null, item: null })}<Suspense fallback={<PageLoader />}><WorkTasksPage embedded onOpenItem={open} /></Suspense>{panel}</div>;
+  if (section) return <div className="wk wk-sub">{back('Work · Team', { s: null, scope: null })}<Suspense fallback={<PageLoader />}><WorkloadPage section={section} /></Suspense>{panel}</div>;
   if (scope) return (
     <div className="wk wk-sub">
       {back('Work', { project: null, view: null, kind: null, item: null })}
