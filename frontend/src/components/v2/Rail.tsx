@@ -7,6 +7,7 @@ import { usePins } from './pins';
 import { Icon, type IconName } from '../Icon';
 import { Logo, BRAND } from '../Logo';
 import { reminderApi } from '../../features/reminders/api';
+import { approvalsApi } from '../../features/approvals/api';
 import { useAvatarUrl } from '../ui';
 import { initials } from '../../lib/format';
 import { haptic } from '../../lib/mobile';
@@ -129,10 +130,12 @@ function useSideGroups(): SideGroup[] {
   const tabs = useTabBadges();
   const red = (d: Destination, calm?: number): Partial<SideItem> => (tabs[d] > 0 ? { badge: tabs[d], calm: false } : calm ? { badge: calm, calm: true } : {});
   const remindersOpen = reminders.data?.open?.length ?? 0;
+  // The same query as the Approvals page's useApprovalCounts (shared cache), without loading the page's chunk.
+  const approvals = useWsQuery(['approvals', 'counts'], approvalsApi.counts, { refetchInterval: 60_000, staleTime: 30_000, enabled: !admin }).data?.needsMe ?? 0;
   return [
     clean({ title: null, items: [
       mk('/', 'home', 'Today', 'sun', home, red('today')),
-      mk('/approvals', 'approvals', 'Approvals', 'checkCircle', under('/approvals') || pathname.startsWith('/approve/'), inbox.approvals ? { badge: inbox.approvals, blue: true } : {}),
+      mk('/approvals', 'approvals', 'Approvals', 'checkCircle', under('/approvals') || pathname.startsWith('/approve/'), approvals ? { badge: approvals, blue: true } : {}),
       mk('/work', 'work', 'My work', 'inbox', pathname === '/work', red('work', myOpen)),
       mk('/reminders', 'reminders', 'Reminders', 'alarm', under('/reminders') || (pathname === '/' && tab === 'reminders'), remindersOpen ? { badge: remindersOpen, calm: true } : {}),
       mk('/notes', 'notes', 'Notes', 'note', under('/notes')),
@@ -156,7 +159,7 @@ function useSideGroups(): SideGroup[] {
       mk('/insights', 'insights', 'Insights', 'chart', insights && tab !== 'reports' && tab !== 'time'),
       mk('/activity', 'activity', 'Activity', 'activity', pathname === '/activity'),
       mk('/people', 'people', 'People', 'users', under('/people')),
-      mk('/insights?tab=time', 'time', 'Time', 'clock', insights && tab === 'time'),
+      mk('/time', 'time', 'Time', 'clock', under('/time') || (insights && tab === 'time')),
     ] as SideItem[] }),
   ].filter((g) => g.items.length > 0);
 }

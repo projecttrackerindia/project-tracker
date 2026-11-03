@@ -9,3 +9,4 @@ export { CalmPills, type CalmPill } from './CalmPills';
 export { AuraLine, CalmOrb } from './AuraLine';
 export { CalmJourney, calmStepPos, type CalmStep, type CalmStepState } from './CalmJourney';
 export { CalmInsights, CalmFoot, type CalmInsight } from './CalmInsights';
+export { CalmSplit, CalmRailCard, CalmRailRow, CalmAvatar } from './CalmRail';

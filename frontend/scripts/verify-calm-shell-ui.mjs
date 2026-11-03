@@ -69,6 +69,9 @@ try {
       else if (ep === '/api/v1/ai/provider-status') data = { active: false, provider: null, providerName: null, agreed: false, agreedAt: null, fallbackToPlatform: true, notice: null };
       else if (ep === '/api/v1/ai/conversations') data = [{ id: 'c1', title: 'Plan my afternoon', lastMessageAt: '2026-11-03T08:00:00Z', isPinned: false }];
       else if (ep === '/api/v1/automations') data = [];
+      else if (ep === '/api/v1/approvals') data = { items: [], counts: { needsMe: 0, mine: 0, all: 0, history: 0 }, week: { approved: 0, rejected: 0, expired: 0, medianMinutes: 0 }, byType: {}, expiringToday: 0, elsewhere: [] };
+      else if (ep === '/api/v1/approvals/counts') data = { needsMe: 2 };
+      else if (ep === '/api/v1/notes') data = [];
       else if (ep === '/api/v1/documents/inbox') data = { toReview: [], submitted: [], accessToDecide: [], myAccessRequests: [], waiting: 0 };
       else if (ep === '/api/v1/documents/dashboard') data = { total: 0, byStatus: [], byType: [], mine: 0, waitingForMe: 0, updatedThisWeek: 0, notUpdatedIn90Days: 0, unpublished: 0, recent: [] };
       else if (ep === '/api/v1/documents') data = { items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 0 };

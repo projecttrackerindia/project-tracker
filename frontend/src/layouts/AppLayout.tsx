@@ -1,5 +1,5 @@
 import { deliveryTime } from '../features/notifications/deliveryTime';
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
 import { isViewing } from '../features/notifications/centre/readSync';
 import { prefetchPages } from '../lib/prefetchPages';
 import { MutationSync } from '../lib/MutationSync';
@@ -39,11 +39,18 @@ import { ScheduleHost } from '../features/meet/ScheduleSheet';
 import { MeetTimePrompt } from '../features/meet/MeetTime';
 import { AuraKeys, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
 import { Fab } from '../components/shell/Fab';
+import { ApprovalRequestHost } from '../features/approvals/host';
 import '../components/shell/shell.css';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
 import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
+
+// The calm create sheets (New task / New project from the + menu), mounted once for every page. Loaded through a glob so the shell
+// builds before that feature lands and wires it up by itself once features/calm/createSheets.tsx exists.
+const calmCreate = import.meta.glob<{ CalmCreateHost: ComponentType }>('../features/calm/createSheets.tsx');
+const calmCreateLoad = Object.values(calmCreate)[0];
+const CalmCreateHost = calmCreateLoad ? lazy(() => calmCreateLoad().then((m) => ({ default: m.CalmCreateHost }))) : null;
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -164,6 +171,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {/* The floating + (bottom right; above the tab bar on a phone) and ⌘K for the Aura panel (the header orb). No bottom Aura capsule. */}
       {!admin && !(phone && conversation) && <Fab />}
       {!admin && <AuraKeys />}
+      {!admin && <ApprovalRequestHost />}
+      {!admin && CalmCreateHost && <Suspense fallback={null}><CalmCreateHost /></Suspense>}
       {!admin && <NewSheetHost />}
       {!admin && <ScheduleHost />}
       {!admin && <MeetTimePrompt />}

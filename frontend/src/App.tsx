@@ -71,6 +71,7 @@ const DeskPage = page(() => import('./features/desk/DeskPage'), 'DeskPage');
 const ApprovalsPage = page(() => import('./features/approvals/ApprovalsPage'), 'ApprovalsPage');
 const RemindersPlace = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
 const NotesPage = page(() => import('./features/notes/NotesPage'), 'NotesPage');
+const TimePage = page(() => import('./features/time/TimePage'), 'TimePage');
 const DeskIntegrations = page(() => import('./features/desk/DeskIntegrations'), 'DeskIntegrations');
 const QualityPage = page(() => import('./features/quality/QualityPage'), 'QualityPage');
 const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'ProjectsHome');
@@ -432,6 +433,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="inbox/*" element={<Moved to="/approvals" />} />
         <Route path="notes" element={<NotesPage />} />
         <Route path="notes/:id" element={<NotesPage />} />
+        <Route path="time" element={<TimePage />} />
         <Route path="work" element={<Guard allow={work}><WorkPage /></Guard>} />
         <Route path="work/projects" element={<Guard allow={mProjects}><ProjectsHome /></Guard>} />
         <Route path="desk" element={<Guard allow={mWork}><DeskPage /></Guard>} />

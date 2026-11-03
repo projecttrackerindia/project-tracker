@@ -87,7 +87,7 @@ export function useMainNav(): NavGroup[] {
       { to: '/meetings', label: 'Meetings', icon: 'video', show: talk, paletteOnly: true, hint: 'Upcoming, past and series; schedule, join, notes and action items' },
       { to: '/library/security', label: 'Security Center', icon: 'shield', show: lv('documents') > 0, paletteOnly: true, hint: 'Masking, reveals, access requests and the audit trail' },
       { to: '/library/vault', label: 'Vault', icon: 'key', show: canVault, paletteOnly: true, hint: 'Team passwords, keys and secrets' },
-      { to: '/insights?tab=time', label: 'Time', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0, paletteOnly: true, hint: 'Your timesheet' },
+      { to: '/time', label: 'Time', icon: 'clock', show: lv('tasks') > 0 || lv('work') > 0, paletteOnly: true, hint: 'Your timesheet' },
       { to: '/insights?tab=reports', label: 'Reports', icon: 'chart', show: canReports || lv('work') > 0, paletteOnly: true },
       { to: '/activity', label: 'Activity', icon: 'activity', show: lv('activity') > 0, paletteOnly: true },
       { to: '/people', label: 'People', icon: 'user', show: !personal, paletteOnly: true },

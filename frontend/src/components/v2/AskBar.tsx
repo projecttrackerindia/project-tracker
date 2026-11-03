@@ -27,8 +27,24 @@ const projectIdOf = (pathname: string) => /^\/work\/projects\/([0-9a-f-]{8,})/i.
  * and Earlier, with Mark all read and settings), the Aura orb and the avatar menu. A page's own control can still portal in on the left.
  */
 export function Toolbar() {
+  // How wide the controls on the right are, so a page's crumb row on the same line keeps clear of them (--shell-head-w).
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = bar.current; if (!el) return;
+    const root = document.documentElement;
+    const put = () => {
+      const kids = [...el.children].filter((c) => !c.classList.contains('v2-tb-sp') && !c.classList.contains('v2-tb-title')) as HTMLElement[];
+      if (!kids.length) return;
+      const left = Math.min(...kids.map((k) => k.getBoundingClientRect().left));
+      root.style.setProperty('--shell-head-w', `${Math.ceil(el.getBoundingClientRect().right - left + 4)}px`);
+    };
+    put();
+    const ro = new ResizeObserver(put); ro.observe(el); [...el.children].forEach((c) => ro.observe(c));
+    const mo = new MutationObserver(() => { [...el.children].forEach((c) => ro.observe(c)); put(); }); mo.observe(el, { childList: true });
+    return () => { ro.disconnect(); mo.disconnect(); root.style.removeProperty('--shell-head-w'); };
+  }, []);
   return (
-    <div className="v2-tb shell-head" role="toolbar" aria-label="Your day">
+    <div ref={bar} className="v2-tb shell-head" role="toolbar" aria-label="Your day">
       <span className="v2-tb-sp" />
       <AttendanceCapsule />
       <NotificationBell />

@@ -223,3 +223,9 @@ html body .shell-side .shell-me .acct-row-text small { font-size: 11px; color: v
 html body .groot-chat.float .gc-empty, html body .groot-chat.float .gc-empty h3, html body .groot-chat.float .gc-empty p { text-align: left; align-items: flex-start; }
 html body .groot-chat.float .gc-sugg { flex-direction: row; align-items: center; justify-content: flex-start; }
 html body .groot-chat.float .gc-sugg .gc-chip, html body .groot-chat.phone .gc-sugg .gc-chip { flex: none; width: auto; max-width: 100%; }
+/* A page with a crumb row (Today's date and its Morning/Afternoon/Evening switch, a project's breadcrumb) shares the header's line, as in
+   the demo: the header overlays the top of the page, and the crumb row keeps clear of the header's controls on the right. */
+@media (min-width: 769px) {
+  html:has(main .calm-page-crumb) body .v2-tb.shell-head { margin-bottom: -64px; }
+  html body main .calm-page-crumb { min-height: 64px; margin-top: -4px; padding-right: var(--shell-head-w, 220px); }
+}
