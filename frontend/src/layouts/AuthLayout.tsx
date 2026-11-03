@@ -61,21 +61,31 @@ export function AuthLayout({ title, second, sub, children, footer, shake, calm }
       <PlatformBanner />
       <ThemeSwitch className="auth-theme-btn" />
       {calm ? <CalmAuthPanel /> : <AuthVisual />}
-      <div className="auth-wrap">
-        <span className="auth-glow" aria-hidden="true" />
-        <div className={`auth-card ${shake ? 'shake' : ''}`}>
-          <span className="auth-beam" aria-hidden="true" />
-          <div className="auth-brand">
-            <div className="brand-mark"><BrandMark /></div>
-            <div><strong>ProjectTracker</strong><span>Project management</span></div>
-          </div>
+      {calm ? (
+        <div className="auth-wrap auth-calm-wrap">
+          <span className="acp-mark lg" aria-hidden="true"><BrandMark size={30} /></span>
           <h1 className="auth-title">{title}{second && <em>{second}</em>}</h1>
           {sub && <p className="auth-sub">{sub}</p>}
-          {children}
+          <div className={`auth-card ${shake ? 'shake' : ''}`}>{children}</div>
           {footer && <div className="auth-foot">{footer}</div>}
-          <p className="auth-help">Need help? <a href={supportMailto('Help with Project Tracker')}>{SUPPORT_EMAIL}</a></p>
         </div>
-      </div>
+      ) : (
+      <div className="auth-wrap">
+          <span className="auth-glow" aria-hidden="true" />
+          <div className={`auth-card ${shake ? 'shake' : ''}`}>
+            <span className="auth-beam" aria-hidden="true" />
+            <div className="auth-brand">
+              <div className="brand-mark"><BrandMark /></div>
+              <div><strong>ProjectTracker</strong><span>Project management</span></div>
+            </div>
+            <h1 className="auth-title">{title}{second && <em>{second}</em>}</h1>
+            {sub && <p className="auth-sub">{sub}</p>}
+            {children}
+            {footer && <div className="auth-foot">{footer}</div>}
+            <p className="auth-help">Need help? <a href={supportMailto('Help with Project Tracker')}>{SUPPORT_EMAIL}</a></p>
+          </div>
+        </div>
+      )}
       <ToastRoot />
     </div>
   );
