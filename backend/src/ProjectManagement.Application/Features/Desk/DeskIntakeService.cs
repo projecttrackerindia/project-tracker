@@ -173,8 +173,10 @@ public class DeskQueueProcessor(IServiceScopeFactory scopes, TimeProvider time, 
             var error = e is AppException ? e.Message : e.GetType().Name;
             if (error.Length > 500) error = error[..500];
             log.LogWarning("Desk inbound {Event}: attempt {Attempt} failed ({Kind}){Dead}", id, head.Attempts, e.GetType().Name, next is null ? ", moved to dead letters" : "");
-            await db.DeskInboundEvents.Where(x => x.Id == id).ExecuteUpdateAsync(x => x.SetProperty(r => r.Status, next is null ? "dead" : "pending")
-                .SetProperty(r => r.NextAttemptAt, next ?? UtcNow).SetProperty(r => r.LeaseUntil, (DateTime?)null).SetProperty(r => r.LastError, error), ct);
+            var status = next is null ? "dead" : "pending";
+            var at = next ?? UtcNow;
+            await db.DeskInboundEvents.Where(x => x.Id == id).ExecuteUpdateAsync(x => x.SetProperty(r => r.Status, status)
+                .SetProperty(r => r.NextAttemptAt, at).SetProperty(r => r.LeaseUntil, (DateTime?)null).SetProperty(r => r.LastError, error), ct);
             return false;
         }
     }
