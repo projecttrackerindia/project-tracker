@@ -17,6 +17,8 @@ import { EmptyState, ErrorState, Modal, PageLoader, Segmented } from '../../comp
 import { useAi, useAssistant } from '../ai/Assistant';
 import { useIsMobile, useIsSmallPhone } from '../../lib/mobile';
 import { PhoneToday } from './PhoneToday';
+import { CalmToday } from './CalmToday';
+import { useClassic } from '../calm/classic';
 import { MONTHS, todayISO } from '../../lib/format';
 import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hooks';
 import { refreshWork } from '../work/workUi';
@@ -89,6 +91,8 @@ export function HomePage() {
 /** A phone held upright gets the phone's own Today (apple/s-mobile, s-phone); My team stays the full view. */
 function ForYouOrPhone({ view, onTab }: { view: View; onTab: (t: Tab, v?: View) => void }) {
   const small = useIsSmallPhone();
+  const classic = useClassic();
+  if (view === 'me' && !classic) return <CalmToday />;
   return small && view === 'me' ? <PhoneToday /> : <ForYou view={view} onTab={onTab} />;
 }
 

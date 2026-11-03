@@ -22,7 +22,9 @@ import { useChatEnabled } from '../chat/ProjectChat';
 import { useProjectChat } from '../chat/projectChatStore';
 import { ImportModal } from '../import/ImportModal';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
-import { DotsMenu } from '../talk/DotsMenu';
+import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
+import { CalmProject } from './CalmProject';
+import { useClassic } from '../calm/classic';
 import { pinItem, usePins } from '../../components/v2/pins';
 import { TaskModal } from '../tasks/TaskModal';
 import { ProjectTime } from '../time/ProjectTime';
@@ -93,6 +95,7 @@ export function ProjectPage() {
   const chatOn = useChatEnabled();
   const openChat = useProjectChat((s) => s.openChat);
   const q = useWsQuery(['project', id], () => projectApi.get(id));
+  const classic = useClassic();
 
   const rawTab = params.get('tab') ?? 'overview';
   const [editing, setEditing] = useState(false);
@@ -159,6 +162,48 @@ export function ProjectPage() {
     catch { toast(url, 'info'); }
   };
 
+  const menu: DotsItem[] = [
+            { label: 'Add work', icon: 'plus', hint: '+ New, in this project', hidden: !addWork, onSelect: () => openNew('task', '', { id: p.id, name: p.name }) },
+            { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/meetings?s=upcoming&project=${p.id}`) },
+            { label: 'Schedule a meeting', icon: 'calendar', hint: 'Linked to this project; its time logs here', hidden: archived, onSelect: () => openSchedule({ project: { id: p.id, name: p.name } }) },
+            { label: 'Chat', icon: 'message', hint: 'The project’s team chat', hidden: !chatOn, onSelect: () => openChat(p.id, p.name) },
+            { label: canEdit ? 'Settings' : 'Members', icon: canEdit ? 'settings' : 'users', hint: canEdit ? 'Members, task workflow and automation' : 'Who is on this project', onSelect: () => setSettings('members') },
+            { label: 'Delay risk', icon: 'sparkle', hint: 'How likely it is to be late, and why', hidden: !ai, onSelect: () => setRisk(true) },
+            { label: 'What if…', icon: 'target', hint: 'When it finishes if work slips, people join or scope is cut', hidden: isFinished(p), onSelect: () => setWhatIf(true) },
+            { label: 'Weekly report', icon: 'note', hint: 'What moved, what slipped, risks, next week', onSelect: () => nav(`/work/projects/${p.id}/report`) },
+            { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
+            { label: 'Edit details', icon: 'edit', hint: 'Every field: priority, status, group, type, delivery', hidden: !canEdit, onSelect: () => setEditing(true) },
+            { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
+            { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
+            { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },
+            pinItem(pins, p.id),
+            { label: 'Delete project', icon: 'trash', danger: true, hidden: !canDelete, onSelect: () => void remove() },
+          ];
+  if (!classic && tab === 'overview') return (
+    <>
+      <CalmProject detail={detail} menu={[
+        { label: 'Work · Board and list', icon: 'kanban', hint: 'Tasks, issues and action items; board, list and timeline', hidden: !allowed.includes('work'), onSelect: () => setTab('work') },
+        { label: 'Docs', icon: 'note', onSelect: () => setTab('docs') },
+        { label: 'Time', icon: 'clock', hidden: !allowed.includes('time'), onSelect: () => setTab('time') },
+        { label: 'Activity and agent', icon: 'activity', hidden: !allowed.includes('activity'), onSelect: () => setTab('activity') },
+        { label: 'Overview · stages and sign-off', icon: 'flag', hint: 'The earlier overview, with the timeline and sign-off', onSelect: () => nav(`${loc.pathname}?classic=1`) },
+        { label: 'Share link', icon: 'link', onSelect: () => void share() },
+        ...menu,
+      ]} canEdit={canEdit && !archived} addWork={addWork} onHealth={() => setHealthOpen(true)} onFullTask={(tid) => setParams({ task: tid })} />
+      {healthOpen && <HealthSheet projectId={p.id} projectName={p.name} onClose={() => setHealthOpen(false)} />}
+      {editing && <ProjectFormModal project={p} onClose={() => setEditing(false)} />}
+      {scheduling && <StageScheduleStudio project={p} stages={detail.stages} onClose={() => setScheduling(false)} />}
+      {importing && <ImportModal projectId={p.id} onClose={() => setImporting(false)} />}
+      {risk && <RiskModal projectId={p.id} onClose={() => setRisk(false)} />}
+      {whatIf && <WhatIf projectId={p.id} name={p.name} onClose={() => setWhatIf(false)} />}
+      {settings && <ProjectSettingsModal detail={detail} canEdit={canEdit} initial={settings} onClose={() => setSettings(null)} />}
+      {openTaskId && <TaskModal taskId={openTaskId} onClose={() => drop('task')} />}
+      {openIssueId && <IssueDetailModal projectId={p.id} issueId={openIssueId} stages={detail.stages} members={detail.members} onClose={() => drop('issue')} />}
+      {reporting && <ReportIssueModal projectId={p.id} stages={detail.stages} members={detail.members} defaultStageId={reporting.stageId}
+        onClose={() => setReporting(null)} onCreated={(issueId) => { setReporting(null); setParams({ tab: 'work', kind: 'issue', issue: issueId }); }} />}
+    </>
+  );
+
   return (
     <div className="pp">
       <header className="pp-head">
@@ -170,23 +215,7 @@ export function ProjectPage() {
         <div className="pp-actions">
           <ProjectStatePill p={p} />
           <button type="button" className="pa-btn pp-share" onClick={() => void share()}>Share</button>
-          <DotsMenu label="More on this project" listClassName="wide" items={[
-            { label: 'Add work', icon: 'plus', hint: '+ New, in this project', hidden: !addWork, onSelect: () => openNew('task', '', { id: p.id, name: p.name }) },
-            { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/meetings?s=upcoming&project=${p.id}`) },
-            { label: 'Schedule a meeting', icon: 'calendar', hint: 'Linked to this project; its time logs here', hidden: archived, onSelect: () => openSchedule({ project: { id: p.id, name: p.name } }) },
-            { label: 'Chat', icon: 'message', hint: 'The project’s team chat', hidden: !chatOn, onSelect: () => openChat(p.id, p.name) },
-            { label: canEdit ? 'Settings' : 'Members', icon: canEdit ? 'settings' : 'users', hint: canEdit ? 'Members, task workflow and automation' : 'Who is on this project', onSelect: () => setSettings('members') },
-            { label: 'Delay risk', icon: 'sparkle', hint: 'How likely it is to be late, and why', hidden: !ai, onSelect: () => setRisk(true) },
-            { label: 'What if…', icon: 'target', hint: 'When it finishes if work slips, people join or scope is cut', hidden: isFinished(p), onSelect: () => setWhatIf(true) },
-            { label: 'Weekly report', icon: 'note', hint: 'What moved, what slipped, risks, next week', onSelect: () => nav(`/work/projects/${p.id}/report`) },
-            { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
-            { label: 'Edit details', icon: 'edit', hidden: !canEdit, onSelect: () => setEditing(true) },
-            { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
-            { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
-            { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },
-            pinItem(pins, p.id),
-            { label: 'Delete project', icon: 'trash', danger: true, hidden: !canDelete, onSelect: () => void remove() },
-          ]} />
+          <DotsMenu label="More on this project" listClassName="wide" items={menu} />
         </div>
       </header>
 
