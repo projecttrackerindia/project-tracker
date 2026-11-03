@@ -83,7 +83,7 @@ public class DeskOmnichannelTests(ApiFactory factory)
     {
         var (owner, _, channelId, phoneId) = await SetUpAsync("Queue Owner");
         // Intake off (the default): messages still reach the chat inbox, nothing is queued.
-        Assert.Equal(HttpStatusCode.OK, (await Deliver(channelId.ToString(), Payload(phoneId, "wamid.Q0", "hello")))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Deliver(channelId.ToString(), Payload(phoneId, "wamid.Q0", "hello"))).StatusCode);
         Assert.Equal(0, Events(channelId));
 
         Assert.True((await owner.Put("/api/v1/desk/settings", Settings())).Ok);
@@ -93,7 +93,7 @@ public class DeskOmnichannelTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.OK, (await Deliver(channelId.ToString(), body)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Deliver(channelId.ToString(), body)).StatusCode);   // Meta retries the same message id
         Assert.Equal(1, Events(channelId));
-        Assert.Equal(HttpStatusCode.OK, (await Deliver(channelId.ToString(), Payload(phoneId, "wamid.Q2", "Any update?")))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Deliver(channelId.ToString(), Payload(phoneId, "wamid.Q2", "Any update?"))).StatusCode);
         Assert.Equal(2, Events(channelId));
         // The queue keeps no message text or phone number.
         factory.WithDb(db =>
@@ -118,7 +118,7 @@ public class DeskOmnichannelTests(ApiFactory factory)
         Assert.True((await owner.Post("/api/v1/desk/engineers/me/status", new { status = "offline" })).Ok);
 
         var sentBefore = factory.SupportGraph.Sends.Count(s => s.To == Customer);
-        Assert.Equal(HttpStatusCode.OK, (await Deliver(channelId.ToString(), Payload(phoneId, "wamid.R1", "I cannot login, the password reset OTP never arrives")))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Deliver(channelId.ToString(), Payload(phoneId, "wamid.R1", "I cannot login, the password reset OTP never arrives"))).StatusCode);
         await DrainAsync(channelId);
 
         var taskId = factory.WithDb(db => db.DeskInboundEvents.IgnoreQueryFilters().Single(e => e.ChannelId == channelId).WorkTaskId);
