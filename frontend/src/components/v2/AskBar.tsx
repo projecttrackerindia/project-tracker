@@ -137,7 +137,9 @@ export function AskBar() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k' || e.shiftKey || e.altKey) return;
-      if (!ai || (input.current && document.activeElement === input.current)) return;
+      if (!ai) return;
+      // Already invoked (even before the capsule has rendered): this press is for the palette, and Aura steps aside for it.
+      if (useAuraInvoke.getState().open) { dismissAura(); return; }
       e.preventDefault(); e.stopImmediatePropagation();
       invokeAura();
       window.setTimeout(() => input.current?.focus({ preventScroll: true }), 0);
