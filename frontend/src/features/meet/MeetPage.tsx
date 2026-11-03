@@ -144,7 +144,7 @@ export function MeetPage({ section }: { section: Section }) {
             : <CalmPills label="Meetings" options={pills} value={tab} onChange={go} />}
           {project && <span className="mz-proj">{project.name}<button type="button" aria-label="All meetings" onClick={() => setParam('project', null)}><Icon name="close" size={11} /></button></span>}
           <span className="mz-sp" />
-          <button type="button" className="mz-chip" onClick={() => openSchedule({ project })} data-testid="mz-schedule"><Icon name="plus" size={13} />Schedule</button>
+          <button type="button" className="mz-chip" onClick={() => openSchedule({ project })} data-testid="mz-schedule" aria-label="Schedule meeting"><Icon name="plus" size={13} />Schedule</button>
           {callsOn.data?.available && role !== 'Guest' && <button type="button" className="mz-chip" onClick={() => setCalling(true)} data-testid="mz-call-now"><Icon name="phone" size={13} />Call now</button>}
           <DotsMenu label="More" items={more} />
         </div>

@@ -392,3 +392,5 @@ a.mw-pill { display: inline-flex; align-items: center; text-decoration: none; }
 .ms-av-o { display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 14px; border-radius: var(--calm-r-row); background: var(--calm-fill); font-size: 13.5px; }
 .ms-av-o button { border: 0; background: none; font: inherit; font-weight: 600; color: var(--calm-accent-text); cursor: pointer; min-height: 36px; }
 @media (max-width: 900px) { .ms-2col { grid-template-columns: minmax(0, 1fr); } .ms-overlay.modal-overlay { padding: 0; align-items: flex-end; } .ms-overlay .modal.lg { width: 100%; } }
+.ms-overlay .modal.lg { max-height: calc(100dvh - 40px); } @media (max-width: 900px) { .ms-overlay .modal.lg { max-height: 92dvh; } }
+.ms-2col > .ms { position: relative; z-index: 1; } .ms-avail { position: relative; z-index: 0; }
