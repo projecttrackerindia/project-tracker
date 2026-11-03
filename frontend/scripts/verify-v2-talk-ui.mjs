@@ -215,8 +215,8 @@ try {
   // A meeting link from before (Messages ?meeting=) opens the meeting in Meetings.
   await page.goto(`${origin}/preview-org/messages?meeting=p:${meetingId}`);
   await page.waitForURL(/\/meetings\?open=p(:|%3A)/);
-  const md = page.getByRole('dialog');
-  await md.getByRole('heading', { name: 'Daily status call' }).waitFor();
+  const md = page.getByTestId('meeting-page');
+  await md.getByRole('heading', { name: /Daily status call/ }).waitFor();
   await md.getByText('Blockers and today').waitFor();
   await shot(page, 'meeting-1440-light.png');
   checks.push('meeting-in-meetings');

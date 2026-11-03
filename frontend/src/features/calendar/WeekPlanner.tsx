@@ -538,6 +538,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       <aside className="wp-left" aria-label="Month and calendars">{rail}</aside>
 
       <header className="wp-top">
+        <h1 className="wp-h1">Calendar</h1>
         <h2 className="wp-title" aria-label={titleText}>{title}</h2>
         <div className="wp-navs">
           <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Previous day' : view === 'month' ? 'Previous month' : 'Previous week'} onClick={() => shift(-1)}><Icon name="chevronL" size={14} /></button>

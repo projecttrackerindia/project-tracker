@@ -600,3 +600,6 @@ html[data-theme='dark'] .wp-task { background: color-mix(in srgb, var(--calm-p2)
 .wp > .wp-left > .wp-extra { display: none; }
 .wp-left.in-sheet > .wp-extra { display: block; }
 .wp-ai-free + p { display: none; }
+/* the page's own heading where the shell toolbar is hidden (below 1100px); read by assistive tech, not drawn */
+.wp-h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+@media (min-width: 1100px) { .wp-h1 { display: none; } }
