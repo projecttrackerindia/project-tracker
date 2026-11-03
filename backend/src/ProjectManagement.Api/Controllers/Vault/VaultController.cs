@@ -70,13 +70,13 @@ public class VaultController(VaultService vault, StepUpService stepUp, ProjectMa
     [HttpPost("items/{id:guid}/restore")]
     public async Task<IActionResult> RestoreItem(Guid id, CancellationToken ct) { NoStore(); return Ok(await vault.RestoreItemAsync(id, ct)); }
 
-    [HttpPost("items/{id:guid}/reveal")]
+    [HttpPost("items/{id:guid}/reveal"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> Reveal(Guid id, [FromBody] VaultRevealRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.RevealAsync(id, req, ct)); }
 
     [HttpPost("items/{id:guid}/totp")]
     public async Task<IActionResult> Totp(Guid id, [FromBody] VaultStepUpRequest req, CancellationToken ct) { NoStore(); return Ok(await vault.TotpAsync(id, req, ct)); }
 
-    [HttpPost("items/{id:guid}/versions/{versionId:guid}/reveal")]
+    [HttpPost("items/{id:guid}/versions/{versionId:guid}/reveal"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> RevealVersion(Guid id, Guid versionId, [FromBody] VaultRevealRequest req, CancellationToken ct)
     { NoStore(); return Ok(await vault.RevealVersionAsync(id, versionId, req, ct)); }
 

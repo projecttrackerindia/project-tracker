@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.Configure<ProjectManagement.Application.Features.Voice.VoiceOptions>(config.GetSection("Voice"));
         services.Configure<ProjectManagement.Application.Features.Support.SupportOptions>(config.GetSection(ProjectManagement.Application.Features.Support.SupportOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Auth.PasswordBreachOptions>(config.GetSection(ProjectManagement.Application.Features.Auth.PasswordBreachOptions.Section));
+        services.Configure<ProjectManagement.Application.Features.Auth.SignupOptions>(config.GetSection(ProjectManagement.Application.Features.Auth.SignupOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.GitHubAppOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GitHubAppOptions.Section));
         services.Configure<ProjectManagement.Application.Features.Integrations.PersonalInboxAttachmentOptions>(config.GetSection("PersonalInboxAttachments"));
         services.Configure<ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions>(config.GetSection(ProjectManagement.Application.Features.Integrations.GoogleCalendarOptions.Section));
@@ -115,6 +116,8 @@ public static class DependencyInjection
         services.AddHttpClient("voice-speech", c => c.Timeout = TimeSpan.FromSeconds(25));
         services.AddHttpClient("support-whatsapp", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient("pwned-passwords", c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddHttpClient("turnstile", c => c.Timeout = TimeSpan.FromSeconds(6));
+        services.AddSingleton<ProjectManagement.Application.Features.Auth.IEmailDomainChecker, DnsEmailDomainChecker>();
         services.AddHttpClient("github-oidc", c => c.Timeout = TimeSpan.FromSeconds(5));   // GitHub Actions' published signing keys (vault machine access)
         services.AddHttpClient("github-app", c => c.Timeout = TimeSpan.FromSeconds(20));
         // API drift "Check against live": no redirects (an answer cannot send the call on to another host), no request logging (headers carry the stored credential).

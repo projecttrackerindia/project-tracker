@@ -53,6 +53,7 @@ public static class DependencyInjection
         services.AddScoped<MfaService>();
         services.AddScoped<PasswordPolicyService>();
         services.AddScoped<ProjectManagement.Application.Features.Auth.PasswordBreachCheck>();
+        services.AddScoped<ProjectManagement.Application.Features.Auth.SignupGuard>();
         services.AddScoped<ProjectManagement.Application.Features.Organization.OrgSecurityService>();
         services.AddScoped<ProjectManagement.Application.Features.Consent.ConsentService>();
         services.AddScoped<AuthService>();

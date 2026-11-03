@@ -8,10 +8,20 @@
 {$DOMAIN} {
 	encode zstd gzip
 
-	# Browsers are told to always use HTTPS for this site from now on.
+	# TLS 1.2 is the floor (ASVS 9.1.3); Caddy's defaults already pick modern AEAD cipher suites and enable OCSP stapling.
+	tls {
+		protocols tls1.2 tls1.3
+	}
+
+	# Browsers are told to always use HTTPS for this site and its subdomains, for two years (preload-eligible). The app's own
+	# headers (CSP, frame and content-type rules) come from the web container; these are the ones that must hold even on an error page.
 	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# Applied after the upstream answers, so these replace (never duplicate) the same headers from nginx.
+		defer
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
 		-Server
+		-X-Powered-By
 	}
 
 	# Large uploads are allowed through; the API enforces the real per-plan limit.

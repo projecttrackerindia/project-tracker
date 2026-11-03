@@ -16,7 +16,7 @@ public class ChatController(ChatService chat, ChatAiService chatAi, ReminderSugg
     [HttpGet("unread")]
     public async Task<IActionResult> Unread(CancellationToken ct) => Ok(await chat.UnreadAsync(ct));
 
-    [HttpGet("search")]
+    [HttpGet("search"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("search")]
     public async Task<IActionResult> Search([FromQuery] string? q, CancellationToken ct) => Ok(await chat.SearchAsync(q, ct));
 
     /// <summary>The team chat of a project (created on first use): its team, its owner and the organization's Owners, Admins and Managers.</summary>

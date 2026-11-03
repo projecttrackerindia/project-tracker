@@ -76,3 +76,12 @@ public sealed class FakeDns : IDomainVerifier
         Task.FromResult<IReadOnlyList<string>>(type == "TXT" ? _records.Keys.Where(k => k.Item1 == domain).Select(k => k.Item2).ToList() : []);
     public Task<bool> HasTxtRecordAsync(string domain, string expected, CancellationToken ct = default) => Task.FromResult(_records.ContainsKey((domain, expected)));
 }
+
+/// <summary>Mail-domain DNS for tests: everything receives mail except *.invalid and domains a test marks as having none.</summary>
+public sealed class FakeMailDomains : ProjectManagement.Application.Features.Auth.IEmailDomainChecker
+{
+    public ConcurrentDictionary<string, bool> NoMail { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Task<ProjectManagement.Application.Features.Auth.EmailDomainStatus> CheckAsync(string domain, CancellationToken ct = default) =>
+        Task.FromResult(domain.EndsWith(".invalid", StringComparison.OrdinalIgnoreCase) || NoMail.ContainsKey(domain)
+            ? ProjectManagement.Application.Features.Auth.EmailDomainStatus.NoMail : ProjectManagement.Application.Features.Auth.EmailDomainStatus.Accepts);
+}

@@ -9,7 +9,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class ConsentTests(ApiFactory factory)
 {
-    private async Task<TestClient> AdminWith(string password = "Passw0rd!x")
+    private async Task<TestClient> AdminWith(string password = "Passw0rd!xKey")
     {
         var c = await TestClient.RegisterAsync(factory, "Admin");
         var hash = factory.Services.GetRequiredService<ProjectManagement.Application.Abstractions.IPasswordHasher>().Hash(password);
@@ -34,7 +34,7 @@ public class ConsentTests(ApiFactory factory)
     {
         var c = new TestClient(factory);
         c.Email = $"user-{Guid.NewGuid():N}@example.com";
-        var res = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = c.Email, password = "Passw0rd!x", displayName = "No Accept", acceptedTerms = false }, true);
+        var res = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = c.Email, password = "Passw0rd!xKey", displayName = "No Accept", acceptedTerms = false }, true);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, res.Status);
     }
 

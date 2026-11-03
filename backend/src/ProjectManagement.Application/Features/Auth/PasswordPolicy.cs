@@ -15,14 +15,14 @@ namespace ProjectManagement.Application.Features.Auth;
 public record PasswordPolicyDto(int MinLength, bool RequireLetter, bool RequireUppercase, bool RequireLowercase, bool RequireDigit,
     bool RequireSymbol, bool BlockCommon, bool BlockPersonalInfo, int HistoryCount)
 {
-    /// <summary>The rules the platform always had (8 characters, a letter and a number) plus the two cheap, sensible blocks.</summary>
-    public static readonly PasswordPolicyDto Default = new(8, true, false, false, true, false, true, true, 0);
+    /// <summary>12 characters (NIST SP 800-63B / ASVS 2.1.1), a letter and a number, plus the common-password and personal-info blocks.</summary>
+    public static readonly PasswordPolicyDto Default = new(12, true, false, false, true, false, true, true, 0);
 }
 
 /// <summary>Checks a password against a policy. Pure (no database), so the rules are easy to test and to mirror in the browser.</summary>
 public static class PasswordRules
 {
-    public const int MinAllowed = 8, MaxAllowed = 64, MaxLength = 128, MaxHistory = 10;
+    public const int MinAllowed = 12, MaxAllowed = 64, MaxLength = 128, MaxHistory = 10;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // The most-used passwords and the words people build them from. Compared after lower-casing, undoing common letter swaps

@@ -431,6 +431,10 @@ public class WorkspaceService(
         }
 
         var normalized = Text.NormalizeEmail(req.Email);
+        // The organization's own rule: invitations only to its listed email domains (Settings → Security). Empty = anyone.
+        var allowedDomains = await db.TenantSecuritySettings.Where(s => s.TenantId == tid).Select(s => s.AllowedEmailDomains).FirstOrDefaultAsync(ct);
+        if (!ProjectManagement.Application.Features.Organization.EmailDomains.Allows(allowedDomains, req.Email))
+            throw new ValidationException("email", $"This organisation only invites people with an email at {string.Join(", ", ProjectManagement.Application.Features.Organization.EmailDomains.Parse(allowedDomains))}.");
         var now = clock.Now;
         var already = await (from m in db.TenantMembers join u in db.Users on m.UserId equals u.Id
                              where m.TenantId == tid && u.NormalizedEmail == normalized select m.Id).AnyAsync(ct);

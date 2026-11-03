@@ -20,6 +20,7 @@ import { PhoneStep } from './PhoneSignIn';
 import { AuthSubmitButton, FloatingField, PasswordField, useShake } from './AuthFields';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from './passwordPolicy';
 import { safeRedirect } from './redirect';
+import { emailProblem, nameProblem, organizationProblem } from './signupRules';
 
 /** Purely a convenience: the last email that was signed in with "Remember me" checked, refilled on this device only. */
 const REMEMBERED_EMAIL_KEY = 'pm_remembered_email';
@@ -287,7 +288,7 @@ export function LoginPage() {
 }
 
 // ------------------------------------------------------------------ register
-type RegisterValues = { displayName: string; email: string; password: string; confirm: string; acceptedTerms: boolean; organizationName: string };
+type RegisterValues = { displayName: string; email: string; password: string; confirm: string; acceptedTerms: boolean; organizationName: string; website: string };
 type WorkspaceChoice = 'personal' | 'organization';
 
 /** The Terms of Service and Privacy Policy text, read on demand so the sign-up form doesn't need to fetch it up front. */
@@ -318,31 +319,38 @@ export function RegisterPage() {
   const [kind, setKind] = useState<WorkspaceChoice>(params.get('type') === 'organization' ? 'organization' : 'personal');
   const { policy, field: passwordField } = usePolicyPassword();
   const registerSchema = useMemo(() => z.object({
-    displayName: z.string().trim().min(1, 'Enter your name.').max(100),
-    email: z.string().min(1, 'Enter your email.').email('Enter a valid email.'),
+    displayName: z.string().superRefine((v, c) => { const p = nameProblem(v); if (p) c.addIssue({ code: z.ZodIssueCode.custom, message: p }); }),
+    email: z.string().superRefine((v, c) => { const p = emailProblem(v); if (p) c.addIssue({ code: z.ZodIssueCode.custom, message: p }); }),
     password: passwordField,
     confirm: z.string(),
     acceptedTerms: z.boolean().refine((v) => v, { message: 'You must accept the Terms of Service and Privacy Policy.' }),
     organizationName: z.string().trim().max(100),
+    website: z.string(),
   }).refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'Passwords do not match.' })
-    .refine((v) => invited || kind !== 'organization' || v.organizationName.trim().length >= 2, { path: ['organizationName'], message: "Enter your organisation's name." }),
+    .superRefine((v, c) => {
+      const p = invited || kind !== 'organization' ? null : organizationProblem(v.organizationName);
+      if (p) c.addIssue({ code: z.ZodIssueCode.custom, path: ['organizationName'], message: p });
+    }),
   [passwordField, kind, invited]);
   const { register, handleSubmit, watch, setError: setFieldError, formState: { errors } } = useForm<RegisterValues>({
-    resolver: zodResolver(registerSchema), defaultValues: { email: params.get('email') ?? '', acceptedTerms: false, organizationName: '' },
+    resolver: zodResolver(registerSchema), defaultValues: { email: params.get('email') ?? '', acceptedTerms: false, organizationName: '', website: '' },
   });
+  // Bot checks: the server signs the moment this form was loaded, and refuses a submission made faster than a person could type it.
+  const signupForm = useQuery({ queryKey: ['auth', 'signup-form'], queryFn: authApi.signupForm, staleTime: 60 * 60_000, retry: 1 });
   const typed = watch('password') ?? '';
 
   const m = useMutation({
     mutationFn: (v: RegisterValues) => authApi.register({
       email: v.email, password: v.password, displayName: v.displayName, acceptedTerms: v.acceptedTerms, returnUrl: redirect,
       workspaceType: invited ? 'invited' : kind, organizationName: !invited && kind === 'organization' ? v.organizationName.trim() : undefined,
+      website: v.website, formToken: signupForm.data?.formToken,
     }),
     // The "check your email" step is swapped in underneath the success moment, which then lifts to reveal it.
     onSuccess: (_r, v) => celebrate({
       kind: 'register', name: firstName(v.displayName), detail: v.email,
       origin: originOf('.auth-card button[type="submit"]'), onHandoff: () => setDone(v.email),
     }),
-    onError: (e) => setError(applyServerErrors(e, setFieldError, ['email', 'password', 'displayName', 'organizationName'])),
+    onError: (e) => { void signupForm.refetch(); setError(applyServerErrors(e, setFieldError, ['email', 'password', 'displayName', 'organizationName'])); },
   });
 
   if (status === 'authenticated') return <Navigate to={redirect} replace />;
@@ -388,6 +396,10 @@ export function RegisterPage() {
           <span>I agree to the <button type="button" className="link" onClick={() => setShowLegal(true)}>Terms of Service and Privacy Policy</button></span>
         </label>
         {errors.acceptedTerms && <div className="form-error" role="alert">{errors.acceptedTerms.message}</div>}
+        {/* Honeypot: hidden from people and screen readers, so only a script fills it in. */}
+        <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
+          <label>Website<input type="text" tabIndex={-1} autoComplete="off" {...register('website')} /></label>
+        </div>
         <SubmitButton busy={m.isPending}>Create account</SubmitButton>
       </form>
       {showLegal && <LegalDocsModal onClose={() => setShowLegal(false)} />}

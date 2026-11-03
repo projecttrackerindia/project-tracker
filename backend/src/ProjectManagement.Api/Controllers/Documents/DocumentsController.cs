@@ -12,7 +12,7 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
     DocumentWorkflowService workflows, DocumentAccessRequestService requests, DocumentTraceService trace, DocumentAuditService audit, DocumentInboxService inbox, DocumentExportService exports, DocumentDashboardService dashboard) : ApiControllerBase
 {
     /// <summary>Asks for a PDF of the document (of one published version, or as the person sees it now). The file is built in the background; the person is notified.</summary>
-    [HttpPost("documents/{id:guid}/export")]
+    [HttpPost("documents/{id:guid}/export"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> Export(Guid id, [FromBody] ExportDocumentRequest req, CancellationToken ct) => Created(await exports.RequestAsync(id, req.VersionId, ct));
 
     [HttpGet("documents/{id:guid}/exports/{exportId:guid}")]
@@ -81,7 +81,7 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
     public async Task<IActionResult> Backlinks(Guid id, CancellationToken ct) => Ok(await documents.BacklinksAsync(id, ct));
 
     /// <summary>The real values of a masked document (editors to edit; readers with the permission, with a reason). Audited; never cached.</summary>
-    [HttpPost("documents/{id:guid}/reveal"), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    [HttpPost("documents/{id:guid}/reveal"), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> Reveal(Guid id, [FromBody] DocumentRevealRequest req, CancellationToken ct) => Ok(await documents.RevealAsync(id, req, ct));
 
     [HttpPost("documents/{id:guid}/archive")]
@@ -251,7 +251,7 @@ public class DocumentsController(DocumentService documents, DocumentLinkService 
     [HttpGet("documents/{id:guid}/audit")]
     public async Task<IActionResult> Audit(Guid id, [FromQuery] string? action, [FromQuery] string? cursor, CancellationToken ct) => Ok(await audit.AuditAsync(id, action, cursor, ct));
 
-    [HttpGet("documents/{id:guid}/audit/export")]
+    [HttpGet("documents/{id:guid}/audit/export"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> ExportAudit(Guid id, CancellationToken ct)
     {
         var csv = await audit.ExportCsvAsync(id, ct);

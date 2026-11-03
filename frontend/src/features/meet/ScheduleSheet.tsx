@@ -17,6 +17,7 @@ import { useScheduleSheet, type ScheduleOpen } from './scheduleStore';
 import { zonedTimeToUtc } from './timezone';
 import './meet.css';
 import './connect.css';
+import { safeHref } from '../../lib/sanitize';
 
 type Repeat = 'Once' | 'Daily' | 'Weekly' | 'Monthly' | 'Custom';
 type Video = 'inapp' | 'teams' | 'meet' | 'zoho' | 'none';
@@ -392,7 +393,7 @@ function SheetReady({ ready, video, videoUrl, onClose }: { ready: Ready; video: 
       <p className="muted">{ready.title}</p>
       {video !== 'none' && (ours
         ? <Link className="btn btn-primary btn-lg" to={link} onClick={onClose}><Icon name="video" size={16} /> Join Meeting</Link>
-        : <a className="btn btn-primary btn-lg" href={link} target="_blank" rel="noopener noreferrer"><Icon name="video" size={16} /> Join Meeting</a>)}
+        : <a className="btn btn-primary btn-lg" href={safeHref(link)} target="_blank" rel="noopener noreferrer"><Icon name="video" size={16} /> Join Meeting</a>)}
       {video !== 'none' && <div className="gm-link-row"><code>{shareable}</code><button type="button" className="btn btn-ghost btn-sm" onClick={() => void copy()}><Icon name="copy" size={14} /> Copy link</button></div>}
       <p className="ms-hint">It shows in Calendar, My Work and Today for everyone invited{ready.providerName && !ours ? ` · ${ready.providerName}` : ''}.</p>
       <button type="button" className="btn btn-ghost" style={{ marginTop: 14 }} onClick={onClose}>Done</button>

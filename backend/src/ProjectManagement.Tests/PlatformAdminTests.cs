@@ -144,18 +144,18 @@ public class PlatformAdminTests(ApiFactory factory)
             Assert.True((await admin.Put("/api/v1/admin/settings", new { signupsEnabled = false, maintenanceMode = false, announcement = "", announcementLevel = "info" })).Ok);
 
             var stranger = new TestClient(factory);
-            var refused = await stranger.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = $"new-{Guid.NewGuid():N}@example.com", password = "Passw0rd!x", displayName = "New", acceptedTerms = true }, true);
+            var refused = await stranger.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = $"new-{Guid.NewGuid():N}@example.com", password = "Passw0rd!xKey", displayName = "New", acceptedTerms = true }, true);
             Assert.Equal(HttpStatusCode.Forbidden, refused.Status);
             Assert.Equal("SIGNUPS_DISABLED", refused.ErrorCode);
 
             var invitedEmail = $"invited-{Guid.NewGuid():N}@example.com";
             Assert.True((await owner.Post("/api/v1/workspace/invitations", new { email = invitedEmail, role = "Member" })).Ok);
-            var ok = await stranger.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = invitedEmail, password = "Passw0rd!x", displayName = "Invited", acceptedTerms = true }, true);
+            var ok = await stranger.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = invitedEmail, password = "Passw0rd!xKey", displayName = "Invited", acceptedTerms = true }, true);
             Assert.Equal(HttpStatusCode.Created, ok.Status);
         }
         finally { await admin.Put("/api/v1/admin/settings", new { signupsEnabled = true, maintenanceMode = false, announcement = "", announcementLevel = "info" }); }
 
-        var again = await new TestClient(factory).Send(HttpMethod.Post, "/api/v1/auth/register", new { email = $"later-{Guid.NewGuid():N}@example.com", password = "Passw0rd!x", displayName = "Later", acceptedTerms = true }, true);
+        var again = await new TestClient(factory).Send(HttpMethod.Post, "/api/v1/auth/register", new { email = $"later-{Guid.NewGuid():N}@example.com", password = "Passw0rd!xKey", displayName = "Later", acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.Created, again.Status);
     }
 

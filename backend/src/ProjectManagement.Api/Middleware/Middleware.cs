@@ -392,7 +392,13 @@ public class SecurityHeadersMiddleware(RequestDelegate next)
             h["X-Content-Type-Options"] = "nosniff";
             h["X-Frame-Options"] = "DENY";
             h["Referrer-Policy"] = "no-referrer";
-            h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+            h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()";
+            h["Cross-Origin-Opener-Policy"] = "same-origin";
+            // JSON is only ever read by our own pages: no other site may embed it (Spectre-style cross-origin reads). Images and files keep
+            // their default so e-mail clients can still show a workspace logo.
+            if (http.Response.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) == true || http.Response.ContentType?.Contains("+json", StringComparison.OrdinalIgnoreCase) == true)
+                h["Cross-Origin-Resource-Policy"] = "same-origin";
+            if (http.Request.IsHttps) h["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload";
             if (!h.ContainsKey("Content-Security-Policy") && !http.Request.Path.StartsWithSegments("/swagger") && !http.Request.Path.StartsWithSegments("/api/docs"))
                 h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
             if (http.Request.Path.StartsWithSegments("/api") && !http.Request.Path.StartsWithSegments("/api/docs") && !http.Request.Path.StartsWithSegments("/api/openapi"))

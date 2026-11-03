@@ -648,7 +648,7 @@ public class DocumentWorkflowTests(ApiFactory factory) : IAsyncLifetime
             ["DELETE documents/{id:guid}/secrets/{secretId:guid}"] = () => owner.Delete($"/api/v1/documents/{doc}/secrets/{secret}"),
             ["POST documents/step-up"] = async () =>
             {
-                var setup = await owner.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!x" });
+                var setup = await owner.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!xKey" });
                 var key = setup.Data!["secret"]!.GetValue<string>().Replace(" ", "");
                 Assert.True((await owner.Post("/api/v1/me/mfa/enable", new { code = ProjectManagement.Application.Common.Totp.Compute(key, ProjectManagement.Application.Common.Totp.StepOf(DateTime.UtcNow)) })).Ok);
                 factory.WithDb(db => { db.Users.IgnoreQueryFilters().Where(u => u.Id == owner.UserId).ExecuteUpdate(x => x.SetProperty(u => u.MfaLastStep, 0L)); return 0; });

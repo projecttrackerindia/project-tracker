@@ -258,7 +258,7 @@ public class SecurityAuditTests(ApiFactory factory)
         Assert.True((await ada.Post("/api/v1/workspace/invitations", new { email = person.Email, role = "Manager" })).Ok);
         Assert.True((await owner.Put($"/api/v1/workspace/members/{ada.UserId}", new { role = "Member" })).Ok);
 
-        var reg = await person.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = person.Email, password = "Passw0rd!x", displayName = "Nina New", acceptedTerms = true }, true);
+        var reg = await person.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = person.Email, password = "Passw0rd!xKey", displayName = "Nina New", acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.Created, reg.Status);
         await person.VerifyEmailAsync();
         await person.LoginAsync();

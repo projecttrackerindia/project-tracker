@@ -7,6 +7,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     depends_on: [web]
     ports: ["80:80", "443:443"]
     environment:
@@ -20,6 +21,7 @@ services:
   # The web container is no longer reachable from outside; only Caddy talks to it.
   web:
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     ports: !reset []
     build:
       context: ./frontend
@@ -31,6 +33,10 @@ services:
 
   api:
     restart: unless-stopped
+    # Runs as the image's non-root user (backend/Dockerfile: USER $APP_UID) on port 8080, so it needs no Linux capabilities at all,
+    # and nothing in it may gain privileges later (setuid binaries, etc.).
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     environment:
       App__WebBaseUrl: https://${DOMAIN}
       Cors__Origins__0: https://${DOMAIN}

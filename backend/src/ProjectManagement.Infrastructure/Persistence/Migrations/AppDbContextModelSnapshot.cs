@@ -12170,6 +12170,11 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AllowedEmailDomains")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<string>("AllowedSignIn")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -12759,6 +12764,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("LockoutEnd")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LockoutStreak")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("MfaEnabled")
                         .HasColumnType("boolean");

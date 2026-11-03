@@ -30,7 +30,8 @@ try {
     const p = url.pathname;
     if (p.endsWith('/auth/register')) { sent.push(route.request().postDataJSON()); await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ data: { userId: 'u1', requiresEmailVerification: true } }) }); return; }
     if (p.endsWith('/auth/refresh')) { await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'signed out', errors: [] }) }); return; }
-    if (p.includes('password-policy')) { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { minLength: 8, requireUpper: false, requireLower: false, requireDigit: false, requireSymbol: false } }) }); return; }
+    if (p.endsWith('/auth/signup-form')) { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { formToken: 'form-token-1', minSubmitSeconds: 3, turnstileSiteKey: null } }) }); return; }
+    if (p.includes('password-policy')) { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { minLength: 12, requireUpper: false, requireLower: false, requireDigit: false, requireSymbol: false } }) }); return; }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: null }) });
   });
 
@@ -59,13 +60,23 @@ try {
     if (name === 'desktop') {
       await fill(page, 'asha@example.test');
       await page.getByRole('button', { name: 'Create account' }).click();
-      await page.getByText("Enter your organisation's name.").waitFor();
+      await page.getByText("Enter your organisation's name (2 to 100 characters).").waitFor();
       assert.equal(sent.length, 0, 'an organisation without a name is not sent');
+      // Strict sign-up: junk names and throw-away inboxes are explained inline and never sent.
+      await page.getByLabel('Full name').fill('Agent 007');
+      await page.getByLabel('Email').fill('asha@mailinator.com');
+      await page.getByRole('button', { name: 'Create account' }).click();
+      await page.getByText('A name cannot contain numbers.').waitFor();
+      await page.getByText(/disposable inboxes are not accepted/).waitFor();
+      assert.equal(sent.length, 0, 'junk details are not sent');
+      await fill(page, 'asha@example.test');
       await page.getByLabel('Organisation name').fill('Northwind Test Ltd');
       await page.getByRole('button', { name: 'Create account' }).click();
       await page.getByText('Check your email').waitFor();
       assert.equal(sent.at(-1).workspaceType, 'organization');
       assert.equal(sent.at(-1).organizationName, 'Northwind Test Ltd');
+      assert.equal(sent.at(-1).formToken, 'form-token-1', 'the signed form token travels with the sign-up');
+      assert.equal(sent.at(-1).website, '', 'the honeypot stays empty for a person');
     }
     await page.close();
   }

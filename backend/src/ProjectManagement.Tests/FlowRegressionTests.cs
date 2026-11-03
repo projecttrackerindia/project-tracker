@@ -154,7 +154,7 @@ public class FlowRegressionTests(ApiFactory factory)
     public async Task Registration_and_resend_carry_only_safe_return_paths_into_verification_emails(string returnUrl, string? expected)
     {
         var person = new TestClient(factory) { Email = $"redirect-{Guid.NewGuid():N}@example.com" };
-        Assert.True((await person.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = person.Email, password = "Passw0rd!x", displayName = "Al", acceptedTerms = true, returnUrl }, true)).Ok);
+        Assert.True((await person.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = person.Email, password = "Passw0rd!xKey", displayName = "Al", acceptedTerms = true, returnUrl }, true)).Ok);
         async Task CheckLink()
         {
             var mail = (await person.Send(HttpMethod.Get, "/api/v1/dev/emails", null, true)).Data!.AsArray().First(m => m!["to"]!.GetValue<string>() == person.Email)!;

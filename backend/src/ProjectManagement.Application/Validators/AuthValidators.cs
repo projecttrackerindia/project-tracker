@@ -17,9 +17,13 @@ public class RegisterValidator : AbstractValidator<RegisterRequest>
 {
     public RegisterValidator()
     {
-        RuleFor(x => x.Email).Email();
+        // Strict self-service sign-up (SECURITY.md, "Sign-up"): the same rules the form shows inline (signupRules.ts).
+        RuleFor(x => x.Email).Email().Custom((v, c) => { if (!string.IsNullOrWhiteSpace(v) && SignupRules.EmailProblem(v) is { } p) c.AddFailure("email", p); });
         RuleFor(x => x.Password).Password();
-        RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.DisplayName).Custom((v, c) => { if (SignupRules.NameProblem(v) is { } p) c.AddFailure("displayName", p); });
+        RuleFor(x => x.Website).MaximumLength(200);
+        RuleFor(x => x.FormToken).MaximumLength(200);
+        RuleFor(x => x.TurnstileToken).MaximumLength(2048);
         RuleFor(x => x.AcceptedTerms).Equal(true).WithMessage("You must accept the Terms of Service and Privacy Policy to continue.");
     }
 }

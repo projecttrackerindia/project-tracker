@@ -45,6 +45,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         }
         Environment.SetEnvironmentVariable("Jwt__SigningKey", "test-signing-key-0123456789-0123456789-abcdef");
         Environment.SetEnvironmentVariable("RateLimiting__Enabled", "false");
+        Environment.SetEnvironmentVariable("Signup__RequireFormToken", "false"); // a token that is sent is still checked; SignupStrictnessTests cover the rest
         Environment.SetEnvironmentVariable("Storage__LocalPath", FilesPath);
         var runtimeFolder=new DirectoryInfo(AppContext.BaseDirectory);
         var sourceFolder=runtimeFolder;
@@ -119,6 +120,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public FakeGitHubOidc GitHubOidc { get; } = new();
     /// <summary>Stands in for DNS: domain-ownership TXT records a test has published.</summary>
     public FakeDns Dns { get; } = new();
+    /// <summary>Stands in for the MX lookup at sign-up: every domain receives mail except *.invalid and the ones a test lists.</summary>
+    public FakeMailDomains MailDomains { get; } = new();
     /// <summary>Stands in for Claude (off until a test switches it on).</summary>
     public FakeAiClient Ai { get; } = new();
     /// <summary>Stands in for Claude in the AI workspace (streamed, with tools and files).</summary>
@@ -166,6 +169,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient("mcp-self").ConfigurePrimaryHttpMessageHandler(() => Server.CreateHandler());   // the MCP server calls the app's own endpoints
             services.RemoveAll<ProjectManagement.Application.Features.Sso.IDomainVerifier>();
             services.AddSingleton<ProjectManagement.Application.Features.Sso.IDomainVerifier>(Dns);
+            services.RemoveAll<ProjectManagement.Application.Features.Auth.IEmailDomainChecker>();
+            services.AddSingleton<ProjectManagement.Application.Features.Auth.IEmailDomainChecker>(MailDomains);
             // The scripted models, behind the same layer production has: a workspace's own key answers the people who agreed to it.
             services.RemoveAll<ProjectManagement.Application.Features.Ai.IWorkspaceAiClients>();
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IWorkspaceAiClients>(OwnAi);
@@ -327,16 +332,26 @@ public sealed class TestClient(ApiFactory factory)
     public Task<ApiResult> Patch(string url, object body) => Send(HttpMethod.Patch, url, body);
 
     /// <summary>Registers, verifies (via the dev mailbox), signs in. Lands in the user's personal workspace.</summary>
-    public static async Task<TestClient> RegisterAsync(ApiFactory factory, string? name = null, string password = "Passw0rd!x")
+    public static async Task<TestClient> RegisterAsync(ApiFactory factory, string? name = null, string password = "Passw0rd!xKey")
     {
         var c = new TestClient(factory);
         c.Email = $"user-{Guid.NewGuid():N}@example.com";
-        var reg = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = c.Email, password, displayName = name ?? "Test User", acceptedTerms = true }, true);
+        var reg = await c.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = c.Email, password, displayName = SignupName(name ?? "Test User"), acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.Created, reg.Status);
         c.UserId = Guid.Parse(reg.Data!["userId"]!.GetValue<string>());
+        KeepTestName(factory, c.UserId, name ?? "Test User");
         await c.VerifyEmailAsync();
         await c.LoginAsync(password);
         return c;
+    }
+
+    /// <summary>Sign-up refuses names with digits (SignupRules); tests that label people "Person 3" sign up with a plain name and are renamed in the database.</summary>
+    private static string SignupName(string name) => ProjectManagement.Application.Features.Auth.SignupRules.NameProblem(name) is null ? name : "Test Member";
+
+    private static void KeepTestName(ApiFactory factory, Guid userId, string name)
+    {
+        if (SignupName(name) == name) return;
+        factory.WithDb(db => { db.Users.First(u => u.Id == userId).DisplayName = name; return db.SaveChanges(); });
     }
 
     public async Task VerifyEmailAsync()
@@ -346,7 +361,7 @@ public sealed class TestClient(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NoContent, res.Status);
     }
 
-    public async Task<ApiResult> LoginAsync(string password = "Passw0rd!x")
+    public async Task<ApiResult> LoginAsync(string password = "Passw0rd!xKey")
     {
         var res = await Send(HttpMethod.Post, "/api/v1/auth/login", new { email = Email, password }, true);
         if (res.Ok && res.Data?["accessToken"] is not null) ApplyAuth(res);
@@ -420,8 +435,9 @@ public sealed class TestClient(ApiFactory factory)
         var invite = await Post("/api/v1/workspace/invitations", new { email = invitee.Email, role = role.ToString() });
         Assert.True(invite.Ok, invite.ToString());
 
-        var reg = await invitee.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = invitee.Email, password = "Passw0rd!x", displayName = name, acceptedTerms = true }, true);
+        var reg = await invitee.Send(HttpMethod.Post, "/api/v1/auth/register", new { email = invitee.Email, password = "Passw0rd!xKey", displayName = SignupName(name), acceptedTerms = true }, true);
         Assert.Equal(HttpStatusCode.Created, reg.Status);
+        KeepTestName(factory, Guid.Parse(reg.Data!["userId"]!.GetValue<string>()), name);
         await invitee.VerifyEmailAsync();
         await invitee.LoginAsync();
 

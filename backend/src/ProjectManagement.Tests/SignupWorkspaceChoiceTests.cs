@@ -10,7 +10,7 @@ public class SignupWorkspaceChoiceTests(ApiFactory factory)
     private async Task<(TestClient Client, ApiResult Reg)> Register(object extra)
     {
         var c = new TestClient(factory) { Email = $"choice-{Guid.NewGuid():N}@example.com" };
-        var body = new Dictionary<string, object?> { ["email"] = c.Email, ["password"] = "Passw0rd!x", ["displayName"] = "Chooser", ["acceptedTerms"] = true };
+        var body = new Dictionary<string, object?> { ["email"] = c.Email, ["password"] = "Passw0rd!xKey", ["displayName"] = "Chooser", ["acceptedTerms"] = true };
         foreach (var p in extra.GetType().GetProperties()) body[p.Name] = p.GetValue(extra);
         var reg = await c.Send(HttpMethod.Post, "/api/v1/auth/register", body, true);
         return (c, reg);

@@ -12,9 +12,26 @@ using ProjectManagement.Domain.Enums;
 
 namespace ProjectManagement.Application.Features.Auth;
 
+/// <summary>
+/// Account lockout with exponential backoff (ASVS 2.2.1): the first lockout lasts App:LockoutMinutes, each further one in a row doubles it,
+/// up to a day. A successful sign-in or a password reset starts the streak again.
+/// </summary>
+public static class LockoutPolicy
+{
+    public const int MaxMinutes = 24 * 60;
+
+    public static DateTime Next(User user, DateTime now, int baseMinutes)
+    {
+        user.LockoutStreak = Math.Clamp(user.LockoutStreak + 1, 1, 16);
+        var minutes = Math.Min((double)Math.Max(1, baseMinutes) * Math.Pow(2, user.LockoutStreak - 1), MaxMinutes);
+        return now.AddMinutes(minutes);
+    }
+}
+
 /// <summary>WorkspaceType: "personal" (default) or "organization" (needs OrganizationName), or "invited" to create none and join by invitation.</summary>
+/// <summary>Website is the hidden honeypot (must stay empty); FormToken comes from GET /auth/signup-form; TurnstileToken only when Turnstile is on.</summary>
 public record RegisterRequest(string Email, string Password, string DisplayName, bool AcceptedTerms, string? ReturnUrl = null,
-    string? WorkspaceType = null, string? OrganizationName = null);
+    string? WorkspaceType = null, string? OrganizationName = null, string? Website = null, string? FormToken = null, string? TurnstileToken = null);
 public record LoginRequest(string Email, string Password);
 public record VerifyEmailRequest(string Token);
 public record ResendVerificationRequest(string Email, string? ReturnUrl = null);
@@ -69,7 +86,7 @@ public class AuthService(
     IAppDbContext db, ICurrentContext ctx, IPasswordHasher hasher, ITokenService tokens, IEmailSender email,
     IOptions<AppOptions> options, AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, MfaService mfa, SecurityAlerts alerts, ProjectManagement.Application.Features.Admin.PlatformSettingsCache platform,
     PasswordPolicyService passwordPolicy, ProjectManagement.Application.Features.Consent.ConsentService consent, ProjectManagement.Application.Features.Sso.SsoPolicy ssoPolicy,
-    ILogger<AuthService> log, WelcomeMailer? welcome = null)
+    ILogger<AuthService> log, WelcomeMailer? welcome = null, SignupGuard? signupGuard = null)
 {
     private readonly AppOptions _opt = options.Value;
 
@@ -80,6 +97,8 @@ public class AuthService(
     public async Task<RegisterResult> RegisterAsync(RegisterRequest req, CancellationToken ct = default)
     {
         var normalized = Text.NormalizeEmail(req.Email);
+        // Bot checks and the email domain first: a script learns nothing about which addresses already have accounts.
+        if (signupGuard is not null) await signupGuard.EnsureAllowedAsync(req, ctx.IpAddress, ct);
         if (!(await platform.GetAsync(ct)).SignupsEnabled)
         {
             // Closed to newcomers, but someone who has been invited to a workspace may still create the account they need to accept it.
@@ -94,7 +113,7 @@ public class AuthService(
         var now = clock.Now;
         var user = new User
         {
-            Email = req.Email.Trim(), NormalizedEmail = normalized, DisplayName = req.DisplayName.Trim(),
+            Email = req.Email.Trim(), NormalizedEmail = normalized, DisplayName = SignupRules.Clean(req.DisplayName),
             PasswordHash = hasher.Hash(req.Password), EmailVerified = !_opt.RequireEmailVerification, CreatedAt = now,
         };
         passwordPolicy.Stamp(user, req.Password);
@@ -113,8 +132,8 @@ public class AuthService(
         Tenant? workspace = null;
         if (kind is "organization" or "organisation")
         {
-            var org = req.OrganizationName?.Trim() ?? "";
-            if (org.Length is < 2 or > 100) throw new ValidationException("organizationName", "Enter your organisation's name (2 to 100 characters).");
+            var org = SignupRules.Clean(req.OrganizationName);
+            if (SignupRules.OrganizationProblem(org) is { } orgProblem) throw new ValidationException("organizationName", orgProblem);
             workspace = await provisioner.CreateAsync(org, WorkspaceType.Organization, user.Id, null, org, ct);
         }
         else if (kind != "invited")
@@ -223,9 +242,9 @@ public class AuthService(
     {
         if (user.IsActive && ++user.FailedLoginCount >= _opt.MaxFailedLogins)
         {
-            user.LockoutEnd = now.AddMinutes(_opt.LockoutMinutes);
+            user.LockoutEnd = LockoutPolicy.Next(user, now, _opt.LockoutMinutes);
             user.FailedLoginCount = 0;
-            recorder.Audit("user.locked_out", "User", user.Id, userId: user.Id);
+            recorder.Audit("user.locked_out", "User", user.Id, newValue: new { Streak = user.LockoutStreak, Until = user.LockoutEnd }, userId: user.Id);
         }
         await db.SaveChangesAsync(ct);
     }
@@ -259,6 +278,7 @@ public class AuthService(
     {
         user.FailedLoginCount = 0;
         user.LockoutEnd = null;
+        user.LockoutStreak = 0;
         user.LastLoginAt = clock.Now;
         var workspaceId = await PickWorkspaceAsync(user.Id, preferredWorkspace, ct);
         var result = await IssueSessionAsync(user, workspaceId, ct, method, ssoTenantId);
@@ -537,6 +557,7 @@ public class AuthService(
         user.MustChangePassword = false; // a password chosen through the emailed link is the person's own
         user.FailedLoginCount = 0;
         user.LockoutEnd = null;
+        user.LockoutStreak = 0;
         await RevokeSessionsAsync(user.Id, null, ct);
         recorder.Audit("user.password_reset", "User", user.Id, userId: user.Id);
         await db.SaveChangesAsync(ct);

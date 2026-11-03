@@ -131,7 +131,7 @@ public class VaultTests(ApiFactory factory)
 
     private async Task<string> EnableMfa(TestClient c)
     {
-        var setup = await c.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!x" });
+        var setup = await c.Post("/api/v1/me/mfa/setup", new { password = "Passw0rd!xKey" });
         Assert.True(setup.Ok, setup.ToString());
         var secret = S(setup.Data!["secret"]).Replace(" ", "");
         Assert.True((await c.Post("/api/v1/me/mfa/enable", new { code = CodeNow(secret) })).Ok);
@@ -151,7 +151,7 @@ public class VaultTests(ApiFactory factory)
     private async Task<string> RevealGrant(TestClient c, string secret)
     {
         factory.WithDb(db => db.Users.IgnoreQueryFilters().Where(u => u.Id == c.UserId).ExecuteUpdate(s => s.SetProperty(u => u.MfaLastStep, 0L)));
-        var res = await c.Post("/api/v1/vault/step-up/reveal", new { password = "Passw0rd!x", code = CodeNow(secret) });
+        var res = await c.Post("/api/v1/vault/step-up/reveal", new { password = "Passw0rd!xKey", code = CodeNow(secret) });
         Assert.True(res.Ok, res.ToString());
         return S(res.Data!["token"]);
     }

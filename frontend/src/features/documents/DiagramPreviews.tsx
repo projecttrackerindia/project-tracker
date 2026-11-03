@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { documentApi } from '../../api/endpoints';
+import { sanitizeSvg } from '../../lib/sanitize';
 
 interface Found { source: string }
 
@@ -42,7 +43,7 @@ export function DiagramPreviews({ value }: { value: string }) {
   return (
     <div className="doc-diagrams" aria-label="Diagrams">
       {shown.map((d, i) => d.svg
-        ? <figure key={i} className="doc-diagram" data-diagram dangerouslySetInnerHTML={{ __html: d.svg }} />
+        ? <figure key={i} className="doc-diagram" data-diagram dangerouslySetInnerHTML={{ __html: sanitizeSvg(d.svg) }} />
         : d.error ? <p key={i} className="doc-diagram-error" role="alert">Diagram {i + 1}: {d.error}</p> : null)}
     </div>
   );
@@ -60,5 +61,5 @@ export function DiagramFigure({ source }: { source: string }) {
     return () => { live = false; window.clearTimeout(t); };
   }, [source]);
   if (!shown) return null;
-  return shown.svg ? <figure className="doc-diagram" data-diagram dangerouslySetInnerHTML={{ __html: shown.svg }} /> : <p className="doc-diagram-error" role="alert">{shown.error}</p>;
+  return shown.svg ? <figure className="doc-diagram" data-diagram dangerouslySetInnerHTML={{ __html: sanitizeSvg(shown.svg) }} /> : <p className="doc-diagram-error" role="alert">{shown.error}</p>;
 }

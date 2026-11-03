@@ -32,7 +32,7 @@ public class PortfolioController(PortfolioBoardService board, PlanSheetService s
         Ok(await board.AiSummaryAsync(Filter(teamId, ownerId, groupId, health, dueFrom, dueTo), fresh, ct));
 
     /// <summary>The board as Excel or PDF for the board meeting.</summary>
-    [HttpGet("export")]
+    [HttpGet("export"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> Export([FromQuery] string format, [FromQuery] Guid? teamId, [FromQuery] Guid? ownerId, [FromQuery] Guid? groupId, [FromQuery] string? health,
         [FromQuery] DateOnly? dueFrom, [FromQuery] DateOnly? dueTo, CancellationToken ct)
     {
@@ -75,7 +75,7 @@ public class PortfolioController(PortfolioBoardService board, PlanSheetService s
     public async Task<IActionResult> SheetPaste([FromBody] PlanSheetPasteRequest req, CancellationToken ct) => Ok(await sheet.PasteAsync(req, ct));
 
     /// <summary>The sheet as .xlsx (outline levels per project) or .csv; columns: comma-separated visible columns; ids: only these rows.</summary>
-    [HttpGet("sheet/export")]
+    [HttpGet("sheet/export"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("sensitive")]
     public async Task<IActionResult> SheetExport([FromQuery] string format, [FromQuery] Guid? teamId, [FromQuery] Guid? ownerId, [FromQuery] Guid? groupId, [FromQuery] string? health,
         [FromQuery] DateOnly? dueFrom, [FromQuery] DateOnly? dueTo, [FromQuery] string? columns, [FromQuery] bool mine = false, [FromQuery] bool meetings = true,
         [FromQuery] string? ids = null, CancellationToken ct = default)

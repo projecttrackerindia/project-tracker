@@ -10,7 +10,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class GoLiveTests(ApiFactory factory)
 {
-    private async Task<TestClient> AdminWith(string password = "Passw0rd!x")
+    private async Task<TestClient> AdminWith(string password = "Passw0rd!xKey")
     {
         // A default password such as Admin@12345 can't be chosen through the API (the password policy refuses it); it only exists
         // because the seeder created the account. Recreate that state directly.
