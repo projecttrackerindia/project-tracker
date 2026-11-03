@@ -1,3 +1,4 @@
+import { CalmSheet } from '../../components/calm';
 import { useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -79,6 +80,22 @@ export function useOutline(ref: RefObject<HTMLElement | null>, deps: unknown[]):
 }
 
 /** The sticky right rail: "On this page" (the heading in view is marked) over the inspector. */
+/** How far through the page the reader is (0–100), from the window scroll against the column that holds the outline's sections. */
+function useReadPercent(outline: OutlineItem[]) {
+  const [pct, setPct] = useState(0);
+  useEffect(() => {
+    const col = outline[0]?.el.closest('.rd-col, .dx-col') as HTMLElement | null;
+    if (!col) return;
+    let raf = 0;
+    const calc = () => { raf = 0; const r = col.getBoundingClientRect(); const seen = Math.min(r.height, Math.max(0, innerHeight - r.top)); setPct(r.height > 0 ? Math.round((seen / r.height) * 100) : 0); };
+    const on = () => { if (!raf) raf = requestAnimationFrame(calc); };
+    calc();
+    window.addEventListener('scroll', on, { passive: true, capture: true }); window.addEventListener('resize', on);
+    return () => { window.removeEventListener('scroll', on, true); window.removeEventListener('resize', on); if (raf) cancelAnimationFrame(raf); };
+  }, [outline]);
+  return pct;
+}
+
 export function ReaderRail({ outline, children }: { outline: OutlineItem[]; children?: ReactNode }) {
   const [active, setActive] = useState<string | null>(null);
   useEffect(() => {
@@ -91,20 +108,40 @@ export function ReaderRail({ outline, children }: { outline: OutlineItem[]; chil
     outline.forEach((o) => io.observe(o.el));
     return () => io.disconnect();
   }, [outline]);
+  const cur = active ?? outline[0]?.id ?? null;
+  const at = Math.max(0, outline.findIndex((o) => o.id === cur));
+  const read = useReadPercent(outline);
+  const [sheet, setSheet] = useState(false);
+  const list = (close?: () => void) => (
+    <ul>{outline.map((o) => (
+      <li key={o.id} className={`l${o.level}${cur === o.id ? ' on' : ''}`}>
+        <a href={`#${o.id}`} onClick={(e) => { e.preventDefault(); close?.(); o.el.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActive(o.id); }}>{o.text}</a>
+      </li>
+    ))}</ul>
+  );
+  const readBar = (
+    <div className="rd-read" data-testid="doc-read">
+      <div className="rd-read-h"><span>Read</span><b>{read}%</b></div>
+      <span className="calm-mbar" role="progressbar" aria-label={`Read ${read}%`} aria-valuenow={read} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${read}%` }} /></span>
+    </div>
+  );
   return (
-    <aside className="rd-rail" aria-label="About this document">
+    <>
       {outline.length > 1 && (
-        <nav className="rd-toc" aria-label="On this page" data-testid="doc-outline">
-          <div className="rd-rail-title">On this page</div>
-          <ul>{outline.map((o) => (
-            <li key={o.id} className={`l${o.level}${active === o.id ? ' on' : ''}`}>
-              <a href={`#${o.id}`} onClick={(e) => { e.preventDefault(); o.el.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActive(o.id); }}>{o.text}</a>
-            </li>
-          ))}</ul>
+        <button type="button" className="rd-outline-btn" onClick={() => setSheet(true)} aria-haspopup="dialog">Outline · {at + 1} of {outline.length}</button>
+      )}
+      <CalmSheet open={sheet} onClose={() => setSheet(false)} title="Outline" sub={`${at + 1} of ${outline.length} · ${read}% read`} kind="bottom" width={520}>
+        <nav className="rd-toc rd-toc-sheet" aria-label="Outline">{list(() => setSheet(false))}{readBar}</nav>
+      </CalmSheet>
+      {outline.length > 1 && (
+        <nav className="rd-toc rd-toc-pane" aria-label="On this page" data-testid="doc-outline">
+          <div className="rd-rail-title">Outline · {at + 1} of {outline.length}</div>
+          {list()}
+          {readBar}
         </nav>
       )}
-      {children}
-    </aside>
+      {children && <aside className="rd-rail" aria-label="About this document">{children}</aside>}
+    </>
   );
 }
 

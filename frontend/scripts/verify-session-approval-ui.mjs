@@ -103,7 +103,7 @@ try {
   // The phone signs in with the right password and waits, naming itself and showing the code.
   await phone.goto(origin + '/login');
   await phone.locator('#email').fill(user.email); await phone.locator('#password').fill('Fictional-pass-2026');
-  await phone.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await phone.getByRole('button', { name: 'Continue', exact: true }).click();
   await phone.getByRole('heading', { name: 'Waiting for approval' }).waitFor();
   await phone.getByText('Chrome on Android').waitFor();
   assert.ok(await phone.getByLabel('Code 47').isVisible());

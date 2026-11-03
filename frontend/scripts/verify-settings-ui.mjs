@@ -95,7 +95,7 @@ try{
  // v2 Settings: You and Workspace, ten sections; General carries setup health with its fixes and the latest changes.
  await page.goto(origin+'/preview-org/settings/general');
  const nav=page.getByRole('navigation',{name:'Settings sections'});await nav.waitFor();
- for(const l of ['Profile','Workspace','People & roles','Notifications','Security','Integrations','AI','Billing','Appearance'])assert.ok(await nav.getByRole('link',{name:l,exact:true}).isVisible(),`section ${l}`);
+ for(const l of ['Profile','Notifications','Appearance','Security & sessions','General','Roles & permissions','Integrations','Billing','Security policy'])assert.ok(await nav.getByRole('link',{name:l,exact:true}).isVisible(),`section ${l}`);
  const healthCard=page.getByRole('region',{name:'Setup health'});await healthCard.getByText('Two-step sign-in is not required').waitFor();
  assert.ok(await healthCard.getByRole('img',{name:'Setup health 58 out of 100'}).isVisible());
  await healthCard.getByRole('button',{name:'Remind 2 members'}).click();
@@ -114,7 +114,7 @@ try{
  checks.push('general-health-and-changes');
 
  // Search: "MFA" finds the two-step switch and jumps to it; the row says who changed it last.
- const search=page.getByRole('combobox',{name:'Find a setting'}).last();
+ await page.locator('.cs-find summary').click(); const search=page.getByRole('combobox',{name:'Find a setting'}).last();
  await search.fill('MFA');
  const first=page.getByRole('listbox',{name:'Settings found'}).getByRole('option').first();
  await first.getByText('Require two-step sign-in').waitFor();
@@ -124,7 +124,7 @@ try{
  await page.waitForFunction(()=>document.querySelector('[data-setting="security.requireMfa"]')?.classList.contains('setting-flash'));
  assert.match(await row.getByTestId('last-changed-security.requireMfa').innerText(),/by Ravi Kumar: Off → On/);
  for(const [q,label] of [['logo','Logo'],['retention','Keep activity for'],['slack','Slack']]){
-  const s=page.getByRole('combobox',{name:'Find a setting'});await s.fill(q);
+  if(!(await page.locator('.cs-find[open]').count()))await page.locator('.cs-find summary').click(); const s=page.getByRole('combobox',{name:'Find a setting'});await s.fill(q);
   await page.getByRole('listbox',{name:'Settings found'}).getByRole('option').first().getByText(label,{exact:true}).waitFor();
  }
  await page.getByRole('combobox',{name:'Find a setting'}).fill('');

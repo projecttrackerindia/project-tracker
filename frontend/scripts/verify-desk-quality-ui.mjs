@@ -225,12 +225,12 @@ try {
 
     // ---------------------------------------------------------------- Desk
     await page.goto(`${origin}/preview-org/desk`);
-    await page.getByRole('heading', { level: 1, name: 'Desk' }).waitFor();
+    await page.locator('.calm-hero-title').first().waitFor();
     for (const w of [1920, 1440, 1366]) {
       await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(150);
       if (w < 1680) await assertFills(page, '#main-content .dq-cols', `Desk ${w}`);
       await assertFillsMain(page, '#main-content .dq-cols', `Desk ${w}`);
-      await assertInToolbar(page, '.v2-tb [role="tablist"][aria-label="Desk views"]', `Desk ${w}`);
+      assert.ok(await page.locator('.dq-tb-work [role="tablist"][aria-label="Desk views"]').isVisible(), `Desk ${w}: views sit with the queue, under the front (shot 06)`);
       if (w === 1366 && theme === 'light' && process.env.PM_SHOT_DIR) { await page.locator('.dq-q-row, .dq-row').first().waitFor().catch(() => undefined); await page.waitForTimeout(300); await page.screenshot({ path: path.join(process.env.PM_SHOT_DIR, 'fix-desk-1366.png') }); }
     }
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -319,7 +319,7 @@ try {
       await conv.getByRole('button', { name: 'Saved replies' }).click();
       await page.getByTestId('dq-saved').getByText('Acknowledge').waitFor();
       const sheet = await page.getByTestId('dq-saved').boundingBox();
-      const vw = await page.evaluate(() => document.querySelector('#main-content').getBoundingClientRect().right);
+      const vw = await page.evaluate(() => (document.querySelector('#main-content') ?? document.querySelector('main') ?? document.body).getBoundingClientRect().right);
       assert.ok(sheet && sheet.x <= 1 && sheet.width >= vw - 1 && Math.abs(sheet.y + sheet.height - 844) <= 2, `saved replies is a bottom sheet on a phone (${JSON.stringify(sheet)})`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'saved replies 390 scrolls sideways');
       await shot(page, 'desk-saved-replies-390.png');
@@ -328,8 +328,8 @@ try {
     }
 
     // ---------------------------------------------------------------- Quality
-    await page.goto(`${origin}/preview-org/quality`);
-    await page.getByRole('heading', { level: 1, name: 'Quality' }).waitFor();
+    await page.goto(`${origin}/preview-org/quality?tab=runs`);
+    await page.locator('.calm-hero-title').first().waitFor();
     await page.locator('.dq-eyebrow', { hasText: 'SIA Internal API · Release 1.4' }).waitFor();
     await page.getByText('UAT 1.4 · 86% passing · 3 blockers').waitFor();
     await page.getByText('Not ready to ship. Ship needs 95% and zero blockers when the run ends.').waitFor();
@@ -395,7 +395,7 @@ try {
     const page = await ctx.newPage();
     watch(page);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${origin}/preview-org/quality`);
+    await page.goto(`${origin}/preview-org/quality?tab=runs`);
     await page.getByRole('button', { name: 'Add your first test case' }).click();
     await page.getByLabel('Title').fill('Loan dispatch API returns 200');
     await page.getByRole('button', { name: 'Add test case' }).click();

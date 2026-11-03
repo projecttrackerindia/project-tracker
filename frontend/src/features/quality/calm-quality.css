@@ -1,0 +1,10 @@
+/* Calm Quality (shot 60) */
+.cq-page { display: flex; flex-direction: column; gap: 10px; padding: 0 clamp(16px, 2.6vw, 40px) 96px; min-height: calc(100vh - 90px); }
+.cq-top { display: flex; align-items: center; gap: 16px; }
+.cq-top .calm-page-crumb { margin: 0; }
+.cq-acts { margin-left: auto; display: inline-flex; gap: 18px; align-items: center; }
+.cq-acts .calm-go { padding: 8px 16px; font-size: 13.5px; }
+.cq-page .calm-hero-title { font-size: 40px; }
+.cq-list { flex: 1; }
+.cq-empty { margin: 14px 8px; color: var(--calm-ink2); font-size: 14px; }
+@media (max-width: 600px) { .cq-page .calm-hero-title { font-size: 30px; } .cq-acts .calm-link { display: none; } }

@@ -420,6 +420,7 @@ function DocumentView({ id }: { id: string }) {
 
       <ReaderRail outline={outline}>
         <Inspector parts={inspectorParts} open={inspector} onOpen={setInspector} />
+        {!isArtifact && d.status !== 'Archived' && <CommentBox documentId={id} onSent={() => setInspector('notes')} />}
       </ReaderRail>
 
       {/* Beside the document (a portal, as on a page), a bottom sheet on a phone. */}
@@ -464,5 +465,25 @@ function RevealModal({ onClose, onReveal }: { onClose: () => void; onReveal: (re
         <input className="input" autoFocus value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="Customer called about their EMI" />
       </Field>
     </Modal>
+  );
+}
+
+/** The panel's foot (shot 25): "Comment…" and send. Posts a page comment; the margin notes show it. */
+function CommentBox({ documentId, onSent }: { documentId: string; onSent: () => void }) {
+  const wid = useWorkspaceId();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    const body = text.trim(); if (!body || busy) return;
+    setBusy(true);
+    try { await documentApi.addComment(documentId, body); setText(''); invalidateWorkspace(wid, 'documents'); onSent(); toast('✓ Comment added'); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not add the comment.', 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <form className="rd-comp" onSubmit={(e) => { e.preventDefault(); void send(); }} data-testid="doc-comment">
+      <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Comment…" aria-label="Comment on this page" maxLength={4000} />
+      <button type="submit" aria-label="Send comment" disabled={!text.trim() || busy}>↑</button>
+    </form>
   );
 }

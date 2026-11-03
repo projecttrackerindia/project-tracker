@@ -1,4 +1,3 @@
-import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
 import { openNew } from '../../components/v2/state';
 import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
@@ -22,6 +21,7 @@ import { SavedViewsBar } from '../platform/SavedViews';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AvailabilitySwitch, RoutingCard, VoiceCard, WhatsAppBubbles } from './DeskIntelligence';
 import { useDeskSettings, useWhatsAppThread } from './deskAiHooks';
+import { CalmDeskFront } from './CalmDeskFront';
 
 type Tab = 'queue' | 'mine' | 'solved';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -142,6 +142,13 @@ export function DeskPage() {
   const current = rows.find((r) => r.id === selected) ?? rows[0] ?? null;
   useEffect(() => { if (!selected && rows[0]) setSelected(rows[0].id); }, [rows, selected]);
 
+  const [snoozed, setSnoozed] = useState<Set<string>>(new Set());
+  const workRef = useRef<HTMLDivElement>(null);
+  const openTicket = (id: string) => {
+    if (tab !== 'queue') { setTab('queue'); setPicked(new Set()); }
+    setSelected(id);
+    requestAnimationFrame(() => workRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
+  };
   const openRows = open.data?.items ?? [];
   const critical = openRows.filter((r) => r.priority === 'Critical').sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))[0] ?? null;
   const breaching = openRows.filter((r) => r.slaDueAt && Date.parse(r.slaDueAt) - now < 3600e3).length;
@@ -166,7 +173,14 @@ export function DeskPage() {
 
   return (
     <div className="dq-page dq-desk">
-      <ToolbarSeg className="dq-tb">
+
+
+      <CalmDeskFront rows={openRows.filter((r) => !snoozed.has(r.id))} detailOf={detailOf} now={now} meId={me?.id ?? null} busy={!!busyRow}
+        onOpen={openTicket} onAssign={(r) => me && void quick(r, { assigneeId: me.id }, 'Assigned to you.')}
+        onSnooze={(r) => { setSnoozed((s) => new Set(s).add(r.id)); toast('Snoozed until you reload the desk.'); }} />
+
+      {critical && <Incident row={critical} now={now} />}
+      <div className="mw-tbslot inline dq-tb dq-tb-work">
         <div className="dq-seg" role="tablist" aria-label="Desk views">
           {(['queue', 'mine', 'solved'] as Tab[]).map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setSelected(null); setPicked(new Set()); }}>
@@ -176,14 +190,11 @@ export function DeskPage() {
         </div>
         <AvailabilitySwitch meId={me?.id ?? null} />
         {deskSettings && <Link className="dai-link dai-ilink" to="/desk/integrations" aria-label="Integrations" title="Desk integrations"><span aria-hidden="true">⚙︎</span><b>Integrations</b></Link>}
-      </ToolbarSeg>
-
-      {critical && <Incident row={critical} now={now} />}
-
-      <div className="dq-hd">
+      </div>
+      <div className="dq-hd" ref={workRef}>
         <div>
           <div className={`dq-eyebrow${breaching > 0 ? ' hot' : ''}`}>{openRows.length === 0 ? 'All clear' : `${openRows.length} open`}{breaching > 0 ? ` · ${breaching} breaching within 1h` : openRows.length ? ' · none breaching' : ''}</div>
-          <h1 className="dq-h1">Desk</h1>
+          <h2 className="dq-h1 dq-h1-sub">Queue</h2>
         </div>
         <div className="dq-legend" aria-label="SLA colours">
           <span><i style={{ background: '#34c759' }} />On track</span>

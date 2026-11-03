@@ -7,12 +7,14 @@ import { projectApi, workspaceApi } from '../../api/endpoints';
 import { qualityApi, releaseApi, type CasePriority, type ResultStatus, type TestCase, type TestMatrix, type TestResult, type TestRun } from '../../api/qualityApi';
 import { Field, Modal } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
+import { CalmHero } from '../../components/calm';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { commonCause, evidenceLines, releaseOf, runHeading, stepsOf } from './qualityLogic';
 import '../desk/dq.css';
 import './quality.css';
 import { Releases } from './Releases';
+import { CalmQualityFront } from './CalmQualityFront';
 
 type Tab = 'runs' | 'cases' | 'bugs' | 'releases';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -25,8 +27,8 @@ export function QualityPage() {
   // The tab lives in the address, so it survives a reload, a remount (workspace context arriving) and the Back button.
   const TABS: Tab[] = ['runs', 'cases', 'bugs', 'releases'];
   const q = params.get('tab') as Tab | null;
-  const tab: Tab = q && TABS.includes(q) ? q : deepRelease ? 'releases' : 'runs';
-  const setTab = (t: Tab) => setParams((p) => { const n = new URLSearchParams(p); if (t === 'runs') n.delete('tab'); else n.set('tab', t); return n; }, { replace: true });
+  const tab: Tab = q && TABS.includes(q) ? q : deepRelease ? 'releases' : 'bugs';
+  const setTab = (t: Tab) => setParams((p) => { const n = new URLSearchParams(p); if (t === 'bugs') n.delete('tab'); else n.set('tab', t); return n; }, { replace: true });
   const [selected, setSelected] = useState<string | null>(null);
   const [onlyFailed, setOnlyFailed] = useState(false);
   const [dialog, setDialog] = useState<'case' | 'run' | null>(null);
@@ -68,7 +70,9 @@ export function QualityPage() {
   };
 
   const empty = !matrix.isLoading && m.cases.length === 0;
+  const failingCount = m.cases.filter(failedHere).length;
 
+  if (tab === 'bugs') return <CalmQualityFront onTab={setTab} />;
   return (
     <div className="dq-page qa">
       <ToolbarSeg className="dq-tb">
@@ -80,8 +84,9 @@ export function QualityPage() {
       </ToolbarSeg>
       <div className="dq-hd qa-hd">
         <div>
-          <div className="dq-eyebrow">{[project, current ? releaseOf(current.name) : null].filter(Boolean).join(' · ') || 'Test cases and runs'}</div>
-          <h1 className="dq-h1">Quality</h1>
+          {(project || current) && <div className="dq-eyebrow">{[project, current ? releaseOf(current.name) : null].filter(Boolean).join(' · ')}</div>}
+          <CalmHero title={failingCount === 0 ? (m.cases.length ? 'Everything passing.' : 'Quality.') : `${failingCount} failing ${failingCount === 1 ? 'case' : 'cases'}.`}
+            second={firstFailed ? `${firstFailed.title} first.` : current ? `${current.name} is clear.` : undefined} />
         </div>
         <div className="dq-row" style={{ gap: 8 }}>
           {current && <button type="button" className="dq-btn sm" onClick={() => void rerunFailed()}>▶ Re‑run failed</button>}
@@ -135,7 +140,6 @@ export function QualityPage() {
             </div>
           )}
           {tab === 'cases' && <CasesList cases={m.cases} onNew={() => setDialog('case')} onSaved={reload} />}
-          {tab === 'bugs' && <BugsList m={m} />}
         </>
       )}
 
@@ -262,24 +266,6 @@ function CasesList({ cases, onNew, onSaved }: { cases: TestCase[]; onNew: () => 
         </button>
       ))}
       {edit && <CaseDialog initial={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); onSaved(); }} />}
-    </div>
-  );
-}
-
-function BugsList({ m }: { m: TestMatrix }) {
-  const nav = useNavigate();
-  const filed = m.results.filter((r) => r.linkedWorkItemId);
-  return (
-    <div className="dq-card qa-list">
-      <div className="qa-list-h"><h2 className="dq-h3">Bugs filed from runs</h2></div>
-      {filed.length === 0 ? <p className="dq-empty">No bugs filed yet. Pick a failed case and choose File bug.</p> : filed.map((r) => {
-        const c = m.cases.find((x) => x.id === r.caseId), run = m.runs.find((x) => x.id === r.runId);
-        return (
-          <button key={r.id} type="button" className="qa-li" onClick={() => nav(`/work?item=${encodeURIComponent(r.linkedWorkItemId!)}`)}>
-            <span className="qa-key">{c?.key}</span><span className="qa-ct">{c?.title}</span><span className="dq-faint dq-s12">{run?.name}</span>
-          </button>
-        );
-      })}
     </div>
   );
 }

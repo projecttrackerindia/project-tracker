@@ -115,9 +115,9 @@ try {
   let ctx = await make('light'); let page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`${origin}/preview-org/library`);
+  await page.goto(`${origin}/preview-org/library?find=1`);
   await page.locator('.dx-li[data-doc="Razorpay API"]').waitFor();
-  assert.ok((await page.locator('.dx-display').innerText()).includes('Everything your team knows'));
+  assert.match(await page.locator('.dx-hub .calm-hero-title').innerText(), /Continue reading|Library|Everything your team knows/);
   assert.equal(await page.getByRole('tab', { name: 'Vault' }).count(), 0, 'Vault is its own place in the sidebar, not a Library tab');
   assert.deepEqual(await page.getByRole('tablist', { name: 'Kind' }).getByRole('tab').allInnerTexts(), ['All', 'API docs', 'Specs', 'Runbooks', 'Tests']);
   assert.ok(await page.getByRole('searchbox', { name: 'Ask your docs' }).isVisible(), 'the question field');
@@ -261,7 +261,7 @@ try {
   // ---- 1440 dark
   ctx = await make('dark'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`${origin}/preview-org/library`);
+  await page.goto(`${origin}/preview-org/library?find=1`);
   await page.locator('.dx-li[data-doc]').first().waitFor();
   assert.notEqual(await page.locator('.lb-cov').first().evaluate((e) => getComputedStyle(e).backgroundColor), 'rgb(255, 255, 255)', 'docs follow the dark theme');
   await shot(page, 'docs-1440-dark.png');
@@ -276,7 +276,7 @@ try {
   for (const theme of ['light', 'dark']) {
     ctx = await make(theme, { hasTouch: true, isMobile: true }); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${origin}/preview-org/library`);
+    await page.goto(`${origin}/preview-org/library?find=1`);
     await page.locator('.dx-li[data-doc]').first().waitFor();
     await fitsPhone(page, `docs ${theme}`, assert);
     await shot(page, `docs-390-${theme}.png`);
