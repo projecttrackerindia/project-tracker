@@ -29,6 +29,7 @@ import { BillingPage } from '../billing/BillingPage';
 import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
 import { MemberSecurityPanel } from '../organization/MemberSecurityPanel';
 import { SignInHistory } from './SignInHistory';
+import { ApprovalHistory, SingleSessionRow, WorkspaceSessionPolicyRow, sessionLine } from '../auth/SessionApproval';
 import { ProjectVisibilityPanel } from '../organization/ProjectVisibilityPanel';
 import { ProjectGroupsPage } from '../projects/ProjectGroupsPage';
 import { TimelineTemplatesSettings } from '../projects/TimelineTemplates';
@@ -362,6 +363,7 @@ function SecuritySection({ head = true }: { head?: boolean }) {
         </div>
         <PasskeysRow />
         <TwoStepRow />
+        <SingleSessionRow />
         <SignInMethods />
       </SGroup>
       <SGroup label="Devices">
@@ -372,8 +374,8 @@ function SecuritySection({ head = true }: { head?: boolean }) {
               <div className="member-list" style={{ marginTop: 12 }}>
                 {sessions.data?.map((s) => (
                   <div className="member-item" key={s.id}>
-                    <Icon name="monitor" />
-                    <div className="member-main"><div className="member-name">{browserOf(s.userAgent)} {s.isCurrent && <Badge tone="success">This device</Badge>}</div><div className="member-role">{s.ipAddress ?? 'Unknown IP'} · {signedInWith(s.authMethod)}active {timeAgo(s.lastSeenAt)}</div></div>
+                    <Icon name={/iPhone|Android|Mobile/.test(s.userAgent ?? '') ? 'phone' : 'monitor'} />
+                    <div className="member-main"><div className="member-name">{s.device ?? browserOf(s.userAgent)} {s.isCurrent && <Badge tone="success">This device</Badge>}</div><div className="member-role">{signedInWith(s.authMethod)}{sessionLine(s)}</div></div>
                     {!s.isCurrent && <button className="btn btn-ghost btn-sm" onClick={async () => { await meApi.revokeSession(s.id); toast('Session signed out.', 'warning'); invalidateWorkspace(wid); }}>Sign out</button>}
                   </div>
                 ))}
@@ -392,6 +394,12 @@ function SecuritySection({ head = true }: { head?: boolean }) {
           <div className="setting-info" style={{ flex: 1 }}>
             <h4>Sign-in history</h4><p>Every sign-in of the last 90 days. A new browser or network is marked, and you were told about it. Not you? End it here.</p>
             <SignInHistory />
+          </div>
+        </div>
+        <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+          <div className="setting-info" style={{ flex: 1 }}>
+            <h4>Approval history</h4><p>New devices that had to be allowed from a signed-in one, and how each was answered.</p>
+            <ApprovalHistory />
           </div>
         </div>
       </SGroup>
@@ -496,7 +504,7 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'members': return <MembersSection />;
     case 'access': return <Navigate to="/people/roles" replace />;
     case 'visibility': return <><PageHead title="Project visibility" sub="Whether everyone sees every project, or each team sees its own." /><div data-setting="access.projectVisibility"><ProjectVisibilityPanel /><LastChanged k="access.projectVisibility" section="visibility" /></div><SectionHistory section="visibility" /></>;
-    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><RolesMovedCard /><OrgSecurityPanel /><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
+    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><RolesMovedCard /><OrgSecurityPanel /><SGroup label="Sessions"><WorkspaceSessionPolicyRow /></SGroup><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
     case 'sso': return <><SsoSettings /><SectionHistory section="sso" /></>;
     case 'billing': return <><BillingPage /><SectionHistory section="billing" /></>;
     case 'audit': return <AuditPage />;

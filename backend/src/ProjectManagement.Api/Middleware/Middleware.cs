@@ -245,6 +245,16 @@ public class CurrentContextMiddleware(RequestDelegate next)
     {
         ctx.IpAddress = http.Connection.RemoteIpAddress?.ToString();
         ctx.UserAgent = http.Request.Headers.UserAgent.ToString();
+        // What a sign-in approval prompt says about this device: client hints, the device's time zone, and (trusted only when Geo:TrustProxyHeaders
+        // is on) the country and city the proxy in front of the API worked out. Never sent to anyone else.
+        if (http.RequestServices.GetService<ProjectManagement.Application.Features.Auth.SignInClient>() is { } client)
+        {
+            client.Platform = http.Request.Headers["Sec-CH-UA-Platform"].ToString();
+            client.Mobile = http.Request.Headers["Sec-CH-UA-Mobile"].ToString() == "?1";
+            client.TimeZone = http.Request.Headers["X-Client-Zone"].ToString();
+            client.Country = http.Request.Headers["CF-IPCountry"].ToString();
+            client.City = http.Request.Headers["CF-IPCity"].ToString();
+        }
 
         if (http.User.Identity?.IsAuthenticated == true)
         {

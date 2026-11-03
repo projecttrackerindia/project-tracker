@@ -197,6 +197,7 @@ public interface IAppDbContext
     DbSet<AutomationRun> AutomationRuns { get; }
     DbSet<PushSubscription> PushSubscriptions { get; }
     DbSet<DeviceLoginRequest> DeviceLoginRequests { get; }
+    DbSet<SessionApproval> SessionApprovals { get; }
     DbSet<IdempotencyRecord> IdempotencyRecords { get; }
     DbSet<PasskeyCredential> PasskeyCredentials { get; }
     DbSet<EmailLog> EmailLogs { get; }

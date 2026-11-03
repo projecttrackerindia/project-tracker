@@ -15,6 +15,18 @@ public static class AuthCookies
 {
     public const string Refresh = "pm_refresh";
     public const string Binding = "pm_signin";
+    /// <summary>The secret of a sign-in waiting for approval on another device (only the browser that asked holds it).</summary>
+    public const string Approval = "pm_approval";
+
+    public static void WriteApproval(HttpResponse response, bool https, string secret) =>
+        response.Cookies.Append(Approval, secret, new CookieOptions
+        {
+            HttpOnly = true, Secure = https, SameSite = SameSiteMode.Strict, Path = "/api/v1/auth",
+            Expires = DateTimeOffset.UtcNow.Add(SessionApprovalGate.FallbackWindow), IsEssential = true,
+        });
+
+    public static void ClearApproval(HttpResponse response, bool https) =>
+        response.Cookies.Delete(Approval, new CookieOptions { Path = "/api/v1/auth", Secure = https, SameSite = SameSiteMode.Strict });
 
     /// <summary>
     /// Whether cookies must be Secure: the request came over https, or the app is published on an https address (behind a proxy that
@@ -81,7 +93,7 @@ public class AuthController(AuthService auth, PasswordPolicyService passwordPoli
         return Accepted();
     }
 
-    [HttpPost("login"), AllowAnonymous, EnableRateLimiting("auth")]
+    [HttpPost("login"), AllowAnonymous, EnableRateLimiting("auth"), SessionApprovalResult]
     public async Task<IActionResult> Login([FromBody] LoginRequest req, CancellationToken ct)
     {
         var outcome = await auth.LoginAsync(req, ct);
@@ -89,7 +101,7 @@ public class AuthController(AuthService auth, PasswordPolicyService passwordPoli
     }
 
     /// <summary>Second step when two-step verification is on: the challenge from login plus an authenticator or recovery code.</summary>
-    [HttpPost("login/mfa"), AllowAnonymous, EnableRateLimiting("auth")]
+    [HttpPost("login/mfa"), AllowAnonymous, EnableRateLimiting("auth"), SessionApprovalResult]
     public async Task<IActionResult> LoginMfa([FromBody] MfaLoginRequest req, CancellationToken ct) =>
         Ok(Deliver(await auth.CompleteMfaLoginAsync(req, ct)));
 
@@ -108,7 +120,7 @@ public class AuthController(AuthService auth, PasswordPolicyService passwordPoli
         Guid? workspace = Guid.TryParse(Request.Headers["X-Workspace-Id"].ToString(), out var w) ? w : null;
         // Only a session that is really over loses its cookie; a token another tab just rotated must not sign this browser out.
         try { return Ok(Deliver(await auth.RefreshAsync(token, workspace, ct))); }
-        catch (UnauthorizedException ex) when (ex.Code is "INVALID_REFRESH_TOKEN" or "SESSION_EXPIRED" or "ACCOUNT_DISABLED") { ClearCookie(); throw; }
+        catch (UnauthorizedException ex) when (ex.Code is "INVALID_REFRESH_TOKEN" or "SESSION_EXPIRED" or "SESSION_REPLACED" or "ACCOUNT_DISABLED") { ClearCookie(); throw; }
     }
 
     [HttpPost("logout"), AllowAnonymous]
