@@ -14,7 +14,7 @@ page.on('pageerror', (e) => errors.push(e.message));
 
 // Signed out: the home address is the public page, not the sign-in form.
 await page.goto(`${BASE}/`);
-await page.waitForTimeout(1500);
+await page.locator('.lp-hero h1').waitFor();
 check('signed-out home shows the landing page', new URL(page.url()).pathname === '/' && await page.locator('.lp-hero h1').isVisible());
 check('landing page title is the search title', (await page.title()).startsWith('Project Tracker | '), await page.title());
 check('no sign-in form and no second landing page behind it', (await page.locator('input[type=password]').count()) === 0 && (await page.locator('#site main').count()) === 0);
@@ -26,7 +26,7 @@ check('social image and canonical are set', (await page.locator('meta[property="
 check('the headline and the seven section links', (await page.locator('.lp-hero h1', { hasText: 'Work, on autopilot.' }).count()) === 1 && (await page.locator('.lp-nav > .lp-wrap > nav a').count()) === 7);
 check('Sign in and Try it free lead to the account pages', (await page.locator('.lp-nav .lp-signin').getAttribute('href')) === '/login' && (await page.locator('.lp-nav .lp-nav-try').getAttribute('href')) === '/signup');
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-const pp = await phone.newPage(); await pp.goto(`${BASE}/`); await pp.waitForTimeout(1200);
+const pp = await phone.newPage(); await pp.goto(`${BASE}/`); await pp.locator('.lp-hero h1').waitFor();
 await pp.locator('.lp-menu-btn').click(); await pp.waitForTimeout(500);
 check('on a phone the sections open from a menu sheet', (await pp.locator('#lp-menu nav a').count()) === 7);
 check('on a phone the page does not scroll sideways', !(await pp.evaluate(() => document.documentElement.scrollWidth > innerWidth)));
@@ -39,7 +39,14 @@ for (const [path, title] of [['/features/', 'Features | Project Tracker'], ['/pr
 }
 await page.goto(`${BASE}/pricing/`);
 await page.waitForTimeout(800);
-check('pricing shows the live Pro price per person', /₹\s?349/.test(await page.locator('[data-price=PRO]').first().innerText()));
+const pricingResponse = await page.request.get(`${BASE}/api/v1/public/pricing`);
+check('the public price list answers', pricingResponse.ok());
+const pricingJson = await pricingResponse.json(), pricing = pricingJson.data ?? pricingJson;
+const pro = pricing.plans.find((p) => p.code === 'PRO');
+check('Pro has a per-person monthly price', !!pro && pro.perSeat && pro.priceMonthly > 0);
+const formattedPrice = new Intl.NumberFormat('en-IN', { style: 'currency', currency: pro.currency || 'INR', maximumFractionDigits: 0 }).format(pro.priceMonthly);
+await page.waitForFunction((expected) => document.querySelector('[data-price=PRO]')?.textContent === expected, formattedPrice);
+check('pricing shows the configured Pro price per person', (await page.locator('[data-price=PRO]').first().innerText()) === formattedPrice);
 for (const f of ['/sitemap.xml', '/robots.txt', '/favicon.ico', '/favicon.svg', '/og-image.png']) {
   const r = await page.request.get(`${BASE}${f}`);
   check(`${f} is served`, r.ok(), String(r.status()));
@@ -70,19 +77,19 @@ await page.goto(`${BASE}/login`);
 await page.fill('input[type=email], input[name=email]', 'demo@example.com');
 await page.fill('input[type=password]', 'Demo@12345');
 await page.click('button[type=submit]');
-await page.waitForFunction(() => !!document.querySelector('.sidebar, nav.sidebar, [class*=sidebar]'), null, { timeout: 20000 }).catch(() => undefined);
-await page.waitForTimeout(3000);
+await page.locator('.v2-shell').waitFor({ timeout: 30000 });
 await page.goto(`${BASE}/`);
-await page.waitForTimeout(2000);
+await page.locator('.v2-shell').waitFor();
 check('signed-in home is the app', await page.locator('#root').isVisible() && !(await page.locator('#site').isVisible()), page.url());
 
 // A device with no memory of a sign-in but a live session still ends in the app (the session settles it).
 await page.evaluate(() => localStorage.removeItem('pm_hint'));
 await page.goto(`${BASE}/`);
-await page.waitForFunction(() => document.documentElement.classList.contains('app'), null, { timeout: 12000 }).catch(() => undefined);
-await page.waitForTimeout(500);
+await page.waitForFunction(() => document.documentElement.classList.contains('app'), null, { timeout: 30000 });
+await page.locator('.v2-shell').waitFor();
 check('live session without the hint still opens the app', await page.locator('#root').isVisible() && !(await page.locator('#site').isVisible()));
 
 check('no script errors', errors.length === 0, errors.join(' | '));
 await browser.close();
 process.exit(results.every(Boolean) ? 0 : 1);
+
