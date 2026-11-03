@@ -82,7 +82,7 @@ try{
  const waitWrite=async(test)=>{for(let i=0;i<30&&!writes.some(test);i++)await new Promise(r=>setTimeout(r,100));return writes.find(test);};
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(origin+'/preview-org/notetaker');await page.locator('.nt-hero').waitFor();
- assert.ok(await page.locator('nav a[href*="s=notetaker"]').first().isVisible(), 'the Notetaker tab (Meet in Talk keeps its section in the query)');
+ assert.match(page.url(), /s=notetaker/); assert.ok(await page.locator('.mz-back').isVisible(), 'the notetaker is a Meetings section (its section is in the query; Meetings is one step back)');
  assert.match(await page.locator('.nt-checks').innerText(),/Atlas Notetaker/);
  assert.match(await page.locator('.nt-session').first().innerText(),/In the call/);
  assert.match(await page.locator('.nt-session',{hasText:'Vendor call'}).innerText(),/Nobody let the bot/);checks.push('overview');
