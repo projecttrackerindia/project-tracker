@@ -20,6 +20,8 @@ import { PAGE_CODE, useNewPage } from '../../documents/pages';
 import { RichEditor } from '../../documents/RichEditor';
 import { AskDocs } from '../LibraryAsk';
 import { ContinueShelf } from '../LibraryShelf';
+import { CalmCard, CalmGo, CalmHero } from '../../../components/calm';
+import '../calm-library.css';
 import { chipOf, inFilter, KIND_FILTERS, type KindFilter } from '../libraryKinds';
 import { docsPath } from './nav';
 import { avgScore, MethodPill, pidOf, plural, PopMenu, ProjectMark } from './shared';
@@ -87,7 +89,16 @@ export function DocsHub() {
             ]} />
           </div>
         </div>
-        <h1 className="dx-display"><span className="sr-only">Library — </span>Everything your team knows,<br />in one place.</h1>
+        <CalmHero title={shelf[0] ? 'Continue reading.' : 'Library.'} second={shelf[0] ? `${shelf[0].title}.` : 'Everything your team knows, in one place.'} />
+        {shelf[0] && (
+          <CalmCard variant="hero" className="lib-resume" aria-label="Continue reading">
+            <div className="lib-resume-t">
+              <small><span className="calm-dot" />{[shelf[0].projectName ?? shelf[0].teamName ?? 'General', `edited ${updated(shelf[0].updatedAt)}`].join(' · ')}</small>
+              <b>{shelf[0].title}</b>
+            </div>
+            <CalmGo onClick={() => navigate(docsPath.doc(shelf[0].id))}>Resume</CalmGo>
+          </CalmCard>
+        )}
         <AskDocs hero typeOf={(id) => types.get(id)} onAsking={onAsking} onQuery={setQ} onAsked={setAsked} placeholder="Search pages, endpoints and diagrams — or ask a question" />
         {canCreate && (
           <div className="dx-quick" role="group" aria-label="Quick actions">
@@ -106,7 +117,8 @@ export function DocsHub() {
               <div className="dx-sect-h"><h2>Spaces</h2><span className="dx-note">One space per project · health shows how complete its docs are</span></div>
               {catalog.isLoading ? <PageLoader /> : catalog.isError || !c ? <ErrorState error={catalog.error} retry={() => void catalog.refetch()} /> : c.projects.length === 0
                 ? <EmptyState icon="layers" title="No spaces yet" text="Every project gets a space of guides, API reference and architecture." />
-                : <ul className="dx-colls">{c.projects.map((p, i) => <CollectionCard key={pidOf(p)} p={p} i={i} cov={p.id ? coverage.get(p.id) : undefined} />)}</ul>}
+                : <ul className="dx-colls">{c.projects.map((p, i) => <CollectionCard key={pidOf(p)} p={p} i={i} cov={p.id ? coverage.get(p.id) : undefined} />)}
+                  <li className="dx-coll dx-space lib-vault-space"><Link to="/library/vault"><span className="dx-cover" aria-hidden="true" /><b>🔒 Vault</b><small>Passwords and secrets</small></Link></li></ul>}
               {(c?.teams?.length ?? 0) > 0 && (
                 <p className="dx-teams">Team spaces: {c!.teams!.map((t, i) => <span key={t.id}>{i > 0 && ' · '}<Link to={docsPath.project(null)}>{t.name}</Link> <small>{t.pages}</small></span>)}</p>
               )}

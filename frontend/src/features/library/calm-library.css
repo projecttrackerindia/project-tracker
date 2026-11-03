@@ -1,0 +1,18 @@
+/* Calm Library (shots 24, 43): headline + Resume card, spaces as calm white cards with a folder tab */
+.dx-hub .calm-hero { margin: 4px 0 18px; }
+.lib-resume { display: flex; align-items: center; gap: 22px; margin: 0 0 18px; }
+.lib-resume-t { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.lib-resume-t small { display: inline-flex; gap: 8px; align-items: center; font-size: 13.5px; color: var(--calm-ink2); }
+.lib-resume-t b { font-size: 22px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dx-hub .dx-coll { position: relative; padding-top: 14px; }
+.dx-hub .dx-coll::before { content: ''; position: absolute; top: 2px; left: 14px; width: 42%; height: 18px; border-radius: 12px 12px 0 0; background: var(--calm-solid); box-shadow: var(--calm-sh-sm); }
+.dx-hub .dx-coll a { position: relative; background: var(--calm-solid); box-shadow: var(--calm-sh); border-radius: 0 18px 18px 18px; }
+.dx-hub .dx-coll .dx-cover { display: none; }
+.lib-vault-space a small { color: var(--calm-ink2); font-size: 13px; }
+@media (max-width: 600px) {
+  .lib-resume { flex-direction: column; align-items: stretch; }
+  .lib-resume-t b { white-space: normal; }
+  .dx-hub .calm-hero-title { font-size: 34px; }
+}
+.pw-top .pw-calm { flex: 1; min-width: 0; }
+@media (max-width: 600px) { .pw-top .pw-calm .calm-hero-title { font-size: 34px; } }

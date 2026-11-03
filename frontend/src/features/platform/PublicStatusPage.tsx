@@ -33,7 +33,7 @@ function StatusBody({ s }: { s: PublicStatus }) {
     <main className="st-page">
       <div className="st-wrap">
         <header className="st-head">
-          <div><h1>{s.title}</h1><p>{s.workspace}</p></div>
+          <div><h1 className="st-calm">{s.title}.<em>{BANNER[s.state]}</em></h1><p>{s.workspace}</p></div>
           <p>Updated {formatDateTime(s.updatedAt)}</p>
         </header>
         <div className={`st-banner ${s.state}`} role="status"><span className="st-dot" aria-hidden="true" />{BANNER[s.state]}</div>
