@@ -214,9 +214,9 @@ try {
   const tabs = page.getByRole('tablist', { name: 'Portfolio view' });
   const grid = page.getByRole('grid', { name: 'Plan sheet' });
   await grid.waitFor();
-  assert.deepEqual(await tabs.getByRole('tab').allInnerTexts(), ['Board', 'Timeline', 'Plan sheet', 'Capacity', 'Present']);
+  assert.deepEqual(await tabs.getByRole('tab').allInnerTexts(), ['Overview', 'Action items', 'Plan sheet', 'Timeline', 'Capacity', 'Board', 'Present']);
   assert.equal(await tabs.getByRole('tab', { name: 'Plan sheet' }).getAttribute('aria-selected'), 'true');
-  assert.equal(await page.locator('.ps3-head h1').innerText(), 'Plan');
+  assert.match(await page.locator('.pfc-title').innerText(), /^Plan sheet\./);
 
   // 1. The grid: six proportional columns that fill the width, five project rows with ring and summary, meetings folded into the Task cell.
   assert.deepEqual(await grid.locator('thead th').allInnerTexts(), ['Task', 'Owner', 'Dates', 'Status', 'Progress', 'Notes']);

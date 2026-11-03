@@ -17,6 +17,23 @@ export const people = Object.values(S).map(([id, name]) => ({ id, name }));
 export const P = { AA: g(41), CB: g(42), UP: g(43), DP: g(44), PR: g(45) };
 export const T = {};
 
+/** Action items from two fictional meetings: some new (needs review), some already accepted. */
+function reviewItems() {
+  const mk = (n, title, who, proj, pname, meet, ref, accepted, note) => ({ id: g(1300 + n), key: `AI-${n}`, title, projectId: proj, projectName: pname, owner: { id: people[who].id, name: people[who].name },
+    dueDate: '2026-10-31', isOverdue: false, daysOverdue: 0, state: n === 2 ? 'in_progress' : 'open', statusLabel: 'Open', sourceTitle: meet, sourceOccurrence: '2026-10-28T09:30:00Z', seriesRef: ref,
+    latestNote: note, lastUpdateAt: null, noUpdateDays: 0, noUpdate: false, ownerLeft: false, canEdit: true,
+    decision: accepted ? { id: g(1400 + n), decision: 'carry', reason: null, by: null, at: NOW.toISOString(), fromDue: null, toDue: null, fromOwner: null, toOwner: null, convertedTaskId: null, convertedKey: null } : null,
+    createdAt: new Date(NOW.getTime() - 86_400_000).toISOString() });
+  return [
+    mk(1, 'Share the sandbox keys with QA', 1, P.AA, 'Account Aggregator', 'Standup · Account Aggregator', 's1', true, 'We cut the release at 15:00; anything not merged moves to the next one.'),
+    mk(2, 'Freeze main at 14:30', 2, P.AA, 'Account Aggregator', 'Standup · Account Aggregator', 's1', false, null),
+    mk(3, 'Draft the release note', 3, P.AA, 'Account Aggregator', 'Standup · Account Aggregator', 's1', false, null),
+    mk(4, 'Start the bulk enquiry backfill', 4, P.CB, 'Credit Bureau Integration', 'Schema review · Credit Bureau', 's2', false, 'v2 schema is approved; the backfill starts Wednesday.'),
+    mk(5, 'Update the parsing SLOs', 1, P.CB, 'Credit Bureau Integration', 'Schema review · Credit Bureau', 's2', true, null),
+    mk(6, 'Archive the v1 report tables', 2, P.CB, 'Credit Bureau Integration', 'Schema review · Credit Bureau', 's2', false, null),
+  ];
+}
+
 export function makeState() {
   const st = (pid, n) => ({ id: `${pid}-s${n}`, projectId: pid, name: ['To do', 'In progress', 'Review', 'Done'][n], category: ['Todo', 'Active', 'Active', 'Done'][n] });
   const statuses = Object.values(P).flatMap((p) => [0, 1, 2, 3].map((n) => st(p, n)));
@@ -63,7 +80,7 @@ const sheet = (s) => ({ asOf: today, timeZone: 'Asia/Kolkata', rows: s.rows, peo
   scopes: [{ id: 'all', label: 'Everything I can see', allowed: true, why: null, teamId: null }] });
 const projectsOf = (s) => s.rows.filter((r) => r.kind === 'project');
 const timeline = (s) => ({ from: '2026-08-01', to: '2026-12-19', projects: projectsOf(s).map((p, i) => ({
-  id: p.id, key: p.key, name: p.title, health: HEALTH[p.category] ?? 'OnTrack', group: 'Delivery', start: p.start, due: p.due, originalDue: null, forecast: null, progress: p.progress, milestones: [], dependsOn: [],
+  id: p.id, key: p.key, name: p.title, health: HEALTH[p.category] ?? 'OnTrack', group: 'Delivery', start: p.start, due: p.due, originalDue: null, forecast: null, progress: p.progress, milestones: [], dependsOn: p.key === 'CB' ? [P.AA] : [],
   ownerId: p.ownerId, owner: p.owner, team: i < 2 ? 'Team Lending' : 'Team Payments', teamId: g(800 + (i < 2 ? 0 : 1)), slipDays: 0, confidence: 'medium', forecastBasis: null, openTasks: 2, blockedTasks: 0, finishedLast28Days: 3, version: 4, status: 'Active', lastChange: null })) });
 const brief = (s) => {
   const ps = projectsOf(s), n = (c) => ps.filter((p) => p.category === c).length;
@@ -113,7 +130,7 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       data = { changed: b.changes.length, failed: 0, rows: b.changes.map((c) => ({ id: c.id, key: null, ok: true, error: null, field: null, code: null, version: 9, told: 0, emailed: 0 })) };
     } else if (ep === '/api/v1/me/ui/plansheet' && method === 'PUT') { data = { key: 'plansheet', value: req.postDataJSON().value, updatedAt: NOW.toISOString() }; }
     else if (ep === '/api/v1/meet/review' && method === 'POST') data = { sessionId: g(1100), scope: 'all', seriesRef: null, title: 'All projects', cadence: '', occurrence: null, previousSession: null, nextSession: null, attendees: 0,
-      counts: { total: 0, reviewed: 0, done: 0, inProgress: 0, overdue: 0, blocked: 0, noUpdate: 0 }, items: [], finished: false, sent: false, draft: [], projectId: null };
+      counts: { total: 6, reviewed: 2, done: 0, inProgress: 1, overdue: 0, blocked: 0, noUpdate: 0 }, items: reviewItems(), finished: false, sent: false, draft: [], projectId: null };
     else {
       assert.ok(method === 'GET' || ep.endsWith('/auth/refresh'), `Unexpected write: ${method} ${ep}`);
       if (ep.startsWith('/api/v1/portfolio/') || ep === '/api/v1/resources/plan') { reads.push(ep); if (delay) await new Promise((r) => setTimeout(r, delay)); }
@@ -125,6 +142,11 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       else if (ep === '/api/v1/portfolio/timeline') data = timeline(state);
       else if (ep === '/api/v1/resources/plan') data = plan(url.searchParams.get('scope') || 'Everyone');
       else if (ep === '/api/v1/saved-views') data = [];
+      else if (ep === '/api/v1/activity') data = { items: [
+        { id: g(1201), action: 'created', entityType: 'Task', entityId: null, summary: 'added the release checklist', actor: { id: people[1].id, name: people[1].name }, projectId: P.AA, createdAt: new Date(NOW.getTime() - 10 * 60_000).toISOString() },
+        { id: g(1202), action: 'commented', entityType: 'Task', entityId: null, summary: 'commented on the onboarding spec', actor: { id: people[2].id, name: people[2].name }, projectId: P.CB, createdAt: new Date(NOW.getTime() - 60 * 60_000).toISOString() },
+        { id: g(1203), action: 'approved', entityType: 'Stage', entityId: null, summary: 'signed off the schema stage', actor: { id: people[3].id, name: people[3].name }, projectId: P.UP, createdAt: new Date(NOW.getTime() - 120 * 60_000).toISOString() },
+      ], page: 1, pageSize: 25, totalItems: 3, totalPages: 1 };
       else if (ep === '/api/v1/me/ui/plansheet') data = { key: 'plansheet', value: null, updatedAt: null };
       else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
       else if (ep.endsWith('/ai/status')) data = { enabled: true, configured: true, entitled: true, allowedHere: true };

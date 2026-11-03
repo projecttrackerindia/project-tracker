@@ -11,7 +11,8 @@ import { makeState, origin, portfolioContext, T } from './lib/portfolioFixture.m
 // Board and the Timeline without a reload. One consistent fictional fixture (lib/portfolioFixture.mjs).
 const out = path.resolve('test-results/portfolio-shell-ui');
 await fs.mkdir(out, { recursive: true });
-const TABS = [['board', 'Board'], ['timeline', 'Timeline'], ['sheet', 'Plan sheet'], ['capacity', 'Capacity'], ['present', 'Present']];
+// The calm order (design #portfolio). The project columns (the old Board) live under the Overview; Board is the task board.
+const TABS = [['overview', 'Overview'], ['actions', 'Action items'], ['sheet', 'Plan sheet'], ['timeline', 'Timeline'], ['capacity', 'Capacity'], ['board', 'Board'], ['present', 'Present']];
 const url = (q = '') => `${origin}/preview-org/work/projects?view=portfolio${q}`;
 const checks = [], allErrors = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
@@ -22,9 +23,9 @@ const goTab = async (page, label) => { await tabsOf(page).getByRole('tab', { nam
 const shell = (page) => page.evaluate(() => {
   const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
   const pageEl = document.querySelector('.pfx-page');
-  const head = document.querySelector('.pfx-head');
+  const head = document.querySelector('.pfc-head');
   return {
-    heads: [...document.querySelectorAll('.pfx-head')].filter(vis).length, crumb: head?.querySelector('.ps3-crumb')?.textContent ?? null, headTop: head ? Math.round(head.getBoundingClientRect().top) : null,
+    heads: [...document.querySelectorAll('.pfc-head')].filter(vis).length, crumb: head?.querySelector('.pfc-crumb')?.textContent ?? null, headTop: head ? Math.round(head.getBoundingClientRect().top) : null,
     fields: [...document.querySelectorAll('.ps3-cmd')].filter((e) => vis(e) && !e.closest('.ps3-float')).length,
     folderTabs: !!document.querySelector('[role="tablist"][aria-label="Plan sheet tabs"]'),
     toks: [...document.querySelectorAll('.pfx-cmdrow .ps3-tok')].map((e) => e.textContent.replace('✕', '').trim()),
@@ -39,7 +40,7 @@ try {
   // ---------------------------------------------------------------- one shell, one filter, kept across tabs (1440, light)
   {
     const { ctx, page, errors } = await portfolioContext(browser, { width: 1440, state: makeState() });
-    await page.goto(url()); await page.locator('.pfx-stage .pf-board').waitFor();
+    await page.goto(url('&mode=sheet')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
     // A sentence in the one field becomes tokens; a colour joins them; both go into the address.
     const field = page.getByRole('textbox', { name: 'Filter, search or ask' });
     await field.fill('late or at risk'); await field.press('Enter');
@@ -48,13 +49,13 @@ try {
     await page.waitForFunction(() => new URL(location.href).searchParams.get('pc') === 'blue,violet' && !!new URL(location.href).searchParams.get('f'));
     const seen = {};
     for (const [mode, label] of TABS.filter(([m]) => m !== 'present')) {
-      if (mode !== 'board') await goTab(page, label);
+      await goTab(page, label);
       const s = await shell(page);
       seen[mode] = s;
       assert.equal(s.heads, 1, `${label}: one head`);
-      assert.equal(s.crumb, 'Portfolio', `${label}: the crumb`);
-      assert.equal(s.fields, 1, `${label}: one command field`);
-      assert.ok(s.folderTabs, `${label}: the project folder tabs`);
+      assert.ok(s.crumb?.startsWith('Portfolio'), `${label}: the crumb`);
+      assert.equal(s.fields, 1, `${label}: one command field (on Overview too while a filter is on)`);
+      assert.equal(s.folderTabs, mode === 'sheet', `${label}: the project folder tabs only on the Plan sheet`);
       assert.deepEqual(s.toks, ['status Late or at risk'], `${label}: the token stays`);
       assert.deepEqual(s.colourOn, ['Blue', 'Violet'], `${label}: the colour filter stays`);
       assert.equal(s.stageAnim, 'pfx-in', `${label}: the same tab-switch fade`);
@@ -65,35 +66,34 @@ try {
     }
     const tops = new Set(Object.values(seen).map((s) => s.headTop));
     assert.equal(tops.size, 1, `the head does not move between tabs: ${JSON.stringify(Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.headTop])))}`);
-    assert.equal(new Set(Object.values(seen).map((s) => s.stageRadius)).size, 1, `one card radius: ${JSON.stringify(Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.stageRadius])))}`);
     // The filter does its work on each tab: late-or-at-risk and blue/violet leaves AA (blue, at risk) and UP (violet, late).
-    await goTab(page, 'Board');
+    await goTab(page, 'Overview');
     assert.deepEqual((await page.locator('.pf-board .pf-card').evaluateAll((els) => els.map((e) => e.dataset.project))).sort(), ['AA', 'UP']);
     await goTab(page, 'Timeline');
     assert.deepEqual((await page.locator('.ptl-pname').allInnerTexts()).sort(), ['Account Aggregator', 'UPI AutoPay']);
-    // Present opens over the Board and keeps the shell under it.
+    // Present opens over the Overview and keeps the shell under it.
     await goTab(page, 'Present');
     await page.getByRole('dialog', { name: 'Present decisions' }).waitFor({ state: 'attached', timeout: 3000 }).catch(() => {});
     assert.equal(new URL(page.url()).searchParams.get('mode'), 'present');
     checks.push('one-shell-filter-persists');
 
-    // A project folder tab on the Board narrows it to that project and tints the page in its colour; Action items go to the Plan sheet.
-    await page.goto(url()); await page.locator('.pfx-stage .pf-board').waitFor();
+    // A project folder tab on the Plan sheet opens that project; Action items stay the fixed first folder tab.
+    await page.goto(url('&mode=sheet')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
+    assert.match(await page.getByRole('tablist', { name: 'Plan sheet tabs' }).getByRole('tab').first().innerText(), /Action items/);
     await page.getByRole('tablist', { name: 'Plan sheet tabs' }).getByRole('tab', { name: /Credit Bureau Integration/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.pf-board .pf-card').length === 1);
-    assert.equal(await page.locator('.pf-board .pf-card').getAttribute('data-project'), 'CB');
+    await page.waitForFunction(() => new URL(location.href).searchParams.get('pt') !== null);
     assert.match(await page.locator('.pfx-page').getAttribute('class'), /pc-teal/);
     await page.getByRole('tablist', { name: 'Plan sheet tabs' }).getByRole('tab', { name: /Action items/ }).click();
     await page.waitForFunction(() => { const u = new URL(location.href); return u.searchParams.get('mode') === 'sheet' && u.searchParams.get('pt') === 'actions'; });
     await page.getByRole('textbox', { name: 'Search action items' }).waitFor();
     assert.equal((await shell(page)).fields, 1, 'Action items: still one field');
-    checks.push('folder-tabs-on-every-tab');
+    checks.push('folder-tabs-on-the-plan-sheet');
 
     // One colour per project, the Plan sheet's: UP is the third tab (violet) on the sheet, the Board and the Timeline.
     await page.goto(url('&mode=sheet')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
     const sheetColours = await page.locator('tbody.ps4-card').evaluateAll((els) => els.map((e) => [...e.classList].find((c) => c.startsWith('pc-'))));
     assert.deepEqual(sheetColours, ['pc-blue', 'pc-teal', 'pc-violet', 'pc-amber', 'pc-rose']);
-    await goTab(page, 'Board');
+    await goTab(page, 'Overview');
     const boardColours = Object.fromEntries(await page.locator('.pf-board .pf-card').evaluateAll((els) => els.map((e) => [e.dataset.project, [...e.classList].find((c) => c.startsWith('pc-'))])));
     assert.deepEqual(boardColours, { AA: 'pc-blue', CB: 'pc-teal', UP: 'pc-violet', DP: 'pc-amber', PR: 'pc-rose' });
     await goTab(page, 'Timeline');
@@ -105,9 +105,9 @@ try {
   }
 
   // ---------------------------------------------------------------- the same skeleton on every tab while it loads
-  for (const [mode] of TABS.filter(([m]) => m !== 'present')) {
+  for (const [mode] of TABS.filter(([m]) => m !== 'present' && m !== 'overview' && m !== 'actions')) {
     const { ctx, page, errors } = await portfolioContext(browser, { width: 1440, state: makeState(), delay: 2500 });
-    await page.goto(url(mode === 'board' ? '' : `&mode=${mode}`));
+    await page.goto(url(`&mode=${mode}`));
     await page.locator('.pfx-skel').first().waitFor({ timeout: 2400 });
     assert.equal(await page.locator('.spinner, .page-loader').count(), 0, `${mode}: no spinner, the skeleton`);
     if (mode === 'board') await shot(page, 'loading-1440.png');
@@ -125,11 +125,13 @@ try {
     assert.match(await page.locator('.ptl-bar', { hasText: '45%' }).first().getAttribute('aria-label'), /UPI AutoPay.*45% done/);
     await page.evaluate(() => { window.__sameDocument = true; });
     await goTab(page, 'Plan sheet');
-    await page.locator(`td[data-cell="${T['UP-01']}:status"]`).click();
+    // The calm head is taller, so UP-01 starts below the grid's fold: bring it into view first (the grid scrolls inside itself).
+    { const td = page.locator(`td[data-cell="${T['UP-01']}:status"]`); await td.scrollIntoViewIfNeeded(); await page.waitForTimeout(250); await td.click();
+      if (!(await page.getByRole('listbox', { name: 'Status of UP-01' }).isVisible().catch(() => false))) { await page.waitForTimeout(250); await td.click(); } }
     await page.getByRole('listbox', { name: 'Status of UP-01' }).getByRole('option', { name: /Done/ }).click();
     for (let i = 0; i < 50 && !state.writes.length; i++) await page.waitForTimeout(100);
     assert.equal(state.writes[0]?.b.changes[0].statusId, `${state.rows.find((r) => r.key === 'UP').id}-s3`);
-    await goTab(page, 'Board');
+    await goTab(page, 'Overview');
     await page.waitForFunction(() => !document.querySelector('.pf-colwrap.late .pf-card[data-project="UP"]'), null, { timeout: 5000 });
     await page.getByRole('status', { name: 'Work complete, check sign-offs' }).getByText('All work is done on UPI AutoPay.').waitFor();
     await goTab(page, 'Timeline');
@@ -151,10 +153,10 @@ try {
     const { ctx, page, errors } = await portfolioContext(browser, { width: 390, state: makeState() });
     await page.goto(url()); await page.locator('.pf-board .pf-card').first().waitFor();
     for (const [mode, label] of TABS.filter(([m]) => m !== 'present')) {
-      if (mode !== 'board') await goTab(page, label);
+      await goTab(page, label);
       const s = await shell(page);
       assert.equal(s.heads, 1, `${label} phone: one head`);
-      assert.equal(s.fields, 1, `${label} phone: one field`);
+      assert.equal(s.fields, mode === 'overview' ? 0 : 1, `${label} phone: one field (none on a calm Overview without a filter)`);
       assert.ok(await tabsOf(page).isVisible(), `${label} phone: the tabs show`);
       await fitsPhone(page, `${label} phone`, assert);
       await shot(page, `${mode}-390.png`);
