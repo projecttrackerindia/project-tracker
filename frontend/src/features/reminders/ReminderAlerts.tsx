@@ -1,3 +1,4 @@
+import { CHECK_NOTIFICATIONS } from '../notifications/events';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../../components/Icon';
@@ -8,7 +9,7 @@ import { reminderApi, type SnoozePreset } from './api';
 import { refreshReminders, useReminderCounts } from './store';
 import { syncNativePush } from '../../lib/native';
 import { pushApi } from '../../api/endpoints';
-import { deviceAlerts, primeSound, pushCoversThisDevice, systemNotification } from './device';
+import { deviceAlerts, primeSound } from './device';
 import { getAttention } from '../../lib/attention';
 import { followableDeviceZone } from '../../lib/zone';
 
@@ -40,9 +41,9 @@ export function ReminderAlerts() {
     if (!items.length) return;
     setAlerts((a) => [...items.filter((i) => !a.some((x) => x.id === i.id)), ...a].slice(0, 4));
     getAttention({ kind: 'urgent' });   // the beacon: a reminder must not be mistaken for a chat message
-    // Someone in another app: the operating system shows it now (unless a push is already bringing it to this device).
-    if ((document.hidden || !document.hasFocus()) && !pushCoversThisDevice())
-      for (const i of items) void systemNotification(i.from ? `${i.from}: ${i.title}` : `⏰ ${i.title}`, i.note ?? i.targetKey, `reminder-${i.id}`);
+    // OS delivery is coordinated by DesktopNotifier using the server notification id and browser preference.
+    // A second reminder-id notification here would duplicate the push and bypass that preference.
+    window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));
   };
 
   useEffect(() => { primeSound(); void deviceAlerts(); void syncNativePush((token) => pushApi.subscribeNative(token)); }, []);
@@ -116,3 +117,4 @@ export function ReminderAlerts() {
     </div>
   );
 }
+

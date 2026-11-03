@@ -17,7 +17,7 @@ function loadWorker() {
     { tag: 'n2', data: { link: '/projects/p?task=t1' }, close: vi.fn() },
     { tag: 'n3', data: { link: '/acme/chat/c9' }, close: vi.fn() },
   ];
-  const getNotifications = vi.fn(() => Promise.resolve(shown));
+  const getNotifications = vi.fn((options?: { tag?: string }) => Promise.resolve(options?.tag ? shown.filter((n) => n.tag === options.tag) : shown));
   const self = {
     addEventListener: (type: string, h: Handler) => { handlers[type] = h; },
     navigator: { setAppBadge, clearAppBadge },
@@ -41,9 +41,16 @@ const push = (payload: object) => ({ data: { json: () => payload, text: () => JS
 describe('service worker badge', () => {
   it('sets the app badge from the count a push carries, and still shows the notification', async () => {
     const w = loadWorker();
-    await w.fire('push', push({ title: 'Asha in #MuleSoft Support', body: 'Deploy is green', type: 'Message', tag: 'n1', badge: 7, category: 'messages', link: '/chat/x' }));
+    await w.fire('push', push({ title: 'Asha in #MuleSoft Support', body: 'Deploy is green', type: 'Message', tag: 'new-notice', badge: 7, category: 'messages', link: '/chat/x' }));
     expect(w.setAppBadge).toHaveBeenCalledWith(7);
     expect(w.showNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates the badge without redisplaying the same OS notification', async () => {
+    const w = loadWorker();
+    await w.fire('push', push({ title: 'Existing', type: 'Message', tag: 'n1', badge: 7 }));
+    expect(w.setAppBadge).toHaveBeenCalledWith(7);
+    expect(w.showNotification).not.toHaveBeenCalled();
   });
 
   it('clears the badge when a push says nothing is unread, and leaves it alone when the push has no count', async () => {
@@ -83,3 +90,4 @@ describe('service worker: read elsewhere', () => {
     expect(w.showNotification).not.toHaveBeenCalled();
   });
 });
+

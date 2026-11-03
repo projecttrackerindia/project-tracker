@@ -18,7 +18,7 @@ namespace ProjectManagement.Application.Features.Notifications;
 /// <param name="Actions">What can be done straight from it: done, take, reply, approve, reject, snooze (worked out per person when listed).</param>
 public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser, bool NeedsYou = false,
     bool Archived = false, DateTime? SnoozedUntil = null, DateTime? ShownAt = null, IReadOnlyList<string>? Actions = null,
-    string Category = NotificationCategories.Work, DateTime? StartsAt = null, string? JoinLink = null, string? Reason = null);
+    string Category = NotificationCategories.Work, DateTime? StartsAt = null, string? JoinLink = null, string? Reason = null, DateTime? DeliverAfter = null);
 /// <summary>
 /// The inbox at a glance: unread overall, in each lane, and in each category of the Notification Centre (the badges on the bell, the app
 /// icon and the tabs all read this one answer).
@@ -394,7 +394,7 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         var rows = await ordered.Skip((p.SafePage - 1) * p.SafeSize()).Take(p.SafeSize()).ToListAsync(ct);
         return new PagedResult<NotificationDto>(
             rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null,
-                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt, null, NotificationCategories.Of(n.Type, n.Link), Reason: ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Reason)).ToList(),
+                n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt, null, NotificationCategories.Of(n.Type, n.Link), Reason: ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Reason, DeliverAfter: n.DeliverAfter)).ToList(),
             p.SafePage, p.SafeSize(), total);
     }
 
@@ -713,3 +713,4 @@ public class NotificationEmailService(IAppDbContext db, IEmailSender email, IOpt
         return sent;
     }
 }
+

@@ -175,6 +175,43 @@ try {
   await page.mouse.click(5, 5);
   checks.push('actions-beside-bubble');
 
+  // Regression: Edit hides +, so the input frame must start at the text, including on iPhone with a short keyboard viewport.
+  const editingBox = page.locator('.composer.is-editing .composer-editable');
+  // The phone and desktop route shells mount separate thread trees. Open Edit in each layout;
+  // this check measures composer geometry, rather than assuming component state survives a shell replacement.
+  const openEdit = async (viewport) => {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/preview-org/messages/${direct.id}`);
+    await mine.locator('.bubble').hover();
+    await mine.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menu', { name: 'More actions' }).getByRole('menuitem', { name: 'Edit', exact: true }).click();
+    await editingBox.waitFor();
+    await editingBox.fill('Yesterday it was a hard deployment. I do not want to see these issues next time. '.repeat(4));
+  };
+  for (const viewport of [{ width: 1440, height: 960 }, { width: 393, height: 852 }, { width: 393, height: 420 }, { width: 852, height: 393 }]) {
+    await openEdit(viewport);
+    const geometry = await editingBox.evaluate((el) => {
+      const row = el.closest('.composer-row'), frame = getComputedStyle(row, '::before');
+      const r = el.getBoundingClientRect(), parent = row.getBoundingClientRect();
+      return { left: r.left, right: r.right, frameLeft: parent.left + parseFloat(frame.left),
+        overflow: el.scrollWidth - el.clientWidth, font: parseFloat(getComputedStyle(el).fontSize),
+        pageOverflow: document.documentElement.scrollWidth - innerWidth };
+    });
+    assert.ok(geometry.left >= geometry.frameLeft - 1, 'edit text stays inside its input frame');
+    assert.ok(geometry.right <= viewport.width && geometry.overflow <= 1 && geometry.pageOverflow <= 1, 'long edit text wraps inside the phone');
+    if (viewport.width <= 760) assert.ok(geometry.font >= 16, 'iOS editing does not zoom');
+    assert.ok(await page.getByRole('button', { name: 'Save', exact: true }).isVisible(), 'save stays available');
+  }
+  await openEdit({ width: 393, height: 852 });
+  assert.equal(await page.locator('.talk-thread .day-sep').evaluateAll((els) => els.every((el) => getComputedStyle(el).position === 'static')), true,
+    'timestamp separators stay in message flow instead of overlaying bubbles');
+  await shot(page, 'edit-393-light.png');
+  await page.locator('.composer-ctx').getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(await page.locator('.composer.is-editing').count(), 0);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  checks.push('edit-composer-and-timestamp-geometry');
+
+
   // A meeting link from before (Messages ?meeting=) opens the meeting in Meetings.
   await page.goto(`${origin}/preview-org/messages?meeting=p:${meetingId}`);
   await page.waitForURL(/\/meetings\?open=p(:|%3A)/);
@@ -272,3 +309,4 @@ try {
 } finally {
   await browser.close();
 }
+

@@ -26,3 +26,25 @@ it('keeps fallback notifications until the server acknowledges an existing brows
   expect(await device.deviceAlerts()).toBe('tab-only');
   expect(device.lastDeviceError()).toContain('offline');
 });
+
+
+it('shows a page fallback when a registered push does not arrive, and deduplicates an existing OS notice', async () => {
+  const showNotification = vi.fn().mockResolvedValue(undefined);
+  const reg = { active: {}, getNotifications: vi.fn().mockResolvedValue([]), showNotification };
+  vi.stubGlobal('Notification', { permission: 'granted' });
+  vi.stubGlobal('window', { PushManager: function () {} });
+  vi.stubGlobal('navigator', { serviceWorker: { getRegistration: async () => reg } });
+  const device = await import('./device');
+  vi.useFakeTimers();
+  try {
+    const pending = device.systemNotification('New task', 'Assigned to you', 'fallback', '/', { waitForPush: true });
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(await pending).toBe(true);
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    reg.getNotifications.mockResolvedValue([{ tag: 'existing' }]);
+    expect(await device.systemNotification('Existing', null, 'existing')).toBe(true);
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    expect(await device.systemNotification('Signed out', null, 'stopped', '/', { shouldShow: () => false })).toBe(false);
+    expect(showNotification).toHaveBeenCalledTimes(1);
+  } finally { vi.useRealTimers(); }
+});

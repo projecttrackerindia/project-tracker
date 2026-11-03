@@ -10,7 +10,6 @@ import { trackIdle } from '../../lib/idle';
 import { createRefreshQueue, type RefreshQueue } from '../../lib/refreshQueue';
 import { CHECK_NOTIFICATIONS } from '../notifications/events';
 import { readFromServer } from '../notifications/centre/readSync';
-import { pushCoversThisDevice, systemNotification } from '../reminders/device';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { plainText } from './chatFormat';
@@ -156,9 +155,8 @@ export function ChatRealtime() {
       const open = () => { window.focus(); navigate.current(`/messages/${conversationId}`); };
       if (!firstTime(`chat-${message.id}`)) return;
       getAttention({ kind: 'message' });
-      // In another tab, another window or another app (not only a hidden tab): the system shows it. When push is on for this device the
-      // server's push already brings it (and respects the person's "Chat messages" choice), so the page does not add a second one.
-      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `chat-${conversationId}`, `/messages/${conversationId}`, { sticky: false }); }
+      // DesktopNotifier uses the server notice id and channel preference for coordinated OS delivery.
+      if (away()) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));
       else if (!appPath(useAuth.getState().ctx?.current?.slug).startsWith('/messages')) {
         toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
       }
@@ -172,7 +170,7 @@ export function ChatRealtime() {
       const open = () => { window.focus(); useProjectChat.getState().openChat(projectId, projectName); };
       if (!firstTime(`chat-${message.id}`)) return;
       getAttention({ kind: 'message' });
-      if (away()) { if (!pushCoversThisDevice()) void systemNotification(title, text, `pchat-${projectId}`, '/messages', { sticky: false }); }
+      if (away()) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));
       else toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
     };
 
@@ -287,3 +285,4 @@ export function ChatRealtime() {
 
   return null;
 }
+

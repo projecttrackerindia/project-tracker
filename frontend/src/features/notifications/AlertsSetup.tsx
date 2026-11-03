@@ -1,3 +1,4 @@
+import { recordPushReceipt } from './pushReceipts';
 import { useEffect, useState } from 'react';
 import { isViewing } from './centre/readSync';
 import { Icon } from '../../components/Icon';
@@ -11,7 +12,7 @@ import { deviceAlerts, enableDeviceAlerts, type DeviceAlerts } from '../reminder
 const ASKED_KEY = 'pm_alerts_prompt';   // "asked and answered" - the card is shown once per browser, not on every visit
 
 /** A push the service worker just received while this page is open: it asks the page to play the sound and answers whether it did. */
-interface PushMessage { type: 'pm-push'; kind?: AttentionKind; notificationType?: string; tag?: string; call?: string | null; category?: NotificationCategory; link?: string }
+interface PushMessage { type: 'pm-push' | 'pm-push-delivered'; kind?: AttentionKind; notificationType?: string; tag?: string; call?: string | null; category?: NotificationCategory; link?: string }
 
 /**
  * Makes sure the person actually gets notifications while they are in another tab or app:
@@ -40,6 +41,7 @@ export function AlertsSetup() {
   useEffect(() => {
     if (!enabled || !('serviceWorker' in navigator)) return;
     const onMessage = (e: MessageEvent<PushMessage>) => {
+      if (e.data?.type === 'pm-push-delivered') { if (e.data.tag) recordPushReceipt(e.data.tag); return; }
       if (e.data?.type !== 'pm-push') return;
       if (e.data.call) return;   // a ringing call: the incoming-call card rings and answers the worker itself
       // The person is looking at that conversation: the worker shows nothing (and nothing sounds) - it is read already.
@@ -86,3 +88,4 @@ export function AlertsSetup() {
     </div>
   );
 }
+

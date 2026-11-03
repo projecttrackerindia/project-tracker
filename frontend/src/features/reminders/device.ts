@@ -1,3 +1,4 @@
+import { waitForPushReceipt } from '../notifications/pushReceipts';
 import { orgHref } from '../../lib/orgPath';
 import { pushApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
@@ -149,7 +150,9 @@ export const lastDeviceError = () => lastReason;
 export const pushCoversThisDevice = () => subscribed === true && serverConfirmed;
 
 /** A notification from the operating system, shown by the page itself (the tab is open but someone is in another app). */
-export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders', opts: { sticky?: boolean } = {}): Promise<boolean> {
+export async function systemNotification(title: string, body: string | null, tag: string, link = '/reminders', opts: { sticky?: boolean; waitForPush?: boolean; shouldShow?: () => boolean } = {}): Promise<boolean> {
+  if (opts.waitForPush && await waitForPushReceipt(tag)) return true;
+  if (opts.shouldShow && !opts.shouldShow()) return false;
   if (!canNotify() || Notification.permission !== 'granted') return false;
   // Urgent ones (reminders by default) stay on screen until dismissed; the rest go away by themselves. The page plays its own sound, so
   // the system one is silent (two sounds for one alert would be noise); renotify makes a repeated tag pop up again instead of updating quietly.
@@ -160,7 +163,11 @@ export async function systemNotification(title: string, body: string | null, tag
   };
   try {
     const reg = canPush() ? await navigator.serviceWorker.getRegistration() : undefined;
-    if (reg?.active) { await reg.showNotification(title, options); return true; }
+    if (reg?.active) {
+      // The push may have arrived while the page was waiting. Keep one OS entry per notification.
+      if (reg.getNotifications && (await reg.getNotifications({ tag })).length) return true;
+      await reg.showNotification(title, options); return true;
+    }
   } catch { /* fall back to a page notification */ }
   // Some browsers (Chrome on Android) only allow notifications through a service worker: the constructor throws there.
   try {
@@ -177,3 +184,4 @@ export { primeSound, setSoundOn, soundOn } from '../../lib/attention';
 
 /** The reminder sound: the beacon (three bursts of a two-tone alarm), so a reminder is not mistaken for a chat message. */
 export const playChime = () => playSound('urgent');
+

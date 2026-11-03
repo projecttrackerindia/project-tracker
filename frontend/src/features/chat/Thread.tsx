@@ -415,8 +415,8 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
         )}
         {days.map((day) => (
           <section key={day.key} className="chat-day" aria-label={dayLabel(day.items[0].m.createdAt)}>
-          {/* The day's label sticks to the top while its messages scroll under it (Messages / Slack). */}
-          <div className={`day-sep sticky${talk ? ' talk-time' : ''}`} data-day={day.key}><span>{talk ? <><b>{dayLabel(day.items[0].m.createdAt)}</b> {timeOf(day.items[0].m.createdAt)}</> : dayLabel(day.items[0].m.createdAt)}</span></div>
+          {/* Chat dates may stick; Messages time separators stay in flow so they never cover a bubble. */}
+          <div className={`day-sep${talk ? ' talk-time' : ' sticky'}`} data-day={day.key}><span>{talk ? <><b>{dayLabel(day.items[0].m.createdAt)}</b> {timeOf(day.items[0].m.createdAt)}</> : dayLabel(day.items[0].m.createdAt)}</span></div>
           {day.items.map(({ m, i }) => {
           const prev = items[i - 1];
           const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
@@ -1371,7 +1371,7 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   const over = text.length > MAX_LENGTH - 500;
   const ready = (!!text.trim() || readyIds.length > 0 || !!payload) && !send.isPending && !uploading && text.length <= MAX_LENGTH;
   return (
-    <div className={`composer ${dragging ? 'dragging' : ''}${talk ? ' talk-composer' : ''}`}
+    <div className={`composer ${dragging ? 'dragging' : ''}${talk ? ' talk-composer' : ''}${editing ? ' is-editing' : ''}`}
       onDragOver={(e) => { if (canAttach && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => { if (!canAttach) return; e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}>
@@ -1520,3 +1520,4 @@ export function ConversationAvatar({ conversation, status }: { conversation: Con
   if (conversation.type === 'Group') return <span className="avatar group-avatar" title={conversation.name}><Icon name="users" size={16} /></span>;
   return <span className="avatar-wrap"><Avatar name={conversation.name} userId={conversation.otherUserId ?? undefined} /><PresenceDot status={status} /></span>;
 }
+
