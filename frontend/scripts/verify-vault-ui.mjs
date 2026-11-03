@@ -210,7 +210,7 @@ try {
 
   let ctx = await make(); let page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${origin}/preview-org/vault`); await page.locator('.lib-vault-items').waitFor();
-  assert.ok(await page.locator('.v2-rail-item', { hasText: 'Library' }).isVisible(), 'Library in the rail'); assert.ok(await page.locator('.v2-rail-item', { hasText: 'Vault' }).isVisible(), 'Vault in the rail'); assert.equal(await page.locator('.pw-h1').innerText(), 'Vault');
+  assert.ok(await page.locator('.v2-rail-item', { hasText: 'Library' }).isVisible(), 'Library in the rail'); assert.ok(await page.locator('.v2-rail-item', { hasText: 'Vault' }).isVisible(), 'Vault in the rail'); assert.match(await page.locator('.pw-calm .calm-hero-title').innerText(), /^Vault\./);
   await more(/^Collections/);
   assert.deepEqual(await page.locator('.lib-vault-colls [data-collection]').evaluateAll((els) => els.map((e) => e.getAttribute('data-collection'))), ['My vault', 'Payments servers']);
   await page.locator('.lib-vault-mode').getByRole('button', { name: 'Items' }).click();

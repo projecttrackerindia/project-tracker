@@ -125,7 +125,7 @@ try {
   for (const [from, to] of moved) { await page.goto(`${origin}/preview-org${from}`); for (let i = 0; i < 40 && at() !== to; i++) await page.waitForTimeout(100); assert.equal(at(), to, `${from} moved`); }
   checks.push(`redirects:${moved.length}`);
   // Your own security is a top-level section: password, passkeys, two-step (with its badge and actions), sign-in methods, sessions.
-  await page.goto(`${origin}/preview-org/settings/security/account`); await page.locator('.set-mac-item.on', { hasText: 'Security' }).waitFor();
+  await page.goto(`${origin}/preview-org/settings/security/account`); await page.locator('.cs-item.on', { hasText: 'Security & sessions' }).waitFor();
   for (const g of ['Password', 'Passkeys', 'Sign-in methods', 'Active sessions']) await page.locator('.sg h4', { hasText: g }).first().waitFor();
   await page.getByRole('heading', { name: /^Two-step verification (On|Off)$/ }).waitFor();
   assert.ok(await page.getByRole('button', { name: /Set up|Turn off/ }).first().isVisible(), 'two-step action');
@@ -133,10 +133,9 @@ try {
 
   // Settings: You (2) and Workspace (8) sections; tabs inside a section.
   await page.goto(`${origin}/preview-org/settings/security`); await page.locator('.set-place-head').waitFor({ timeout: 8000 }).catch(async (e) => { await page.getByText('Details').click().catch(() => {}); console.log(at(), errors, (await page.locator('body').innerText()).slice(0, 600)); throw e; });
-  // The macOS System Settings list: ten sections with coloured icon tiles.
-  const sections = await page.locator('.set-mac-item').allInnerTexts();
-  for (const want of ['Profile', 'Workspace', 'People & roles', 'AI', 'Notifications', 'Integrations', 'Security', 'Billing', 'Appearance']) assert.ok(sections.some((t) => t.trim() === want), `Settings has ${want}: ${sections}`);
-  assert.equal(sections.length, 9, `nine sections (mail accounts live in Integrations): ${sections}`);
+  // The calm settings list: Personal for everyone, Workspace for an owner (Billing included).
+  const sections = await page.locator('.cs-item').allInnerTexts();
+  for (const want of ['Profile', 'Notifications', 'Appearance', 'Security & sessions', 'General', 'Integrations', 'Security policy', 'Billing']) assert.ok(sections.some((t) => t.trim() === want), `Settings has ${want}: ${sections}`);
   await page.getByRole('tab', { name: 'Single sign-on' }).click(); await page.waitForTimeout(300); assert.equal(at(), '/settings/security/sso');
   await page.goto(`${origin}/preview-org/settings/profile`); await page.locator('.set-place-head').waitFor();
   assert.ok(!(await page.locator('.set-place-head [role="tab"]').allInnerTexts()).some((t) => /Resume/.test(t)), 'no Resume studio');

@@ -225,7 +225,7 @@ try {
 
     // ---------------------------------------------------------------- Desk
     await page.goto(`${origin}/preview-org/desk`);
-    await page.getByRole('heading', { level: 1, name: 'Desk' }).waitFor();
+    await page.locator('.calm-hero-title').first().waitFor();
     for (const w of [1920, 1440, 1366]) {
       await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(150);
       if (w < 1680) await assertFills(page, '#main-content .dq-cols', `Desk ${w}`);
@@ -329,7 +329,7 @@ try {
 
     // ---------------------------------------------------------------- Quality
     await page.goto(`${origin}/preview-org/quality`);
-    await page.getByRole('heading', { level: 1, name: 'Quality' }).waitFor();
+    await page.locator('.calm-hero-title').first().waitFor();
     await page.locator('.dq-eyebrow', { hasText: 'SIA Internal API · Release 1.4' }).waitFor();
     await page.getByText('UAT 1.4 · 86% passing · 3 blockers').waitFor();
     await page.getByText('Not ready to ship. Ship needs 95% and zero blockers when the run ends.').waitFor();

@@ -113,7 +113,7 @@ try {
 
     // Overview: four numbers, the workload bars and what stands out.
     await page.goto(`${origin}/preview-org/insights`);
-    await page.getByRole('heading', { level: 1, name: 'Insights' }).waitFor();
+    await page.locator('.calm-ins-head .calm-hero-title').first().waitFor();
     for (const t of ['Overview', 'Time', 'Reports']) await page.getByRole('tab', { name: t }).waitFor();
     // Three rings: Projects on track, Load balance, Time logged.
     for (const label of ['Projects on track', 'Load balance', 'Time logged']) await page.locator('.ins-ring', { hasText: label }).first().waitFor();
@@ -173,7 +173,7 @@ try {
 
     // Reports: describe a report, four types, the Monday summary and the reviews.
     await page.getByRole('tab', { name: 'Reports' }).click();
-    await page.getByRole('heading', { level: 1, name: 'Reports' }).waitFor();
+    await page.getByRole('heading', { level: 1, name: /^Reports\./ }).waitFor();
     const types = page.getByRole('group', { name: 'Report type' });
     assert.equal(await types.locator('.ds-choice').count(), 4);
     await page.getByRole('textbox', { name: 'Describe a report' }).fill('hours by person this month as Excel');

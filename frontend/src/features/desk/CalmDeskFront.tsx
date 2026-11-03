@@ -60,7 +60,7 @@ export function CalmDeskFront({ rows, detailOf, now, meId, onOpen, onAssign, onS
       <div className="cd-left">
         <CalmHero title={`${n || sorted.length} ${(n || sorted.length) === 1 ? 'ticket needs' : 'tickets need'} you.`}
           second={first.slaDueAt ? `${who(first).split(' ')[0]} first. ${Date.parse(first.slaDueAt) > now ? `${leftLabel(first.slaDueAt, now)} left.` : 'SLA breached.'}` : `${who(first).split(' ')[0]} first.`} />
-        <CalmCard variant="hero" className="cd-hero" aria-label="Next ticket">
+        <CalmCard variant="hero" className="cd-hero" aria-label="Up next">
           <div className="cd-eyebrow"><i className={first.slaDueAt && Date.parse(first.slaDueAt) - now < 3600e3 ? 'hot' : ''} />{[CH[d?.channel ?? 'app'] ?? d?.channel, who(first), first.slaDueAt ? `SLA ${dueText(first, now)}` : null].filter(Boolean).join(' · ')}</div>
           <h2>{first.title}</h2>
           {firstLine(d?.description, 220) && <p>{firstLine(d?.description, 220)}</p>}
