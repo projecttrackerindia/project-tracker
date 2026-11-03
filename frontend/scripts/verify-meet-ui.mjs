@@ -210,7 +210,7 @@ try{
   // 8. Old addresses lead to Meetings, and Messages is chats only (no Meetings filter, no meeting rows).
   await page.goto(origin+'/preview-org/notetaker?session=s1');await page.waitForURL(/\/meetings\?session=s1&s=notetaker$/);
   await page.goto(origin+'/preview-org/messages?f=meetings&s=past');await page.waitForURL(/\/meetings\?s=past$/);
-  await page.goto(origin+'/preview-org/messages');await page.locator('.talk-filters').waitFor();
+  await page.goto(origin+'/preview-org/messages');await page.locator('.talk-large-row').waitFor();
   assert.equal(await page.locator('.talk-filters .ds-chip',{hasText:'Meetings'}).count(),0,'No Meetings filter in Messages');
   assert.equal(await page.locator('.talk-src.s-meeting').count(),0,'No meeting rows in Messages');checks.push('old-address');
 

@@ -222,3 +222,12 @@ html .ml-boxchips { display: none !important; }
   .ml-read-h h2 { font-size: 20px; }
 }
 .ml-pills-row { order: -1; padding-top: 14px; }
+/* calm list head: search behind its icon; Focused / Other and the follow-up nudges are in ⋯ (Other shows as a removable chip) */
+html .ml-lanes, html .ml-list > .ml-nudge { display: none !important; }
+.ml-search-btn { width: 34px; height: 34px; border-radius: 17px; }
+.ml-lane-on { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; margin: 2px 14px 6px; height: 26px; padding: 0 4px 0 12px; border-radius: 13px; background: var(--calm-fill); font-size: 12.5px; font-weight: 500; }
+.ml-lane-on button { width: 20px; height: 20px; border: 0; border-radius: 10px; background: none; display: grid; place-items: center; color: var(--calm-ink2); cursor: pointer; }
+.ml-compose-narrow { display: none; height: 34px; padding: 0 16px; border: 0; border-radius: var(--calm-r-pill); background: var(--calm-go-bg); color: var(--calm-go-fg); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; flex: none; }
+.ml-compose-narrow:disabled { opacity: .45; }
+@media (max-width: 1099px) { .ml-compose-narrow { display: inline-flex; align-items: center; } }
+@media (max-width: 760px) { .ml-compose-narrow, .ml-search-btn { height: 44px; } .ml-search-btn { width: 44px; border-radius: 22px; } }

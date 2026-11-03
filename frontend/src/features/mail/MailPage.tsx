@@ -41,6 +41,7 @@ export function MailPage() {
   const navigate = useNavigate();
   const box = (params.get('box') ?? 'inbox') as string;
   const [search, setSearch] = useState('');
+  const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState<MailSearch | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [compose, setCompose] = useState<ComposeInit | null>(null);
@@ -136,7 +137,7 @@ export function MailPage() {
   if (!data.loading && data.accounts.length === 0) {
     return (
       <div className="ml-hero" key={`${wid}-${uid}`} data-testid="mail-hero">
-        <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Mail</span>} />
+        <ToolbarSlot title={<span className="tb-crumb" aria-hidden="true">Mail</span>} />
         <span className="ml-hero-ico" aria-hidden="true"><Icon name="mail" size={28} /></span>
         <h1>Your mail, with an assistant built in.</h1>
         <p>Summaries of every thread, replies in your tone, and mail that turns into tasks, tickets and reminders. Read live from your provider, never shared with the workspace.</p>
@@ -149,7 +150,7 @@ export function MailPage() {
   return (
     <div className={`ml-shell${row ? ' is-open' : ''}`} key={`${wid}-${uid}`} data-testid="mail">
       <h1 className="sr-only">Mail</h1>
-      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Mail</span>}>
+      <ToolbarSlot title={<span className="tb-crumb" aria-hidden="true">Mail</span>}>
         <button type="button" className="ml-compose-top" onClick={() => setCompose({})} disabled={sendable.length === 0} data-testid="ml-new">Compose</button>
       </ToolbarSlot>
 
@@ -185,12 +186,11 @@ export function MailPage() {
       </aside>
 
       <section className="ml-list" aria-label="Messages">
-        <form className="ml-search" role="search" onSubmit={(e) => { e.preventDefault(); setSelected(null); setQuery(search.trim() ? parseSearch(search) : null); }}>
+        {(searching || !!query || !!search) && <form className="ml-search" role="search" onSubmit={(e) => { e.preventDefault(); setSelected(null); setQuery(search.trim() ? parseSearch(search) : null); }}>
           <Icon name="search" size={14} />
           <input value={search} onChange={(e) => { setSearch(e.target.value); if (!e.target.value) setQuery(null); }} placeholder="Search — “from SBI about bulk payments last week”" aria-label="Search mail" />
           <button type="button" className="ml-icon" onClick={refresh} title="Sync now" aria-label="Sync now"><Icon name="refresh" size={14} /></button>
-          <button type="button" className="ml-icon ml-compose-sm" onClick={() => setCompose({})} disabled={sendable.length === 0} title="New message" aria-label="New message"><Icon name="edit" size={14} /></button>
-        </form>
+        </form>}
         {query && (
           <div className="ml-understood" data-testid="ml-understood"><span>Showing</span>{describeSearch(query).map((t) => <span key={t} className="ml-pill">{t}</span>)}
             <button type="button" className="link-btn" onClick={() => { setQuery(null); setSearch(''); }}>Clear</button></div>
@@ -202,7 +202,11 @@ export function MailPage() {
               <button key={id} type="button" aria-pressed={box === id && !query} onClick={() => choose(id)}>{BOXES.find((b) => b.id === id)!.label}{counts[id] ? <em>{counts[id]}</em> : null}</button>
             ))}
           </div>
-          <DotsMenu label="Mailboxes" icon="inbox" items={[
+          <button type="button" className="ml-compose-narrow" onClick={() => setCompose({})} disabled={sendable.length === 0}>Compose</button>
+          <button type="button" className="ml-icon ml-search-btn" aria-label="Search" aria-expanded={searching} onClick={() => setSearching((v) => !v)}><Icon name="search" size={15} /></button>
+          <DotsMenu label="Mailboxes" icon="more" items={[
+            ...(laneInbox ? (['focused', 'other'] as const).map((l) => ({ label: `${lane === l ? '✓ ' : ''}${l === 'focused' ? 'Focused' : 'Other'}`, hint: l === 'other' && otherCount > 0 ? `${otherCount} in Other` : l === 'focused' ? 'Sorted by AI' : undefined, icon: (l === 'focused' ? 'target' : 'inbox') as IconName, onSelect: () => { setLane(l); setSelected(null); } })) : []),
+            ...(!query && box === 'inbox' ? nudges.map((r) => ({ label: `No reply from ${displayName(r.to).split(',')[0]}`, hint: `${daysSince(r.date, now)} days — remind?`, icon: 'alarm' as IconName, onSelect: () => setSelected(r.key) })) : []),
             ...BOXES.filter((b) => !['inbox', 'sent', 'drafts'].includes(b.id)).map((b) => ({ label: b.label, icon: b.icon, hint: counts[b.id] ? `${counts[b.id]}` : undefined, onSelect: () => choose(b.id) })),
             ...data.accounts.map((a) => ({ label: a.label, icon: 'mail' as IconName, hint: a.email, onSelect: () => choose(`account:${a.key}`) })),
             ...smart.map(({ p, rows }) => ({ label: p.name, icon: 'folder' as IconName, hint: `${rows.length} in this project`, onSelect: () => choose(`project:${p.id}`) })),
@@ -217,6 +221,7 @@ export function MailPage() {
           <b>{query ? 'Search' : BOX_IDS.has(box) ? BOXES.find((b) => b.id === box)!.label : accountKey ? data.accounts.find((a) => a.key === accountKey)?.label ?? 'Account' : smart.find((x) => x.p.id === projectId)?.p.name ?? 'Inbox'}</b>
           <small data-testid="ml-subtitle">{laneInbox ? `${list.filter((r) => r.unread).length} unread · sorted by AI` : box === 'drafts' && !query ? `${local.drafts.length + local.scheduled.length}` : `${list.length} message${list.length === 1 ? '' : 's'}`}</small>
         </header>
+        {laneInbox && lane === 'other' && <div className="ml-lane-on" data-testid="ml-lane-on">Other<button type="button" aria-label="Back to Focused" onClick={() => { setLane('focused'); setSelected(null); }}><Icon name="close" size={11} /></button></div>}
         {laneInbox && (
           <div className="ml-lanes" role="tablist" aria-label="Inbox" data-testid="ml-lanes">
             {(['focused', 'other'] as const).map((l) => <button key={l} type="button" role="tab" aria-selected={lane === l} className={lane === l ? 'on' : ''} onClick={() => { setLane(l); setSelected(null); }}>

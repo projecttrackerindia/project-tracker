@@ -603,3 +603,6 @@ html[data-theme='dark'] .wp-task { background: color-mix(in srgb, var(--calm-p2)
 /* the page's own heading where the shell toolbar is hidden (below 1100px); read by assistive tech, not drawn */
 .wp-h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
 @media (min-width: 1100px) { .wp-h1 { display: none; } }
+.wp-glance-logged { margin-top: 8px; width: 100%; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 0; border-radius: var(--calm-r-row); background: var(--calm-fill); font: inherit; font-size: 13px; color: var(--calm-ink); cursor: pointer; }
+.wp-glance-logged svg:last-child { margin-left: auto; color: var(--calm-ink3-text); }
+.wp-glance-logged.open { box-shadow: inset 0 0 0 1.5px var(--calm-accent); }

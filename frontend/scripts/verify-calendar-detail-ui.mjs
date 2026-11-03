@@ -230,7 +230,7 @@ try {
   checks.push('deadline: move date with reason');
 
   // logged time chip: the entries that make the total
-  await page.locator(`.wp-dh.tdy [data-testid="wp-logged"]`).click();
+  await page.getByRole('tab', { name: 'Day', exact: true }).click(); await page.getByTestId('wp-logged').click();
   await card().waitFor();
   assert.equal(await card().getAttribute('data-kind'), 'loggedDay');
   assert.equal(await page.locator('[data-testid="ed-entries"] li').count(), 2);
@@ -238,6 +238,7 @@ try {
   await capture('logged-card-1440');
   await page.keyboard.press('Escape');
   // leave (read-only) and reminder
+  await page.getByRole('tab', { name: 'Week', exact: true }).click();
   await page.locator('.wp-leave').click(); await card().waitFor();
   assert.equal(await card().getAttribute('data-kind'), 'leave'); assert.match(await card().innerText(), /Family function/);
   assert.equal(await card().locator('.ed-btn').count(), 0, 'leave is read-only');

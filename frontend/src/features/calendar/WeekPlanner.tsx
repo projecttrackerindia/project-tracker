@@ -521,6 +521,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
 
   // ---- the day at a glance (Day view)
   const dayMeets = meets.filter((m) => m.day === selDay && layers.meetings);
+  const glanceLogged = layers.logged ? loggedMinutesOf(selDv?.time ?? []) : 0;
   const glance = (
     <section className="wp-glance" aria-label={`${dayLabel(selDay, today)} at a glance`} data-testid="wp-glance">
       <div className="wp-ft">{dateOf(selDay).toLocaleDateString('en-GB', { weekday: 'long' })} at a glance</div>
@@ -529,12 +530,19 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
         <span><b>{fmtMins(Math.round(dayMeets.reduce((n, m) => n + (m.end - m.start), 0) * 60))}</b><small>meetings</small></span>
         <span><b>{fmtMins(Math.round((selDv?.focus ?? []).reduce((n, f) => n + (f.end - f.start), 0) * 60))}</b><small>focus</small></span>
       </div>
+      {glanceLogged > 0 && (
+        <button type="button" className={`wp-glance-logged${openKey === `loggedDay:${selDay}` ? ' open' : ''}`} data-testid="wp-logged" data-block={`loggedDay:${selDay}`} data-day={selDay}
+          aria-label={`${fmtMins(glanceLogged)} logged`} title="The day's logged time — click for the entries"
+          onClick={(ev) => handlers.open({ kind: 'loggedDay', key: `loggedDay:${selDay}`, day: selDay, entries: layers.logged ? selDv?.time ?? [] : [] }, ev.currentTarget)}>
+          <Icon name="timer" size={12} />{fmtMins(glanceLogged)} logged<Icon name="chevronR" size={12} />
+        </button>
+      )}
     </section>
   );
 
   return (
     <div className={`wp wp-${view}`} data-testid="week-planner">
-      <ToolbarSlot title={<h1>Calendar</h1>} />
+      <ToolbarSlot title={<h1 className="tb-crumb">Calendar</h1>} />
       <aside className="wp-left" aria-label="Month and calendars">{rail}</aside>
 
       <header className="wp-top">
@@ -574,10 +582,8 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                 <span />
                 {days.map((d) => {
                   const dv = wv.byDay.get(d);
-                  const ents = layers.logged ? dv?.time ?? [] : [];
-                  const mins = loggedMinutesOf(ents);
                   const lv = dv?.off[0] ?? null;
-                  const lk = `loggedDay:${d}`, vk = `leave:${d}`;
+                  const vk = `leave:${d}`;
                   return (
                     <div key={d} className={`wp-dh${d === today ? ' tdy' : ''}${d === selDay ? ' sel' : ''}${flagOver === d ? ' drop' : ''}`} data-day={d} data-sig={dv ? daySignature(dv) : ''}
                       onClick={(ev) => { if (!(ev.target as HTMLElement).closest('button')) setSelDay(d); }}>
@@ -585,13 +591,6 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
                         onClick={() => { setSelDay(d); if (view === 'week' && !wide) { setAnchor(d); setView('day'); } }}>
                         {view === 'day' ? dateOf(d).toLocaleDateString('en-GB', { weekday: 'long' }) : DOW3[dateOf(d).getDay()]}<b>{dateOf(d).getDate()}</b>
                       </button>
-                      {mins > 0 && (
-                        <button type="button" className={`wp-logged${openKey === lk ? ' open' : ''}`} data-testid="wp-logged" data-block={lk} data-day={d} data-start={-2}
-                          aria-label={`${fmtMins(mins)} logged`} aria-expanded={openKey === lk} title={`Logged ${fmtMins(mins)} — click for the entries`}
-                          onClick={(ev) => handlers.open({ kind: 'loggedDay', key: lk, day: d, entries: ents }, ev.currentTarget)}>
-                          <Icon name="timer" size={10} />{fmtMins(mins)}
-                        </button>
-                      )}
                       {lv && <button type="button" className={`wp-leave${openKey === vk ? ' open' : ''}`} data-block={vk} data-day={d} data-start={-3} aria-expanded={openKey === vk}
                         onClick={(ev) => handlers.open({ kind: 'leave', key: vk, day: d, note: lv.type === 'holiday' ? lv.title : lv.note }, ev.currentTarget)}>{lv.type === 'holiday' ? lv.title || 'Holiday' : 'Leave'}</button>}
                     </div>

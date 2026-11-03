@@ -435,3 +435,18 @@ html .talk-head .talk-ib.talk-info-link svg { width: 12px; height: 12px; }
   html .talk-head .talk-ib.talk-pill svg { width: 18px; height: 18px; }
 }
 @media (max-width: 860px) { html .talk-head .talk-ib.talk-pill.talk-video { display: none; } }
+/* calm list head: the title with search behind its icon and ⋯ beside it; a filter other than All shows as a small removable chip */
+.talk-large-row { display: flex; align-items: center; gap: 4px; padding-right: 12px; }
+.talk-large-row .talk-large { flex: 1; min-width: 0; }
+.talk-search-btn { width: 32px; height: 32px; border: 0; border-radius: 16px; background: none; color: var(--calm-ink2); display: grid; place-items: center; cursor: pointer; flex: none; }
+.talk-search-btn:hover, .talk-search-btn[aria-expanded='true'] { background: var(--calm-fill); color: var(--calm-ink); }
+.talk-large-row .v2-dots-btn, .talk-large-row .status-btn { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 16px; }
+html .talk-filters { display: none !important; }
+.talk-filter-on { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; margin: 4px 16px; height: 26px; padding: 0 4px 0 12px; border-radius: 13px; background: var(--calm-fill); font-size: 12.5px; font-weight: 500; }
+.talk-filter-on button { width: 20px; height: 20px; border: 0; border-radius: 10px; background: none; display: grid; place-items: center; color: var(--calm-ink2); cursor: pointer; }
+.talk-pin-mark { position: absolute; left: 4px; top: 8px; color: var(--calm-ink3-text); line-height: 0; }
+.talk-row.pinned.unread .talk-pin-mark { top: 6px; }
+@media (max-width: 860px) {
+  .talk-large-row { padding-right: 8px; }
+  .talk-search-btn, .talk-large-row .v2-dots-btn, .talk-large-row .status-btn { width: 44px; height: 44px; border-radius: 22px; }
+}

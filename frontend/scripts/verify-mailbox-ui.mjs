@@ -94,9 +94,9 @@ try{
  // Focused / Other: the no-reply payslip goes to Other; the subtitle counts unread mail, sorted by the assistant (needs-reply first).
  assert.equal(await page.locator('[data-testid="ml-row"]').count(),2);
  assert.equal(await page.getByTestId('ml-subtitle').innerText(),'2 unread · sorted by AI');
- await page.getByTestId('ml-lanes').getByRole('tab',{name:/^Other/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
+ await page.getByRole('button',{name:'Mailboxes'}).click();await page.getByRole('menuitem',{name:/^Other/}).click();await page.getByTestId('ml-lane-on').waitFor();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
  assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Payroll/);assert.equal(await page.getByTestId('ml-subtitle').innerText(),'0 unread · sorted by AI');
- await page.getByTestId('ml-lanes').getByRole('tab',{name:'Focused'}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('focused-other');
+ await page.getByRole('button',{name:'Mailboxes'}).click();await page.getByRole('menuitem',{name:/Focused/}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===2);checks.push('focused-other');
  assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Ravi Kumar[\s\S]*Needs reply/);
  assert.match(await page.locator('[data-testid="ml-row"]').nth(1).innerText(),/Kiran[\s\S]*Invoice/);
  assert.equal(await page.locator('.ml-row.unread').count(),2);
@@ -109,7 +109,8 @@ try{
  const mbox=async(name)=>{if(['Inbox','Sent','Drafts'].includes(name)){await pills.getByRole('button',{name:new RegExp(`^${name}`)}).click();return;}
   await page.getByRole('button',{name:'Mailboxes'}).click();await page.getByRole('menu',{name:'Mailboxes'}).getByRole('menuitem',{name:new RegExp(`^${name}`)}).click();};
  // Waiting on others: my mail to CRIF five days ago with no answer; the inbox offers the nudge.
- assert.match(await page.getByTestId('ml-nudge').innerText(),/No reply from CRIF Ops in 5 days/);
+ // The follow-up nudge sits in ⋯ (demo 23 shows none in the list).
+ await page.getByRole('button',{name:'Mailboxes'}).click();assert.match(await page.getByRole('menuitem',{name:/No reply from CRIF Ops/}).innerText(),/5 days/);await page.keyboard.press('Escape');
  await mbox('Needs reply');await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
  await mbox('Waiting on others');await page.locator('[data-testid="ml-row"]',{hasText:'CRIF'}).waitFor();
  await page.locator('[data-testid="ml-row"]').first().click();await page.getByTestId('ml-followup').waitFor();assert.match(await page.getByTestId('ml-followup').innerText(),/No reply from CRIF Ops in 5 days — remind\?/);
@@ -145,7 +146,7 @@ try{
  await page.getByTestId('ml-reader').getByRole('button',{name:'Archive',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);
  await mbox('Archive');await page.locator('[data-testid="ml-row"]',{hasText:'Ravi'}).waitFor();checks.push('archive');
  // Natural-language search: what it understood, then the matches.
- await page.getByLabel('Search mail').fill('mails from kiran about invoice');await page.getByLabel('Search mail').press('Enter');
+ await page.getByRole('button',{name:'Search',exact:true}).click();await page.getByLabel('Search mail').fill('mails from kiran about invoice');await page.getByLabel('Search mail').press('Enter');
  await page.getByTestId('ml-understood').waitFor();assert.match(await page.getByTestId('ml-understood').innerText(),/From “kiran”[\s\S]*About “invoice”/);
  await page.waitForFunction(()=>document.querySelectorAll('[data-testid="ml-row"]').length===1);assert.match(await page.locator('[data-testid="ml-row"]').first().innerText(),/Invoice 4471/);
  await page.getByRole('button',{name:'Clear'}).click();checks.push('search');

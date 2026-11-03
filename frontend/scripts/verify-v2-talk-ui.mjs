@@ -101,10 +101,13 @@ try {
   checks.push('talk-renamed-messages');
   await page.locator('.talk-row[data-row="Devraj Kumar"]').waitFor();
   // Chats only: meetings have their own place (/meetings), so no Meetings filter and no meeting rows even when the feed has one.
-  assert.deepEqual(await page.locator('.talk-filters .talk-chip').allInnerTexts(), ['All', 'Unread 1', 'Chats']);
+  await page.getByRole('button', { name: 'More in Messages' }).click();
+  assert.match(await page.getByRole('menuitem', { name: /Show unread/ }).innerText(), /1 unread/);
+  await page.keyboard.press('Escape');
   assert.equal(await page.locator('.talk-row[data-row="Daily status call"]').count(), 0, 'no meeting rows in Messages');
   assert.equal(await page.locator('.talk-src.s-meeting').count(), 0, 'no ▶ meeting badges in Messages');
-  assert.ok(await page.getByRole('textbox', { name: 'Search Messages' }).isVisible(), 'search at the top of the list');
+  await page.getByRole('button', { name: 'Search', exact: true }).first().click();
+  assert.ok(await page.getByRole('textbox', { name: 'Search Messages' }).isVisible(), 'search behind its icon at the top of the list');
   assert.equal(await page.locator('.talk-row[data-row="MuleSoft Support"] .talk-dot').count(), 1, 'an unread dot');
   // people are round, groups a rounded square
   const radius = async (sel) => page.locator(sel).first().evaluate((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius));
@@ -127,7 +130,7 @@ try {
   await page.goto(`${origin}/preview-org/talk`);
   await page.locator('.talk-row[data-row="Devraj Kumar"]').waitFor();
   checks.push('no-mail');
-  await page.locator('.talk-filters .talk-chip', { hasText: 'All' }).click();
+  await page.getByRole('button', { name: 'More in Messages' }).click(); await page.getByRole('menuitem', { name: /Show all/ }).click();
   checks.push('filters');
 
   // A chat: the v2 header, the summary strip, the composer.
