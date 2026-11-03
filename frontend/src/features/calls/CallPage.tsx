@@ -10,7 +10,7 @@ import { formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { callsApi, isAgent, type Call, type CallJoin } from './callsApi';
+import { callLink, callsApi, isAgent, type Call, type CallJoin } from './callsApi';
 import { CallStage } from './CallStage';
 import './calls.css';
 
@@ -22,7 +22,7 @@ const FullScreen = ({ children }: { children: ReactNode }) => createPortal(child
  * the call chat and device choices. If the project agent was asked along it appears as a participant marked "Agent" - it joined by itself,
  * and everyone can see that it is listening. The host can end the call for everyone; anyone can leave.
  */
-export function CallPage({ id }: { id: string }) {
+export function CallPage({ id, audio = false }: { id: string; /** A voice call: the camera starts off. */ audio?: boolean }) {
   const nav = useNavigate();
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user.displayName ?? '');
@@ -49,7 +49,7 @@ export function CallPage({ id }: { id: string }) {
   if (info.isError || !info.data) return <FullScreen><div className="call-shell over"><ErrorState error={info.error} retry={() => info.refetch()} /></div></FullScreen>;
   const call = info.data;
 
-  if (call.status === 'ended' || left) return <FullScreen><div className="call-shell over"><CallOver call={call} rejoin={call.status === 'live' ? () => { setLeft(false); setJoin(null); } : undefined} /></div></FullScreen>;
+  if (call.status === 'ended' || left) return <CallOver id={call.id} />;
 
   if (!join || !choices) {
     return (
@@ -61,7 +61,7 @@ export function CallPage({ id }: { id: string }) {
             <p>{call.people.filter((p) => p.inCall).length > 0 ? `${call.people.filter((p) => p.inCall).map((p) => p.name).slice(0, 4).join(', ')} ${call.people.filter((p) => p.inCall).length === 1 ? 'is' : 'are'} in the call.` : `Started by ${call.startedByName}.`}</p>
             {call.agentEnabled && <p className="call-agent-note"><Icon name="sparkle" size={14} /><span>The project agent is in this call taking notes. It writes down who said what and sends the minutes afterwards.</span></p>}
           </div>
-          <PreJoin defaults={{ username: me, videoEnabled: true, audioEnabled: true }} joinLabel={joining ? 'Joining…' : 'Join the call'} userLabel="Your name" onSubmit={(v) => void enter(v)} onError={() => toast('The camera or microphone could not be opened. You can still join and turn them on later.', 'warning')} />
+          <PreJoin defaults={{ username: me, videoEnabled: !audio, audioEnabled: true }} joinLabel={joining ? 'Joining…' : 'Join the call'} userLabel="Your name" onSubmit={(v) => void enter(v)} onError={() => toast('The camera or microphone could not be opened. You can still join and turn them on later.', 'warning')} />
         </div>
       </div></FullScreen>
     );
@@ -95,7 +95,7 @@ function InCallCount() {
 
 function CallHeader({ call, onBack, live = false, onEnd }: { call: Call; onBack: () => void; live?: boolean; onEnd?: () => void }) {
   const copy = async () => {
-    try { await navigator.clipboard.writeText(`${window.location.origin}/calls/${call.id}`); toast('Link copied. People in this workspace who may join can open it.'); }
+    try { await navigator.clipboard.writeText(`${window.location.origin}${callLink(call.id)}`); toast('Link copied. People in this workspace who may join can open it.'); }
     catch { toast('Could not copy the link.', 'error'); }
   };
   return (
@@ -113,20 +113,9 @@ function CallHeader({ call, onBack, live = false, onEnd }: { call: Call; onBack:
   );
 }
 
-function CallOver({ call, rejoin }: { call: Call; rejoin?: () => void }) {
-  const minutes = call.endedAt ? Math.max(1, Math.round((Date.parse(call.endedAt) - Date.parse(call.startedAt)) / 60_000)) : null;
-  const joined = call.people.filter((p) => p.joinedAt);
-  useEffect(() => { document.title = `${call.title} · Call`; }, [call.title]);
-  return (
-    <div className="call-over" data-testid="call-over">
-      <Icon name="video" size={34} />
-      <h2>{rejoin ? 'You left the call' : 'This call has ended'}</h2>
-      <p>{call.title}{minutes ? ` · ${minutes} minute${minutes === 1 ? '' : 's'}` : ''}{joined.length ? ` · ${joined.map((p) => p.name).slice(0, 6).join(', ')}` : ''}</p>
-      {call.agentEnabled && call.projectId && <p className="call-agent-note"><Icon name="sparkle" size={14} /><span>The agent's notes, minutes and follow-ups will be in the project's <Link to={`/projects/${call.projectId}?tab=agent`}>Agent</Link> tab shortly.</span></p>}
-      <div className="call-over-actions">
-        {rejoin && <button type="button" className="btn btn-primary" onClick={rejoin}><Icon name="video" size={14} /> Rejoin</button>}
-        <Link className="btn" to={call.projectId ? `/work/projects/${call.projectId}` : call.conversationId ? `/messages/${call.conversationId}` : '/'}>Back to {call.projectId ? 'the project' : call.conversationId ? 'the chat' : 'Home'}</Link>
-      </div>
-    </div>
-  );
+/** A call that is over has no page of its own: Meetings shows it (people, notes, transcript, summary, Rejoin while it is still on). */
+function CallOver({ id }: { id: string }) {
+  const nav = useNavigate();
+  useEffect(() => { nav(`/meetings?call=${encodeURIComponent(id)}&over=1`, { replace: true }); }, [id, nav]);
+  return null;
 }

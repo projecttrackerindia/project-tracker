@@ -14,6 +14,11 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     : DbContext(options), IAppDbContext
 {
     public DbSet<PlannedLeave> PlannedLeaves => Set<PlannedLeave>();
+    public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+    public DbSet<ApprovalRequestStep> ApprovalRequestSteps => Set<ApprovalRequestStep>();
+    public DbSet<ApprovalRequestEvent> ApprovalRequestEvents => Set<ApprovalRequestEvent>();
+    public DbSet<ApprovalPolicy> ApprovalPolicies => Set<ApprovalPolicy>();
+    public DbSet<Note> Notes => Set<Note>();
     public DbSet<AiCreditAccount> AiCreditAccounts => Set<AiCreditAccount>();
     public DbSet<AiCreditReservation> AiCreditReservations => Set<AiCreditReservation>();
     public DbSet<AiCreditEntry> AiCreditEntries => Set<AiCreditEntry>();
@@ -363,6 +368,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureQuality(b);
         ConfigurePlatformViews(b);
         ConfigureAttendance(b);
+        ConfigureApprovalsAndNotes(b);
         ApplyQueryFilters(b);
     }
 }

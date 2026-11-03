@@ -11,7 +11,7 @@ import { addDays, dm } from './planSheet';
 import { Av, Floating } from './planSheetParts';
 import type { Colour } from './planSheetTabs';
 
-type Group = 'meeting' | 'owner' | 'project';
+export type Group = 'meeting' | 'owner' | 'project';
 const REVIEW_DAYS = 7;
 const isDone = (i: ReviewItem) => i.state === 'done' || i.state === 'cancelled';
 /** Needs review: raised in the last week (by a meeting or its notes) and nobody has decided on it yet. */
@@ -28,13 +28,16 @@ export function useActionReview(enabled = true) {
  * its owner, due date, project and status; tick to finish one. New ones that nobody has looked at carry "Needs review": Review walks them one at a
  * time — A accept, R reassign, S snooze a day, ⇧S snooze to a date you pick, ⌫ discard, J/K next and previous.
  */
-export function ActionItemsTab({ review, colourOfProject, colours, text, people, command }: {
+export function ActionItemsTab({ review, colourOfProject, colours, text, people, command, layout = 'list', groupBy, reviewSignal }: {
   review: ReturnType<typeof useActionReview>; colourOfProject: (id: string | null) => Colour | null; colours: Colour[]; text: string;
   people: { id: string; name: string }[]; command?: React.ReactNode;
+  /** The grouping, when the page holds it (Portfolio › Action items puts it in ⋯). */ groupBy?: Group; /** Bumped to start the review. */ reviewSignal?: number;
+  /** `cards` (Portfolio › Action items, design shot 12): one calm card per meeting; `list` the Plan sheet's first folder tab. */ layout?: 'list' | 'cards';
 }) {
   const nav = useNavigate();
   const wid = useWorkspaceId();
-  const [group, setGroup] = useState<Group>('meeting');
+  const [ownGroup, setGroup] = useState<Group>('meeting');
+  const group = groupBy ?? ownGroup;
   const [reviewing, setReviewing] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [reassign, setReassign] = useState<{ item: ReviewItem; anchor: HTMLElement | null } | null>(null);
@@ -62,6 +65,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
       toast(label ?? `${i.key} updated`);
     } catch (e) { toast(e instanceof ApiError ? e.message : 'That could not be saved.', 'error'); }
   };
+  useEffect(() => { if (reviewSignal) setReviewing(0); }, [reviewSignal]);
   const cur = reviewing != null ? queue[Math.min(reviewing, queue.length - 1)] : null;
   useEffect(() => {
     if (reviewing == null) return;
@@ -102,12 +106,12 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
   return (
     <div className="ps4-ai">
       {command && <div className="ps3-cmdrow">{command}</div>}
-      <div className="ps4-aibar">
+      {layout !== 'cards' && <div className="ps4-aibar">
         <div className="ps3-vsw" role="tablist" aria-label="Group action items">{(['meeting', 'owner', 'project'] as Group[]).map((g) => <button key={g} type="button" role="tab" aria-selected={group === g} onClick={() => setGroup(g)}>By {g}</button>)}</div>
         <span className="ps3-dim" style={{ fontSize: 12 }}>{items.filter((i) => !isDone(i)).length} open · {items.length} items</span>
         <span className="ps3-sp" />
         {queue.length > 0 && <button type="button" className="ps3-qc pri" onClick={() => setReviewing(0)}>Review {queue.length} new</button>}
-      </div>
+      </div>}
       {cur && (
         <div className={`rvcard pc-${colourOfProject(cur.projectId) ?? 'blue'}`} role="dialog" aria-label={`Review ${cur.title}`}>
           <div className="ps3-dim" style={{ fontSize: 12 }}>Needs review · {Math.min(reviewing ?? 0, queue.length - 1) + 1} of {queue.length}{cur.sourceTitle ? ` · from ${cur.sourceTitle}` : ''}</div>
@@ -125,6 +129,42 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
           </div>
         </div>
       )}
+      {layout === 'cards' ? (
+        <div className="pfa-grid">
+          {groups.length === 0 && <p className="ps3-empty">No action items{text || colours.length ? ' match the filter' : ' yet — those agreed in meetings show up here'}.</p>}
+          {groups.map((g) => {
+            const c = colourOfProject(g.projectId);
+            const open = g.items.filter((i) => !isDone(i)).length;
+            const quote = g.items.find((i) => i.latestNote)?.latestNote;
+            const firstNew = queue.findIndex((q) => g.items.some((i) => i.id === q.id));
+            return (
+              <section key={g.k} className={`calm-card pfa-card pc-${c ?? 'none'}`} aria-label={g.title}>
+                <div className="pfa-h"><b className="pfa-dot" aria-hidden="true" />{g.title}{g.when && <span>{new Date(g.when).toLocaleDateString('en-GB', { weekday: 'short' })} {new Date(g.when).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>}</div>
+                <div className="pfa-sub">{open} open · {g.items.length} items{g.items[0]?.projectName && group !== 'project' ? ` · ${g.items[0].projectName}` : ''}</div>
+                <div className="pfa-rows">
+                  {g.items.slice(0, 6).map((i) => {
+                    const chip = isDone(i) ? ['Done', 'grey'] : i.decision ? ['Accepted', 'green'] : needsReview(i) ? ['New', 'blue'] : i.isOverdue ? ['Late', 'red'] : [STATE[i.state], 'grey'];
+                    return (
+                      <div key={i.id} className={`pfa-row ${cur?.id === i.id ? 'sel' : ''}`}>
+                        {i.owner ? <Av id={i.owner.id} name={i.owner.name} size={24} /> : <span className="pfa-noav" aria-hidden="true" />}
+                        <button type="button" className="pfa-t" onClick={() => i.projectId && nav(`/work/projects/${i.projectId}?tab=work&kind=action&action=${i.id}`)}>{i.title}<small>{i.owner?.name ?? 'No owner'}{i.dueDate ? ` · ${dm(i.dueDate)}` : ''}</small></button>
+                        <span className={`pfo-chip ${chip[1]}`}>{chip[0]}</span>
+                      </div>
+                    );
+                  })}
+                  {g.items.length > 6 && <div className="pfa-sub">+{g.items.length - 6} more</div>}
+                </div>
+                {quote && <div className="pfa-quote"><span className="calm-orb" aria-hidden="true" />“{quote}”</div>}
+                <div className="pfa-foot">
+                  {firstNew >= 0 ? <button type="button" className="pfa-rv" onClick={() => setReviewing(firstNew)}>Review · A / R / S ›</button> : <span className="pfa-sub">All reviewed</span>}
+                  <span className="ps3-sp" />
+                  {g.projectId && <button type="button" className="pfa-notes" onClick={() => nav(`/work/projects/${g.projectId}?tab=work&kind=action`)}>Notes ›</button>}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
       <div className="ps4-aigrid">
         <div className="colh ai" role="row"><span /><span>Action item</span><span>Owner</span><span>Due</span><span>Project</span><span>Status</span></div>
         {groups.length === 0 && <p className="ps3-empty">No action items{text || colours.length ? ' match the filter' : ' yet — those agreed in meetings show up here'}.</p>}
@@ -145,6 +185,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
           );
         })}
       </div>
+      )}
       {snoozeAt && <SnoozePicker item={snoozeAt.item} anchor={snoozeAt.anchor} onClose={() => setSnoozeAt(null)}
         onPick={(day) => { const it = snoozeAt.item; setSnoozeAt(null); void decide(it, 'replan', { dueDate: day }, `Snoozed ${it.key} to ${dm(day)}`); }} />}
       {reassign && (

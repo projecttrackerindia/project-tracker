@@ -1,0 +1,282 @@
+/* =====================================================================================================================
+   CALM THEME - the approved look for every screen (design: scratchpad calm-all/calm.html, today-revamp2/today2.html).
+   The LAST global sheet. It defines the calm tokens (--calm-*) and maps the design-system (--ds-*) and older app tokens onto them, so
+   every existing screen adopts the theme without code changes. One soft page tone with an ambient glow, frosted cards with no borders
+   and soft depth, three ink levels, one accent, project colours only as dots and ribbons. Motion comes from tokens.css (--motion-*).
+   Shell rules carry an `html body` prefix so they win over the component sheets loaded after this one.
+   ===================================================================================================================== */
+
+:root, html[data-theme='light'] {
+  /* ---- calm palette ---- */
+  --calm-bg: #f6f5f8;
+  --calm-card: rgba(255, 255, 255, .78);
+  --calm-solid: #ffffff;
+  --calm-ink: #1d1d1f;
+  --calm-ink2: #6e6e73;
+  --calm-ink3: #a1a1a6;
+  --calm-ink3-text: #8a8a8f;          /* ink3 where it must still read as text (AA large) */
+  --calm-fill: rgba(0, 0, 0, .05);
+  --calm-fill-2: rgba(0, 0, 0, .08);
+  --calm-accent: #0a84ff;
+  --calm-accent-text: #0068d6;        /* the accent as small text on the page tone (4.5:1) */
+  --calm-accent-soft: color-mix(in srgb, #0a84ff 12%, transparent);
+  --calm-green: #30b158;
+  --calm-orange: #e8890c;
+  --calm-red: #ff3b30;
+  --calm-red-text: #d70015;
+  --calm-sh: 0 1px 2px rgba(0, 0, 0, .03), 0 12px 40px rgba(40, 30, 80, .08);
+  --calm-sh-sm: 0 1px 3px rgba(0, 0, 0, .1);
+  --calm-sh-sheet: 0 30px 80px rgba(0, 0, 0, .18);
+  --calm-scrim: rgba(240, 240, 245, .45);
+  --calm-amb: radial-gradient(60% 55% at 78% 8%, rgba(170, 140, 255, .20), transparent 70%),
+              radial-gradient(55% 50% at 12% 95%, rgba(90, 170, 255, .16), transparent 70%),
+              radial-gradient(40% 40% at 95% 90%, rgba(255, 170, 120, .12), transparent 70%);
+  --calm-orb: conic-gradient(from 200deg, #ff5f9e, #a35cff, #3a8bff, #2fd0c2, #ffb340, #ff5f9e);
+  --calm-go-bg: #1d1d1f;              /* the one primary action: ink pill */
+  --calm-go-fg: #ffffff;
+  --calm-blur: blur(30px);
+  --calm-side-bg: color-mix(in srgb, #ffffff 40%, transparent);
+
+  /* ---- pastel ribbon segments (today2.html .seg: meeting, focus, light work, review, admin) ---- */
+  --calm-rib-meet: #14b8a6; --calm-rib-focus: #a78bfa; --calm-rib-light: #86d19a; --calm-rib-review: #fb7185; --calm-rib-admin: #fbbf24; --calm-rib-past: .35;
+  --calm-now: #ff3b30;
+
+  /* ---- project colours (dots and ribbons only) ---- */
+  --calm-p1: #3b82f6; --calm-p2: #14b8a6; --calm-p3: #8b5cf6; --calm-p4: #f59e0b; --calm-p5: #f43f5e; --calm-p6: #22c55e;
+
+  /* ---- type scale ---- */
+  --calm-font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter Variable', 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif;
+  --calm-display: 54px;  --calm-display-w: 300; --calm-display-ls: -.035em; --calm-display-lh: 1.08;
+  --calm-title: 32px;    --calm-title-w: 600;   --calm-title-ls: -.025em;
+  --calm-h3: 19px;       --calm-sheet-title: 24px;
+  --calm-body: 15px;     --calm-row: 14.5px;   --calm-small: 13px;   --calm-label: 12.5px;   --calm-micro: 11px;
+
+  /* ---- spacing and radii ---- */
+  --calm-s1: 4px; --calm-s2: 8px; --calm-s3: 12px; --calm-s4: 16px; --calm-s5: 22px; --calm-s6: 28px; --calm-s7: 40px;
+  --calm-r-row: 14px; --calm-r-tile: 18px; --calm-r-card: 22px; --calm-r-pane: 24px; --calm-r-hero: 28px; --calm-r-pill: 999px;
+  --calm-col: 860px;                  /* the centred composition */
+
+  /* ---- the design system, mapped onto calm ---- */
+  --ds-bg: var(--calm-bg);
+  --ds-surface: var(--calm-solid);
+  --ds-surface-2: color-mix(in srgb, var(--calm-solid) 70%, var(--calm-bg));
+  --ds-fill: var(--calm-fill);
+  --ds-fill-strong: var(--calm-fill-2);
+  --ds-separator: var(--calm-fill);
+  --ds-line: var(--calm-fill);
+  --ds-outline: var(--calm-fill-2);
+  --ds-text: var(--calm-ink);
+  --ds-text-2: var(--calm-ink2);
+  --ds-text-3: var(--calm-ink2);
+  --ds-text-4: var(--calm-ink3-text);
+  --ds-accent: var(--calm-accent-text);
+  --ds-accent-fill: var(--calm-accent);
+  --ds-accent-hover: #2a93ff;
+  --ds-accent-press: #0a78e8;
+  --ds-accent-soft: var(--calm-accent-soft);
+  --ds-accent-text: var(--calm-accent-text);
+  --ds-dark: var(--calm-go-bg);
+  --ds-on-dark: var(--calm-go-fg);
+  --ds-e1: var(--calm-sh);
+  --ds-card-shadow: var(--calm-sh);
+  --ds-e2: var(--calm-sh-sm);
+  --ds-e3: var(--calm-sh);
+  --ds-e4: var(--calm-sh-sheet);
+  --ds-hover-lift: 0 1px 2px rgba(0, 0, 0, .03), 0 16px 48px rgba(40, 30, 80, .12);
+  --ds-glass: var(--calm-card);
+  --ds-hero-glow: none;
+  --ds-r-hero: var(--calm-r-hero); --ds-r-card: var(--calm-r-card); --ds-r-tile: var(--calm-r-tile); --ds-r-input: 12px; --ds-r-icon: 12px; --ds-r-pill: var(--calm-r-pill);
+
+  /* ---- the app's older names ---- */
+  --bg: var(--calm-bg);
+  --chrome: transparent;
+  --surface: var(--calm-solid);
+  --surface-2: var(--ds-surface-2);
+  --surface-3: var(--calm-fill);
+  --surface-solid: var(--calm-solid);
+  --panel-solid: var(--calm-solid);
+  --border: var(--calm-fill);
+  --border-strong: var(--calm-fill-2);
+  --text: var(--calm-ink);
+  --text-2: var(--calm-ink2);
+  --text-3: var(--calm-ink2);
+  --accent-rgb: 10, 132, 255;
+  --primary: var(--calm-accent-text);
+  --primary-hover: #2a93ff;
+  --primary-fill: var(--calm-accent);
+  --primary-soft: var(--calm-accent-soft);
+  --primary-text: #ffffff;
+  --shadow-sm: var(--calm-sh-sm);
+  --shadow: var(--calm-sh);
+  --shadow-lg: var(--calm-sh-sheet);
+  --hover-bg: var(--calm-fill);
+  --field-border: transparent;
+  --field-bg: var(--calm-fill);
+  --field-focus-bg: var(--calm-solid);
+  --modal-bg: var(--calm-solid);
+  --modal-border: transparent;
+  --modal-line: var(--calm-fill);
+  --modal-foot: var(--calm-solid);
+  --modal-field: var(--calm-fill);
+  --modal-field-border: transparent;
+  --modal-overlay: var(--calm-scrim);
+  --radius: var(--calm-r-card);
+  --radius-sm: 12px;
+  --radius-lg: var(--calm-r-hero);
+  --font: var(--calm-font);
+}
+
+html[data-theme='dark'] {
+  --calm-bg: #0d0d10;
+  --calm-card: rgba(30, 30, 36, .72);
+  --calm-solid: #1c1c21;
+  --calm-ink: #f5f5f7;
+  --calm-ink2: #9a9aa2;
+  --calm-ink3: #5f5f68;
+  --calm-ink3-text: #85858e;
+  --calm-fill: rgba(255, 255, 255, .07);
+  --calm-fill-2: rgba(255, 255, 255, .11);
+  --calm-accent: #3a9bff;
+  --calm-accent-text: #3a9bff;
+  --calm-accent-soft: color-mix(in srgb, #3a9bff 16%, transparent);
+  --calm-green: #32d74b;
+  --calm-orange: #ff9f0a;
+  --calm-red: #ff453a;
+  --calm-red-text: #ff6961;
+  --calm-sh: 0 0 0 .5px rgba(255, 255, 255, .06), 0 16px 50px rgba(0, 0, 0, .45);
+  --calm-sh-sm: 0 1px 3px rgba(0, 0, 0, .5);
+  --calm-sh-sheet: 0 0 0 .5px rgba(255, 255, 255, .08), 0 30px 80px rgba(0, 0, 0, .6);
+  --calm-scrim: rgba(0, 0, 0, .45);
+  --calm-amb: radial-gradient(60% 55% at 78% 8%, rgba(130, 90, 255, .26), transparent 70%),
+              radial-gradient(55% 50% at 12% 95%, rgba(40, 120, 255, .18), transparent 70%),
+              radial-gradient(40% 40% at 95% 90%, rgba(255, 120, 80, .10), transparent 70%);
+  --calm-go-bg: #f5f5f7;
+  --calm-go-fg: #111111;
+  --calm-side-bg: color-mix(in srgb, #1c1c21 40%, transparent);
+
+  --ds-accent-hover: #5aabff;
+  --ds-accent-press: #2a8eff;
+  --ds-hover-lift: 0 0 0 .5px rgba(255, 255, 255, .08), 0 18px 54px rgba(0, 0, 0, .55);
+  --ds-success: #32d74b; --ds-warning: #ffb340; --ds-danger: #ff6961;
+  --accent-rgb: 58, 155, 255;
+  --primary-hover: #5aabff;
+  --primary-fill: #0a84ff;            /* white on a solid button keeps 4.5:1 */
+  --primary-text: #ffffff;
+  --chrome: transparent;
+  --hover-bg: var(--calm-fill);
+  --field-bg: var(--calm-fill);
+  --field-focus-bg: var(--calm-solid);
+  --modal-overlay: var(--calm-scrim);
+}
+
+/* ------------------------------------------------------------------------------------------------ the page */
+html { background: var(--calm-bg); }
+html body { background: var(--calm-amb), var(--calm-bg); background-attachment: fixed; color: var(--calm-ink); font-family: var(--calm-font); }
+::selection { background: color-mix(in srgb, var(--calm-accent) 22%, transparent); }
+
+/* headings: large and light, Apple display style */
+html body .page-title { font-size: clamp(34px, 3.75vw, 54px); font-weight: var(--calm-display-w); letter-spacing: var(--calm-display-ls); line-height: var(--calm-display-lh); color: var(--calm-ink); }
+html body .page-sub { font-size: var(--calm-body); color: var(--calm-ink2); }
+html body .eyebrow { color: var(--calm-ink2); font-weight: 500; font-size: 13px; }
+html body .hub-section-title, html body .ds-section-title { font-weight: 600; letter-spacing: -.02em; }
+
+/* ------------------------------------------------------------------------------------------------ surfaces: no borders, soft depth */
+html body .card, html body .stat-card, html body .project-card, html body .ds-kpi, html body .pp-box {
+  border: 0; border-radius: var(--calm-r-card); background: var(--calm-card); box-shadow: var(--calm-sh);
+  /* no backdrop-filter on these: it would make every position:fixed child (drag overlays, popovers) relative to the card */
+}
+html[data-theme='dark'] body .card, html[data-theme='dark'] body .stat-card, html[data-theme='dark'] body .project-card { background: var(--calm-card); border: 0; box-shadow: var(--calm-sh); }
+html body .ds-kpi.tile { background: var(--calm-fill); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+html body .card-head, html body .toolbar, html body .modal-head, html body .modal-foot, html body .v2-panel-head { border-bottom: 0; border-top: 0; }
+html body .stat-card:hover { border: 0; }
+/* lists and tables: rows divided by a 1px fill shadow (calm .row + .row), never ruled lines */
+html body th, html body td { border-color: var(--calm-fill); }
+html body table thead th { border-bottom: 0; color: var(--calm-ink3-text); font-weight: 600; font-size: 12px; }
+html body hr { border: 0; height: 1px; background: var(--calm-fill); }
+
+/* fields: a quiet fill, no outline until focused */
+html body .input, html body .select, html body .textarea, html body .modal .input, html body .modal .select, html body .modal .textarea {
+  border-color: transparent; background-color: var(--calm-fill); box-shadow: none;
+}
+html body .input:hover, html body .select:hover, html body .textarea:hover { border-color: transparent; background-color: var(--calm-fill-2); }
+html body .input:focus, html body .select:focus, html body .textarea:focus { background-color: var(--calm-solid); border-color: transparent; box-shadow: 0 0 0 3px color-mix(in srgb, var(--calm-accent) 30%, transparent); }
+
+/* buttons: the primary action is an ink pill; others are quiet fills */
+html body .btn-primary, html[data-theme='dark'] body .btn-primary, html body .modal-foot .btn-primary { background: var(--calm-go-bg); color: var(--calm-go-fg); border-color: transparent; }
+html body .btn-primary:hover:not(:disabled), html[data-theme='dark'] body .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--calm-go-bg) 86%, var(--calm-bg)); }
+html body .btn-ghost, html body .btn:not(.btn-primary):not(.btn-danger):not(.btn-soft):not(.btn-ghost):not(.btn-icon):not(.btn-dark):not(.btn-link) { border-color: transparent; }
+html body .btn-danger { border-color: transparent; background: color-mix(in srgb, var(--calm-red) 10%, transparent); }
+
+/* segmented controls: fill track, solid thumb (calm .tabs / .modes) */
+html body .seg, html body .ps-seg, html body .ds-seg { background: var(--calm-fill); border: 0; box-shadow: none; border-radius: var(--calm-r-pill); }
+html body .ds-chip, html body .chip { border: 0; }
+
+/* modals, menus, popovers */
+html body .modal-overlay { background: var(--calm-scrim); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+html body .modal { border: 0; border-radius: var(--calm-r-hero); background: var(--calm-solid); box-shadow: var(--calm-sh-sheet); }
+html body .dropdown-panel, html body .menu-pop, html body .search-results, html body .dp-panel, html body .v2-menu, html body .acct-menu { border: 0; box-shadow: var(--calm-sh-sheet); }
+html body .v2-panel-scrim { background: var(--calm-scrim); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+html body .v2-panel { border: 0; background: var(--calm-solid); box-shadow: var(--calm-sh-sheet); }
+@media (min-width: 769px) { html body .v2-panel:not(.docked) { top: 24px; right: 24px; bottom: 24px; border-radius: var(--calm-r-hero); max-width: calc(100vw - 48px); } }
+
+/* ------------------------------------------------------------------------------------------------ the shell */
+/* sidebar: text-only list on a translucent wash, the selected place a solid lifted pill (calm .side) */
+@media (min-width: 1100px) {
+  html body .v2-shell { --rail-w: 220px; }
+  html body .v2-rail.v2-side { padding: 20px 12px 14px; gap: 2px; background: var(--calm-side-bg); box-shadow: none; border: 0;
+    -webkit-backdrop-filter: saturate(160%) blur(30px); backdrop-filter: saturate(160%) blur(30px); }
+  html body .v2-side-ws { padding: 4px 8px 18px; gap: 9px; }
+  html body .v2-side .v2-rail-logo { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, #c7c7cc, #8e8e93); color: #fff; }
+  html body .v2-side .v2-rail-logo svg { width: 13px; height: 13px; }
+  html body .v2-side-ws-text b { font-size: 13px; font-weight: 600; color: var(--calm-ink); }
+  html body .v2-side-ws-text small { color: var(--calm-ink3-text); }
+  html body .v2-side .v2-rail-item { height: auto; min-height: 30px; padding: 7px 10px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--calm-ink2); gap: 10px; }
+  html body .v2-side .v2-rail-item .v2-tile { display: none; }
+  html body .v2-side .v2-rail-item:hover { background: var(--calm-fill); color: var(--calm-ink); }
+  html body .v2-side .v2-rail-item.on, html[data-theme='dark'] body .v2-side .v2-rail-item.on { background: var(--calm-solid); color: var(--calm-ink); box-shadow: var(--calm-sh); }
+  html body .v2-side-sl { font-size: 11px; font-weight: 600; color: var(--calm-ink3-text); padding: 18px 10px 6px; }
+  html body .v2-side-pin { height: auto; padding: 6px 10px; gap: 10px; font-size: 13px; color: var(--calm-ink2); }
+  html body .v2-side-pin i { width: 7px; height: 7px; }
+  html body .v2-side-pin:hover, html body .v2-side-pin.on, html body .v2-side-pin-row:hover .v2-side-pin { background: var(--calm-fill); color: var(--calm-ink); }
+  html body .v2-side .v2-rail-foot { padding: 8px 2px 0; }
+  /* the header: one quiet line on the page tone, no bar */
+  html body .v2-tb { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; border: 0; height: 56px; padding: 0 40px; }
+  html body .v2-shell > .main.v2-main > .content { padding: 4px 40px 30px; }
+}
+/* the narrow rail (769-1099): same wash, no hairline */
+html body .v2-rail { background: var(--calm-side-bg); border: 0; box-shadow: none; }
+html body .v2-rail-item.on { background: var(--calm-solid); color: var(--calm-ink); box-shadow: var(--calm-sh); }
+
+/* Aura at rest: a frosted pill with the orb (calm .pill + .orb) */
+html body .aura-hint { height: 30px; padding: 0 12px 0 7px; gap: 7px; border-radius: var(--calm-r-pill); background: var(--calm-card); color: var(--calm-ink2);
+  box-shadow: var(--calm-sh); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); font-size: 12.5px; font-weight: 500; }
+html body .aura-hint:hover, html body .aura-hint.on { color: var(--calm-ink); box-shadow: var(--calm-sh), 0 0 0 .5px color-mix(in srgb, #a35cff 40%, transparent); }
+html body .aura-hint .aura-hint-spark { width: 16px; height: 16px; border-radius: 50%; flex: none; font-size: 0; color: transparent; background: var(--calm-orb); box-shadow: 0 0 10px rgba(163, 92, 255, .45); }
+html body .aura-hint kbd { background: none; box-shadow: none; border: 0; padding: 0; font-size: 10.5px; color: var(--calm-ink3-text); }
+html body .v2-ask { background: var(--calm-card); box-shadow: var(--calm-sh); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border: 0; }
+html[data-theme='dark'] body .v2-ask { background: var(--calm-card); box-shadow: var(--calm-sh); }
+html body .aura-chip { background: var(--calm-card); box-shadow: var(--calm-sh); border: 0; }
+html[data-theme='dark'] body .aura-chip { background: var(--calm-card); box-shadow: var(--calm-sh); }
+
+/* phone: top bar on the page tone, tab bar without a hairline (calm .tabbar) */
+html body .m-shell .m-top, html body .m-top { border-bottom: 0; box-shadow: none; }
+html body .m-top.scrolled { background: color-mix(in srgb, var(--calm-bg) 80%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); box-shadow: none; }
+html body .v2-phone-bar.m-tabs { box-shadow: none; border-top: 0; background: color-mix(in srgb, var(--calm-bg) 72%, transparent); }
+html body .v2-phone-tab { color: var(--calm-ink2); font-size: 10px; font-weight: 550; }
+html body .v2-phone-tab.on { color: var(--calm-accent); }
+html body .v2-phone-new { background: var(--calm-go-bg); color: var(--calm-go-fg); }
+html body .m-shell .page-title { font-size: 34px; }
+
+@media (prefers-reduced-transparency: reduce) {
+  html body .card, html body .v2-rail.v2-side, html body .aura-hint, html body .v2-ask { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root { --calm-card: var(--calm-solid); }
+}
+
+/* the ambient glow shows through the shell: the page areas themselves stay transparent */
+html body .main, html body .app-shell, html body .v2-main, html body .content { background: transparent; }
+
+/* every screen's own big title reads as the light display type (today2.html .hello), whatever class it carries */
+html body #main-content h1, html body .auth-title { font-weight: 300; letter-spacing: -.03em; }
+/* sign-in: the primary action is the same ink pill */
+html body .auth-submit, html[data-theme='dark'] body .auth-submit { background: var(--calm-go-bg); color: var(--calm-go-fg); border-radius: var(--calm-r-pill); box-shadow: none; border: 0; }
+html body .auth-submit:hover:not(:disabled) { background: color-mix(in srgb, var(--calm-go-bg) 86%, var(--calm-bg)); }

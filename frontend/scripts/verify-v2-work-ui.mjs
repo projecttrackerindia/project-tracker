@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { invokeAura } from './lib/aura.mjs';
+import { invokeAura, openCreate } from './lib/aura.mjs';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 import { assertFills, assertFillsMain, assertInToolbar } from './lib/fit.mjs';
@@ -72,7 +72,7 @@ const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? 
 /** A browser context over the built app with this run's synthetic server. `state.bump` makes the next PATCH meet someone else's change. */
 const make = async (theme, state) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
-  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
+  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pt_classic_pages', '1'); localStorage.setItem('pm_theme', t); }, theme);
   await ctx.route('**/*', async (route) => {
     const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method(), sp = url.searchParams;
     if (url.origin !== origin || ep.startsWith('/hubs/')) { await route.abort(); return; }
@@ -440,7 +440,7 @@ try {
     // ---------------------------------------------------------------- the create sheet (dock › More…): a ticket from words, with chips, opened in the panel
     await page.goto(`${origin}/preview-org/work`);
     await list.locator('.mw-r').first().waitFor();
-    await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();   // + New is gone: the capsule's More… chip
+    await openCreate(page);   // the floating + › New task
     const sheet = page.getByRole('dialog', { name: 'New' });
     await sheet.getByLabel('What to create').fill('VPN down for collections team, critical, give to Ravi');
     await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a ticket/ }).waitFor();
@@ -472,7 +472,7 @@ try {
       const kept = errors.length;
       const newSheet = async (words, tile) => {
         await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
-        await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();
+        await openCreate(page);
         await sheet.getByLabel('What to create').fill(words);
         if (tile) await sheet.getByRole('radio', { name: tile }).click();
         await sheet.getByRole('button', { name: /^Create / }).click();
@@ -495,7 +495,7 @@ try {
       await page.keyboard.press('Escape');
       // A task needs its project: the Project chip asks for one, then it is made through /work-items too.
       await page.goto(`${origin}/preview-org/work`); await page.locator('.mw-r').first().waitFor();
-      await invokeAura(page); await page.locator('.aura-chip[data-chip="more"]').click();
+      await openCreate(page);
       await sheet.getByLabel('What to create').fill('Write the settlement runbook');
       await sheet.getByRole('radio', { name: 'Task' }).click();
       await sheet.getByLabel('Change project').selectOption(pid);

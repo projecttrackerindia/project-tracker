@@ -67,7 +67,7 @@ const make = async (theme, writes, opts = {}) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
   // The design's moment: 10:42 on today's date, so the now-line, Up next and the focus blocks are the same on every run.
   await ctx.clock.setFixedTime(new Date(at(today, 10, 42)));
-  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
+  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pt_classic_pages', '1'); localStorage.setItem('pm_theme', t); }, theme);
   await ctx.route('**/*', async (route) => {
     const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method();
     if (url.origin !== origin) { await route.abort(); return; }
@@ -182,13 +182,13 @@ try {
     assert.equal(await num('Team open items'), '10');
     assert.equal(await num('Logged this week'), '4h 10m');
     if (width === 1440) {
-      // The desk shell: a quiet header (the bell, the "Aura ⌘K" hint; no Ask field, no + New), Aura's capsule on demand, no + New in the sidebar.
+      // The desk shell: a quiet header (check-in, bell, Aura orb, avatar; no Ask field, no + New), the Aura panel on demand, no + New in the sidebar.
       await page.getByRole('toolbar', { name: 'Your day' }).waitFor();
       assert.equal(await page.locator('.v2-tb input, .v2-tb-new, .v2-side .v2-new').count(), 0);
       assert.equal(await page.locator('form.v2-ask').count(), 0, 'nothing of Aura at rest');
       await invokeAura(page);
-      await page.locator('form.v2-ask').getByPlaceholder('Ask Aura or tell it what to do').waitFor();
-      await page.keyboard.press('Escape'); await page.locator('form.v2-ask').waitFor({ state: 'detached' });
+      await page.locator('.groot-chat.float').waitFor();
+      await page.keyboard.press('Escape'); await page.locator('.groot-chat').waitFor({ state: 'detached' });
     }
     if (width < 700) await fitsPhone(page, 'Home', assert);
     await shot(page, `home-${tag}.png`);
@@ -208,23 +208,27 @@ try {
     await page.getByRole('heading', { level: 1, name: 'Calendar' }).waitFor();
     assert.match(page.url(), /tab=calendar/);
     await page.locator('.wp-e', { hasText: 'CRIF UAT sign-off' }).waitFor();
-    assert.equal(await page.locator('.wp-dh').count(), width < 700 ? 1 : 5, width < 700 ? 'a phone opens on the day' : 'a work week');
+    assert.equal(await page.locator('.wp-dh').count(), width < 700 ? 1 : 7, width < 700 ? 'a phone opens on the day' : 'the whole week (Mon–Sun)');
     const h = (await page.locator('.wp-e', { hasText: 'Portfolio review' }).boundingBox()).height;
     assert.ok(Math.abs(h - 73 * 1.25 + 2) < 3, `real durations: 75 min is ${h}px`);
     assert.ok(await page.locator('.wp-e.f').count() > 0, 'hatched focus blocks');
     await page.locator('.wp-now').waitFor();
     assert.equal((await page.locator('.wp-nowl').innerText()).trim(), '10:42');
     await page.locator('.wp-rem', { hasText: 'Rotate CRIF token' }).waitFor();
+    // The Day panel is the Day view's right column.
+    if (width >= 700) await page.getByRole('tab', { name: 'Day', exact: true }).click();
     const insp = page.getByRole('complementary', { name: /^Day/ });
     await insp.getByRole('heading', { name: 'CRIF UAT sign-off' }).waitFor();
     assert.match(await insp.innerText(), /in 18 min/);
     await insp.getByRole('link', { name: 'Join meeting' }).waitFor();
     assert.equal(await insp.getByRole('switch', { name: 'Notes by Project Tracker' }).getAttribute('aria-checked'), 'true');
     if (width >= 700) {
+      await page.getByRole('tab', { name: 'Week', exact: true }).click(); await page.waitForTimeout(250);
       // the deadline is a chip in the day's all-day / due strip (above the grid, never over its blocks)
       assert.equal(await page.locator('.wp-allday-d .wp-flag', { hasText: 'UAT' }).count(), 1, 'a deadline flag in the day’s due strip');
       const ai = page.getByRole('region', { name: 'This week' });
-      assert.match(await ai.innerText(), /This week: .*meetings, .*focus/);
+      // one Aura sentence: the free time worth holding, or the week in a line
+      assert.match(await ai.innerText(), /free at \d|This week: .*meetings, .*focus/);
       await page.getByRole('tablist', { name: 'Calendar view' }).getByRole('tab', { name: 'Week' }).waitFor();
       // Move a meeting you organise with the keyboard (as dragging does): 15 minutes later, with Undo.
       await page.locator('.wp-e', { hasText: 'CRIF UAT sign-off' }).focus();
@@ -235,6 +239,10 @@ try {
     }
     if (width < 700) await fitsPhone(page, 'Calendar', assert);
     await shot(page, `calendar-${tag}.png`);
+    // Subscribe and the layers sit behind the Calendars ⋯ (the demo shows only the calendars).
+    if (!(await page.getByRole('button', { name: 'Show layers' }).first().isVisible())) { await page.getByRole('button', { name: 'Calendars ›' }).click(); await page.getByRole('dialog', { name: 'Calendars' }).waitFor(); }
+    const showL = page.getByRole('button', { name: 'Show layers' }).filter({ visible: true }).first();
+    if ((await showL.getAttribute('aria-expanded')) !== 'true') await showL.click();
     await page.getByRole('button', { name: 'Subscribe in Google / Outlook ›' }).click();
     await page.getByRole('dialog').getByText('Subscribe in your calendar').waitFor();
     await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();

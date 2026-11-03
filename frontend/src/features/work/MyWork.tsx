@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ApiError, get, put } from '../../api/client';
-import { projectApi, timeApi } from '../../api/endpoints';
+import { timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useIsSmallPhone } from '../../lib/mobile';
@@ -10,7 +10,7 @@ import { workItemsApi, type WorkRow } from '../../api/workItemsApi';
 import type { PullChip } from '../../api/types';
 import { Avatar } from '../../components/ui';
 import { openNew } from '../../components/v2/state';
-import { DOW, daysUntil, formatDateShort, todayISO } from '../../lib/format';
+import { daysUntil, todayISO } from '../../lib/format';
 import { refreshTime, useWsQuery } from '../../lib/hooks';
 import { duration, ease, instant, staggerDelay, t } from '../../lib/motion';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
@@ -19,6 +19,8 @@ import { PRIORITY_ORDER, refreshWork, useWorkList } from './workUi';
 import { PrChips, usePrStatus } from '../github/PrChips';
 import { useTodayFocus } from '../calendar/useToday';
 import { shiftIsoDate } from '../../lib/zone';
+import { dayText, moveTo, projectDot, smart } from './workActions';
+export { projectDot } from './workActions';
 import { completedClock, completedToday, myWorkBucket, weekEndOf } from './myWorkRules';
 import { SavedViewsBar } from '../platform/SavedViews';
 import { SourceTag, meetingLink } from '../meet/MeetingWork';
@@ -31,20 +33,8 @@ import '../meet/connect.css';
 
 type Sort = 'smart' | 'due' | 'priority';
 const SORT_LABEL: Record<Sort, string> = { smart: 'Smart', due: 'Due', priority: 'Priority' };
-const DOTS = ['#5856d6', '#ff9500', '#30b0c7', '#34c759', '#ff2d55', '#af52de'];
-/** One colour per project, the same everywhere on the page. */
-export const projectDot = (id: string | null) => {
-  if (!id) return null;
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return DOTS[h % DOTS.length];
-};
 const isOpen = (w: WorkRow) => w.category === 'Todo' || w.category === 'Active';
 const dueOf = (w: WorkRow) => w.dueDate ?? '9999-12-31';
-/** Smart: overdue first, then critical, then what is due soonest, then priority. */
-const smart = (a: WorkRow, b: WorkRow) => Number(b.isOverdue) - Number(a.isOverdue)
-  || Number(b.priority === 'Critical') - Number(a.priority === 'Critical')
-  || dueOf(a).localeCompare(dueOf(b)) || PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || a.key.localeCompare(b.key, undefined, { numeric: true });
 const SORTS: Record<Sort, (a: WorkRow, b: WorkRow) => number> = {
   smart,
   due: (a, b) => dueOf(a).localeCompare(dueOf(b)) || PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
@@ -52,16 +42,6 @@ const SORTS: Record<Sort, (a: WorkRow, b: WorkRow) => number> = {
 };
 const hm = (h: number) => { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); const t = hh > 12 ? hh - 12 : hh; return mm ? `${t}:${String(mm).padStart(2, '0')}` : `${t}:00`; };
 const dur = (min: number) => { const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`; };
-
-/** "Today", "Tomorrow", "Thu" within the week, else "12 Nov". */
-function dayText(due: string | null): string {
-  if (!due) return '';
-  const d = daysUntil(due) ?? 0;
-  if (d === 0) return 'Today';
-  if (d === 1) return 'Tomorrow';
-  if (d > 1 && d < 7) return DOW[new Date(`${due}T00:00:00`).getDay()];
-  return formatDateShort(due).replace(/^0/, '');
-}
 
 /** Why the front card is next, from the item and the rest of the list. */
 function reasonFor(w: WorkRow, rest: WorkRow[], focus: { start: number; end: number } | null): string {
@@ -75,21 +55,6 @@ function reasonFor(w: WorkRow, rest: WorkRow[], focus: { start: number; end: num
   let s = `Next because ${parts.join(' and ')}`;
   if (focus) s += `, and you have a focus block ${hm(focus.start)} – ${hm(focus.end)} today that fits it`;
   return `${s}.`;
-}
-
-/** Done or started: a task moves to its project's first column of that category, the others to their own status. */
-async function moveTo(w: WorkRow, to: 'Done' | 'Active') {
-  // The version this row was read with: a change someone made since is refused (409) instead of being silently overwritten.
-  const version = w.version ?? (await workItemsApi.get(w.id)).version;
-  const d = { version };
-  if (w.kind === 'task') {
-    const p = w.projectId ? await queryClient.fetchQuery({ queryKey: ['mywork-project', w.projectId], queryFn: () => projectApi.get(w.projectId!), staleTime: 60_000 }) : null;
-    const s = [...(p?.statuses ?? [])].sort((a, b) => a.order - b.order).find((x) => x.category === to);
-    if (!s) throw new Error(to === 'Done' ? 'This project has no done column.' : 'This project has no in-progress column.');
-    return workItemsApi.update(w.id, { version: d.version, statusId: s.id });
-  }
-  const status = to === 'Active' ? 'InProgress' : w.kind === 'issue' ? 'Resolved' : 'Completed';
-  return workItemsApi.update(w.id, { version: d.version, status });
 }
 
 /* ------------------------------------------------------------------ the page */

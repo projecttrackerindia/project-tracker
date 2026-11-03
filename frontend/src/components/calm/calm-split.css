@@ -1,0 +1,66 @@
+/* Calm kit, part two: the full-width split with its right panel (CalmSplit, CalmRailCard, CalmRailRow), the day ribbon and the week strip. */
+
+.calm-split-crumb { margin: 0; }
+
+
+.calm-rc > h4 a, .calm-rc > h4 button { border: 0; background: none; padding: 0; font: inherit; color: var(--calm-ink2); text-decoration: none; cursor: pointer; white-space: nowrap; }
+.calm-split-crumb { margin: 0 0 6px; }
+.cp-page .calm-split-main { gap: 22px; }
+.cp-page .calm-rail { padding-bottom: 88px; margin-top: 46px; }
+a.calm-rr { cursor: pointer; text-decoration: none; }
+.cp-page .calm-rr { min-height: 44px; }
+.calm-rc-h { margin: 0 0 6px; display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 500; color: var(--calm-ink3-text); }
+.calm-rc-h > span { flex: 1; min-width: 0; }
+.calm-rc-h a, .calm-rc-h button { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--calm-ink2); text-decoration: none; cursor: pointer; white-space: nowrap; }
+.calm-rc-h a:hover, .calm-rc-h button:hover { color: var(--calm-ink); }
+a.calm-rr, button.calm-rr { cursor: pointer; border-radius: 10px; }
+a.calm-rr:hover .calm-rr-t b, button.calm-rr:hover .calm-rr-t b { color: var(--calm-accent-text); }
+a.calm-rr:focus-visible, button.calm-rr:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: 2px; }
+.calm-rr-t b { font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--motion-micro) var(--ease-standard); }
+.calm-rr-r.hot { color: var(--calm-red-text); font-weight: 600; }
+.calm-rr-bar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--calm-dot, var(--calm-p1)); flex: none; margin: 2px 0; }
+.calm-join { display: inline-flex; align-items: center; padding: 5px 14px; border-radius: 99px; background: var(--calm-accent); color: #fff; font-weight: 600; font-size: 13px; border: 0; cursor: pointer; text-decoration: none; min-height: 28px; }
+.calm-join:hover { opacity: .9; }
+
+/* The day ribbon */
+.calm-day { display: grid; gap: 10px; min-width: 0; }
+.calm-day-h { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--calm-ink2); padding: 0 6px; min-width: 0; }
+.calm-day-h > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calm-day-h b { color: var(--calm-ink); font-weight: 600; }
+.calm-day-a { display: inline-flex; gap: 12px; align-items: center; flex: none; }
+.calm-day-a a, .calm-day-a .calm-link { font-size: 14px; color: var(--calm-ink2); text-decoration: none; }
+.calm-day-track { position: relative; height: 48px; border-radius: 14px; background: var(--calm-fill); }
+.calm-day-seg { position: absolute; top: 6px; bottom: 6px; margin-left: 1.5px; border-radius: 9px; border: 0; padding: 0 8px; background: var(--seg); color: color-mix(in srgb, var(--seg) 30%, #1d1d1f);
+  font: inherit; font-size: 12px; font-weight: 600; display: flex; align-items: center; overflow: hidden; min-width: 0; }
+.calm-day-seg.past { opacity: var(--calm-rib-past, .35); }
+button.calm-day-seg { cursor: pointer; transition: transform var(--motion-micro) var(--ease-standard); }
+button.calm-day-seg:hover { transform: translateY(-1px); }
+.calm-day-seg-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.calm-day-now { position: absolute; top: -6px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--calm-now); border-radius: 1px; }
+.calm-day-now::before { content: ''; position: absolute; top: -3px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--calm-now); }
+.calm-day-hrs { position: relative; height: 16px; font-size: 11px; color: var(--calm-ink3-text); }
+.calm-day-hrs span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.calm-day-hrs span:first-child { transform: none; }
+.calm-day-hrs span:last-child { transform: translateX(-100%); }
+
+/* The week strip */
+.calm-week-days { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.calm-week-d { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 7px; border: 0; border-radius: 14px; background: var(--calm-fill); color: var(--calm-ink); font: inherit; cursor: pointer; min-height: 64px; min-width: 0; }
+.calm-week-d small { font-size: 11.5px; color: var(--calm-ink2); }
+.calm-week-d b { font-size: 19px; font-weight: 400; }
+.calm-week-d.on { background: var(--calm-accent); color: #fff; }
+.calm-week-d.on small { color: rgba(255,255,255,.85); }
+.calm-week-dots { display: flex; gap: 3px; height: 6px; }
+.calm-week-dots i { width: 5px; height: 5px; border-radius: 50%; }
+.calm-week-d.on .calm-week-dots i { background: #fff !important; }
+.calm-week-note { margin: 10px 0 4px; font-size: 12.5px; color: var(--calm-ink2); line-height: 1.45; }
+
+@media (max-width: 768px) {
+  .calm-day-hrs span.odd { display: none; }
+  .calm-day-track { height: 44px; }
+  .calm-day-seg-l { display: none; }
+  .calm-rc { padding: 12px 16px 8px; }
+}
+.calm-day-a a.calm-join, .calm-rr-r a.calm-join, .pd-line a.calm-join { color: #fff; }
+.calm-pills button { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 1100px) { .cp-page .calm-rail { margin-top: 0; } }

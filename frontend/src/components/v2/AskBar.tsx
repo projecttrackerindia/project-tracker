@@ -16,56 +16,113 @@ import { openPalette, searchHitLink } from '../CommandPalette';
 import { haptic, useIsMobile } from '../../lib/mobile';
 import { NotificationBell } from '../../features/notifications/centre/NotificationCentre';
 import { AttendanceCapsule } from '../../features/attendance/AttendanceCapsule';
+import { AvatarMenu } from './Rail';
 import './v2.css';
 
 /** The project page's id, when the page is one project (the capsule then asks about that project). */
 const projectIdOf = (pathname: string) => /^\/work\/projects\/([0-9a-f-]{8,})/i.exec(pathname)?.[1] ?? null;
 
 /**
- * The toolbar at the top of the main area on wide screens (1100px and up): one quiet line. A page's own control portalled in on the left;
- * on the right the small "Aura ⌘K" hint (Aura takes no space until it is invoked), the check-in capsule and the bell.
+ * The calm header, top right of the main area (769px and up): the check-in pill, the notification bell (its badge and popover, grouped Today
+ * and Earlier, with Mark all read and settings), the Aura orb and the avatar menu. A page's own control can still portal in on the left.
  */
 export function Toolbar() {
+  // How wide the controls on the right are, so a page's crumb row on the same line keeps clear of them (--shell-head-w).
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = bar.current; if (!el) return;
+    const root = document.documentElement;
+    const put = () => {
+      const kids = [...el.children].filter((c) => !c.classList.contains('v2-tb-sp') && !c.classList.contains('v2-tb-title')) as HTMLElement[];
+      if (!kids.length) return;
+      const left = Math.min(...kids.map((k) => k.getBoundingClientRect().left));
+      root.style.setProperty('--shell-head-w', `${Math.ceil(el.getBoundingClientRect().right - left + 4)}px`);
+    };
+    put();
+    const ro = new ResizeObserver(put); ro.observe(el); [...el.children].forEach((c) => ro.observe(c));
+    const mo = new MutationObserver(() => { [...el.children].forEach((c) => ro.observe(c)); put(); }); mo.observe(el, { childList: true });
+    return () => { ro.disconnect(); mo.disconnect(); root.style.removeProperty('--shell-head-w'); };
+  }, []);
   return (
-    <div className="v2-tb" role="toolbar" aria-label="Your day">
+    <div ref={bar} className="v2-tb shell-head" role="toolbar" aria-label="Your day">
       <span className="v2-tb-sp" />
-      <AuraHint />
       <AttendanceCapsule />
       <NotificationBell />
+      <AuraOrbButton />
+      <AvatarMenu />
     </div>
   );
 }
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-const KEY = isMac ? '⌘K' : 'Ctrl K';
+export const AURA_KEY = isMac ? '⌘K' : 'Ctrl K';
 
-/** Aura at rest on a wide screen: one small hint in the page header. A click (or ⌘K) invokes it. */
-export function AuraHint() {
-  const open = useAuraInvoke((s) => s.open);
+/** Opens or closes the Aura panel (the floating chat; a bottom sheet on a phone), about the page it was opened on. */
+export function toggleAura(where?: { context: string | null; about: string | null } | null) {
+  const g = useGroot.getState();
+  if (g.open && !g.card) { g.close(); return; }
+  dismissAura();
+  openGroot(null, where?.about ? null : where?.context && where.context !== 'Home' ? where.context : null, where?.about ?? null);
+}
+/** Where the person is, for Aura: the page ("Work › Tickets"), or the project when the page is one project (its name, from the page's cache). */
+function useWhere() {
+  const { pathname, search } = useLocation();
+  const ai = useAi();
+  const projectId = projectIdOf(pathname);
+  const project = useWsQuery(['project', projectId], () => projectApi.get(projectId!), { enabled: ai && !!projectId, staleTime: 60_000 });
+  return { context: pageContext(pathname, search), about: projectId ? project.data?.project.name ?? null : null };
+}
+
+/** The Aura orb in the header: a click (or ⌘K) opens the floating Aura panel, which grows from it. */
+export function AuraOrbButton() {
+  const ai = useAi();
+  const open = useGroot((s) => s.open && !s.card);
+  const where = useWhere();
+  if (!ai) return null;
   return (
-    <button type="button" className={`aura-hint${open ? ' on' : ''}`} data-aura-entry="" aria-label={`Ask Aura (${KEY})`} aria-expanded={open}
-      onClick={() => (open ? dismissAura() : invokeAura())}>
-      <span className="aura-hint-spark" aria-hidden="true">✦</span>Aura<kbd>{KEY}</kbd>
+    <button type="button" className={`shell-hb shell-orb${open ? ' on' : ''}`} data-aura-entry="" aria-label={`Aura (${AURA_KEY})`} title={`Aura ${AURA_KEY}`} aria-expanded={open}
+      onClick={() => { haptic(); toggleAura(where); }}>
+      <span className="calm-orb" aria-hidden="true" />
     </button>
   );
 }
 
-/** Aura at rest on a phone: the orb in the top bar, in the app's mood. A tap or a long-press invokes the capsule above the keyboard. */
+/** ⌘K / Ctrl K toggles the Aura panel (⌘⇧K, or ⌘K with the assistant off, is the command palette). Mounted once in the layout. */
+export function AuraKeys() {
+  const ai = useAi();
+  const here = useWhere();
+  const where = useRef(here);
+  where.current = here;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k' || e.altKey) return;
+      if (e.shiftKey) { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); return; }
+      if (!ai) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      toggleAura(where.current);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [ai]);
+  return null;
+}
+
+/** Aura in the phone's top bar: the orb opens the Aura bottom sheet. */
 export function AuraPhoneOrb() {
-  const open = useAuraInvoke((s) => s.open);
-  const timer = useRef<number | undefined>(undefined);
-  const held = useRef(false);
-  const start = () => { held.current = false; window.clearTimeout(timer.current); timer.current = window.setTimeout(() => { held.current = true; haptic(12); invokeAura(); }, 420); };
-  const stop = () => window.clearTimeout(timer.current);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const ai = useAi();
+  const open = useGroot((s) => s.open && !s.card);
+  const where = useWhere();
+  if (!ai) return null;
   return (
     <button type="button" className={`m-icon m-aura-orb${open ? ' on' : ''}`} data-aura-entry="" aria-label="Aura" aria-expanded={open}
-      onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop} onContextMenu={(e) => e.preventDefault()}
-      onClick={() => { if (held.current) { held.current = false; return; } haptic(); if (open) dismissAura(); else invokeAura(); }}>
+      onClick={() => { haptic(); toggleAura(where); }}>
       <AuraOrb size={24} label={null} />
     </button>
   );
 }
+
+/** @deprecated The "Aura ⌘K" hint was replaced by the header orb (AuraOrbButton); kept as an alias for old imports. */
+export const AuraHint = AuraOrbButton;
 
 /**
  * The Siri-style edge glow while Aura is invoked: a soft band of the mood's colours around the viewport, drifting at no more than 30 fps

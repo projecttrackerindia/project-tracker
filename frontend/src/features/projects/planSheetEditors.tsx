@@ -66,7 +66,7 @@ export function DateEditor({ r, rows, today, anchor, onSave, onClose }: {
           {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i} className="h" aria-hidden="true">{d}</span>)}
           {cells.map((iso) => {
             const n = dayNum(iso), sel = iso === due || iso === start, inR = !!(start && due && n > dayNum(start) && n < dayNum(due));
-            const cls = [iso.slice(0, 7) !== month ? 'o' : '', sel ? 's' : inR ? 'r' : '', iso === today && !sel ? 't' : ''].join(' ');
+            const cls = [iso.slice(0, 7) !== month ? 'o' : '', sel ? 's' : inR ? 'r' : '', iso === today && !sel ? 't' : '', iso === r.due && iso !== due ? 'w' : ''].join(' ');
             return <button key={iso} type="button" className={cls} aria-pressed={sel} aria-label={`${dm(iso)}${iso === due ? ', due' : iso === start ? ', start' : ''}`}
               onClick={(e) => pick(iso, e.shiftKey)}>{+iso.slice(8, 10)}</button>;
           })}

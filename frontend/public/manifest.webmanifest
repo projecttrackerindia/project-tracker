@@ -1,6 +1,6 @@
 {
-  "name": "Project Tracker",
-  "short_name": "Project Tracker",
+  "name": "ProjectTracker",
+  "short_name": "ProjectTracker",
   "description": "Projects, work, support, docs, messages and mail in one workspace.",
   "id": "/",
   "start_url": "/",

@@ -16,9 +16,10 @@ import { dayNum } from './planSheet';
  * - refreshing every tab after a write, and patching the cached copies at once.
  */
 
-export type PortfolioMode = 'board' | 'timeline' | 'sheet' | 'capacity' | 'present';
-export const MODE_LABEL: Record<PortfolioMode, string> = { board: 'Board', timeline: 'Timeline', sheet: 'Plan sheet', capacity: 'Capacity', present: 'Present' };
-export const MODES: PortfolioMode[] = ['board', 'timeline', 'sheet', 'capacity', 'present'];
+export type PortfolioMode = 'overview' | 'actions' | 'board' | 'timeline' | 'sheet' | 'capacity' | 'present';
+export const MODE_LABEL: Record<PortfolioMode, string> = { overview: 'Overview', actions: 'Action items', sheet: 'Plan sheet', timeline: 'Timeline', capacity: 'Capacity', board: 'Board', present: 'Present' };
+/** The calm order (design #portfolio): Overview · Action items · Plan sheet · Timeline · Capacity · Board · Present. */
+export const MODES: PortfolioMode[] = ['overview', 'actions', 'sheet', 'timeline', 'capacity', 'board', 'present'];
 export type SheetLayout = 'sheet' | 'split' | 'timeline';
 
 /** The filter without empty values, keys in one order: the same filter always makes the same key. */
@@ -65,7 +66,7 @@ export interface PortfolioUrlState {
 export function usePortfolioUrl(teamId: string | null | undefined): PortfolioUrlState {
   const [params, setParams] = useSearchParams();
   const v = params.get('mode') ?? params.get('view');
-  const mode: PortfolioMode = (MODES as string[]).includes(v ?? '') ? (v as PortfolioMode) : 'board';
+  const mode: PortfolioMode = (MODES as string[]).includes(v ?? '') ? (v as PortfolioMode) : 'overview';
   const owner = params.get('owner'), group = params.get('group'), health = params.get('health'), from = params.get('from'), to = params.get('to');
   const filter = useMemo(() => normFilter({ teamId, ownerId: owner, groupId: group, health, dueFrom: from, dueTo: to }), [teamId, owner, group, health, from, to]);
   const fRaw = params.get('f'), pcRaw = params.get('pc') ?? '';
@@ -87,7 +88,7 @@ export function usePortfolioUrl(teamId: string | null | undefined): PortfolioUrl
   const set = (n: URLSearchParams, k: string, val: string | null | undefined) => { if (val) n.set(k, val); else n.delete(k); };
   return {
     mode, filter, toks, colours, tab, layout,
-    setMode: useCallback((m: PortfolioMode) => patch((n) => { n.set('view', 'portfolio'); if (m === 'board') n.delete('mode'); else n.set('mode', m); }), [patch]),
+    setMode: useCallback((m: PortfolioMode) => patch((n) => { n.set('view', 'portfolio'); if (m === 'overview') n.delete('mode'); else n.set('mode', m); }), [patch]),
     setFilter: useCallback((f: PortfolioFilter) => patch((n) => { set(n, 'owner', f.ownerId); set(n, 'group', f.groupId); set(n, 'health', f.health); set(n, 'from', f.dueFrom); set(n, 'to', f.dueTo); }), [patch]),
     setToks: useCallback((t: Tok[]) => { setPending((p) => ({ ...p, toks: t })); patch((n) => set(n, 'f', encodeToks(t))); }, [patch]),
     setColours: useCallback((c: Colour[]) => { setPending((p) => ({ ...p, colours: c })); patch((n) => set(n, 'pc', c.join(','))); }, [patch]),

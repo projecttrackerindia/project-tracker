@@ -21,6 +21,8 @@ import { duplicateGroups, groupKey, readDismissed, writeDismissed } from './dupl
 import { usePortfolioBrief } from './PortfolioInsights';
 import { ProjectBoard } from './ProjectBoard';
 import { ProjectFormModal } from './ProjectFormModal';
+import { CalmProjects } from './CalmProjects';
+import { useClassic } from '../calm/classic';
 import { dayMonth, errText, HEALTH, HealthPill, isFinished, passGradient, passStatus, useAllProjects } from './projectParts';
 import './projects.css';
 import './projectsHome.css';
@@ -38,13 +40,14 @@ export function ProjectsHome() {
   const v = params.get('view');
   const picked = params.get('project');
   const portfolio = v === 'portfolio' || v === 'timeline' || v === 'present' || v === 'sheet';
+  const classic = useClassic() || params.has('status');
   if (picked && (portfolio || params.has('actions'))) {
     const actions = params.get('actions') === '1';
     return <Navigate to={`/work/projects/${encodeURIComponent(picked)}${actions ? '?tab=work&kind=action' : ''}`} replace />;
   }
   // The old Portfolio "Action items" link: they are the Plan sheet's first tab now.
-  if (!picked && params.get('actions') === '1') return <Navigate to="/work/projects?view=portfolio&mode=sheet&pt=actions" replace />;
-  if (!portfolio) return <ProjectsView />;
+  if (!picked && params.get('actions') === '1') return <Navigate to="/work/projects?view=portfolio&mode=actions" replace />;
+  if (!portfolio) return classic ? <ProjectsView /> : <CalmProjects />;
   const place: Place = 'portfolio';
   const switcher = (
     <Segmented<Place> label="Projects or portfolio" value={place} options={[{ id: 'projects', label: 'Projects' }, { id: 'portfolio', label: 'Portfolio' }]}

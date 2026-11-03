@@ -7,12 +7,12 @@ import type { NotificationCategory, NotificationCounts, NotificationType } from 
 import type { AlertPrefs } from './prefs';
 import { CATEGORIES } from './prefs';
 
-export type Destination = 'today' | 'work' | 'desk' | 'portfolio' | 'calendar' | 'meetings' | 'messages' | 'mail' | 'library';
-export const DESTINATIONS: Destination[] = ['today', 'work', 'desk', 'portfolio', 'calendar', 'meetings', 'messages', 'mail', 'library'];
+export type Destination = 'today' | 'work' | 'desk' | 'portfolio' | 'calendar' | 'meetings' | 'messages' | 'mail' | 'library' | 'approvals';
+export const DESTINATIONS: Destination[] = ['today', 'work', 'desk', 'portfolio', 'calendar', 'meetings', 'messages', 'mail', 'library', 'approvals'];
 
 /** The sidebar item (Rail.tsx `key`) each destination's badge sits on. */
 export const SIDEBAR_KEY: Record<Destination, string> = {
-  today: 'home', work: 'work', desk: 'desk', portfolio: 'portfolio', calendar: 'calendar', meetings: 'meetings', messages: 'talk', mail: 'mail', library: 'library',
+  today: 'home', work: 'work', desk: 'desk', portfolio: 'portfolio', calendar: 'calendar', meetings: 'meetings', messages: 'talk', mail: 'mail', library: 'library', approvals: 'approvals',
 };
 
 const starts = (l: string | null | undefined, p: string) => !!l && l.toLowerCase().startsWith(p);
@@ -23,6 +23,7 @@ export function destinationOf(type: NotificationType | string, link: string | nu
   if (type === 'Meeting' || (type === 'Reminder' && isMeetingLink(link))) return 'meetings';
   if (starts(link, '/mail')) return 'mail';
   if (starts(link, '/?tab=calendar') || starts(link, '/calendar')) return 'calendar';
+  if (starts(link, '/approvals')) return 'approvals';
   if (type === 'Message' || type === 'Call') return 'messages';
   if (type === 'Mention' && (starts(link, '/chat/') || starts(link, '/messages') || (link ?? '').includes('chat=1'))) return 'messages';
   if (type === 'Document' || starts(link, '/documents') || starts(link, '/library')) return 'library';
@@ -38,7 +39,7 @@ export const tabKey = (d: Destination, c: NotificationCategory) => `${d}:${c}`;
 const FALLBACK: Record<NotificationCategory, Destination> = { messages: 'messages', meetings: 'meetings', reminders: 'today', work: 'work' };
 
 export type TabCounts = Record<Destination, number>;
-const zero = (): TabCounts => ({ today: 0, work: 0, desk: 0, portfolio: 0, calendar: 0, meetings: 0, messages: 0, mail: 0, library: 0 });
+const zero = (): TabCounts => ({ today: 0, work: 0, desk: 0, portfolio: 0, calendar: 0, meetings: 0, messages: 0, mail: 0, library: 0, approvals: 0 });
 
 /**
  * The red number on each place. Messages is the Messages badge's own number (unread chat messages, docs/badges.md) when that is higher than

@@ -53,6 +53,8 @@ try{
   else if(ep==='/api/v1/tasks/t-pay-1/move'&&method==='PATCH'){writes.push({ep,b:req.postDataJSON()});data={id:'t-pay-1'};}
   else if(ep==='/api/v1/tasks/t-pay-2/comments'&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={id:'c1'};}
   else if(ep===`/api/v1/projects/${pay}/action-items`&&method==='POST'){writes.push({ep,b:req.postDataJSON()});data={id:'a1'};}
+  // The Overview counts action items waiting on a decision (a read of the open review).
+  else if(ep==='/api/v1/meet/review'&&method==='POST')data={sessionId:'rv1',scope:'all',seriesRef:null,title:'All projects',cadence:'',occurrence:null,previousSession:null,nextSession:null,attendees:0,counts:{total:0,reviewed:0,done:0,inProgress:0,overdue:0,blocked:0,noUpdate:0},items:[],finished:false,sent:false,draft:[],projectId:null};
   else{
    assert.ok(method==='GET'||ep.endsWith('/auth/refresh'),`Unexpected write: ${method} ${ep}`);
    if(ep.endsWith('/auth/refresh'))data={accessToken:token,expiresAt:'2099-01-01T00:00:00Z',user};
@@ -91,7 +93,8 @@ try{
  const summary=page.getByRole('region',{name:'Summary'});await summary.waitFor();
  assert.ok((await summary.innerText()).trim().length>0,'one AI sentence');
  assert.ok(await page.getByRole('tablist',{name:'Portfolio view'}).isVisible(),'Board · Timeline · Present');
- assert.ok(await page.locator('.pf-tile').count()===3,'three status tiles');
+ assert.ok(await page.locator('.pfo-hero').isVisible(),'the calm Overview: one thing that needs you');
+ assert.match(await page.locator('.pfo-sec').innerText(),/on track · \d+ at risk · \d+ late/,'the status counts in one line');
  assert.equal(await page.getByRole('region',{name:'Projects that need attention'}).count(),0,'no separate Needs attention');
  // Manual OnTrack health must not claim a forecast after the deadline is on time.
  await page.locator('.pf-colwrap.ok .pf-card').getByText('Website',{exact:true}).waitFor();
@@ -168,12 +171,16 @@ try{
  checks.push('timeline');
 
  // Drag a card to another column: a sheet explains and does the real thing (flag the risk as a follow-up on the project).
- await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Board'}).click();await page.locator('.pf-board .pf-card[draggable="true"]').first().waitFor();
+ await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Overview'}).click();await page.locator('.pf-board .pf-card[draggable="true"]').first().waitFor();
  {const card=page.locator('.pf-board .pf-card[draggable="true"]',{hasText:'Payments'}).first();
-  {const target=page.locator('.pf-colwrap.late');await card.dragTo(target);
-   const sheet=page.getByRole('dialog',{name:/Move Payments to Late/});await sheet.waitFor();
-   await sheet.getByLabel('What is the risk?').fill('Bank sandbox keys not shared');await shot(page,'board-drop-1440.png');
-   await sheet.getByRole('button',{name:'Flag it'}).click();await sheet.waitFor({state:'detached'});
+  {const target=page.locator('.pf-colwrap.late');
+   // On the Overview the project columns sit below the fold: bring them into view, and drag again if the first drop was lost.
+   const sheet=page.getByRole('dialog',{name:/Move Payments to Late/});
+   for(let k=0;k<3&&!(await sheet.isVisible());k++){await card.scrollIntoViewIfNeeded();await page.waitForTimeout(300);
+    {const dt=await page.evaluateHandle(()=>new DataTransfer());await card.dispatchEvent('dragstart',{dataTransfer:dt});await target.dispatchEvent('dragover',{dataTransfer:dt});await target.dispatchEvent('drop',{dataTransfer:dt});await card.dispatchEvent('dragend',{dataTransfer:dt});}await sheet.waitFor({timeout:4000}).catch(()=>{});}
+   await sheet.waitFor();
+   await sheet.getByLabel('What is the risk?').fill('Bank sandbox keys not shared');await page.screenshot({path:path.join(out,'board-drop-1440.png')});/* not full-page: resizing the viewport for a full-page shot can re-render the board under the open sheet */
+   await sheet.getByRole('button',{name:'Flag it'}).evaluate((b)=>b.click());await sheet.waitFor({state:'detached'});
    assert.ok(writes.some(w=>w.ep===`/api/v1/projects/${pay}/action-items`&&/Late: Bank sandbox keys/.test(w.b.title)&&w.b.priority==='Critical'),'the drop flags the project with a follow-up');
    await page.locator('.pf-flag').first().waitFor();checks.push('board-drag-flag');}}
  await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Present'}).click();
@@ -233,7 +240,7 @@ try{
   await shot(page,'present-weekly-390.png');await page.setViewportSize({width:1440,height:900});
   checks.push('present-weekly-report');}
  await page.keyboard.press('Escape');await pres.waitFor({state:'detached'});
- await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Board'}).click();
+ await page.getByRole('tablist',{name:'Portfolio view'}).getByRole('tab',{name:'Overview'}).click();
  assert.ok(await page.getByRole('region',{name:'Board'}).isVisible());
  await page.getByRole('region',{name:'Summary'}).waitFor();
  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));await shot(page,'board-dark-1440.png');

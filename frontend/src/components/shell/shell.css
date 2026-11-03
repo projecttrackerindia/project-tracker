@@ -1,0 +1,231 @@
+/* =====================================================================================================================
+   The calm shell (demo: scratchpad/demo index.html .side / .hb / .apnl / .fab / .tabbar): sidebar, header, Aura panel, + button.
+   Owned by the shell. Rules carry `html body` (and a doubled class where calm.css already styles the same element) so they win over the
+   v2 and calm sheets. Motion: transform and opacity only, on --calm-spring (the demo's spring as a CSS linear() curve); reduced motion
+   turns it off.
+   ===================================================================================================================== */
+
+:root {
+  --calm-spring: linear(0, .0301, .0999, .1902, .2882, .3858, .4782, .5627, .638, .7038, .7606, .8089, .8496, .8835, .9117, .9349, .9539, .9693, .9818, .9919, 1);
+  --shell-side-w: 236px;
+  --shell-rail-w: 68px;
+}
+
+.pt-logo { display: block; flex: none; }
+
+/* ------------------------------------------------------------------ sidebar (769px and up) */
+@media (min-width: 769px) {
+  html body .v2-shell.v2-shell { --rail-w: var(--shell-rail-w); }
+  html body .v2-rail.v2-side.shell-side {
+    width: var(--rail-w); align-items: stretch; gap: 1px; padding: 14px 12px 12px; overflow: hidden auto; overscroll-behavior: contain;
+    background: color-mix(in srgb, var(--calm-solid) 45%, transparent); box-shadow: inset -1px 0 0 var(--calm-fill); border: 0;
+    -webkit-backdrop-filter: saturate(160%) blur(30px); backdrop-filter: saturate(160%) blur(30px); scrollbar-width: none;
+  }
+  html body .shell-side::-webkit-scrollbar { display: none; }
+  html body .shell-side .shell-ws { display: flex; align-items: center; gap: 4px; padding: 2px 0 12px 2px; }
+  html body .shell-ws-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 4px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+  html body .shell-ws-btn:hover { background: var(--calm-fill); }
+  html body .shell-ws-btn .pt-logo { filter: drop-shadow(0 2px 6px rgba(139, 108, 246, .35)); }
+  html body .shell-side .shell-wn { display: block; min-width: 0; }
+  html body .shell-side .shell-wn b { display: block; font-size: 13.5px; font-weight: 600; color: var(--calm-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  html body .shell-side .shell-wn small { display: block; font-size: 11px; color: var(--calm-ink3-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  html body .shell-ib { width: 30px; height: 30px; flex: none; border: 0; border-radius: 8px; display: inline-grid; place-items: center; background: none; color: var(--calm-ink2); cursor: pointer; text-decoration: none; }
+  html body .shell-ib:hover { background: var(--calm-fill); color: var(--calm-ink); }
+  html body .shell-ib:focus-visible, html body .shell-ws-btn:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: 1px; }
+
+  html body .shell-side .shell-nav { display: flex; flex-direction: column; align-items: stretch; gap: 1px; padding: 0; width: 100%; }
+  html body .shell-side .v2-side-group { display: flex; flex-direction: column; gap: 1px; }
+  html body .shell-side .v2-side-sl { display: block; font-size: 11px; font-weight: 600; color: var(--calm-ink3-text); padding: 12px 10px 3px; letter-spacing: .01em; white-space: nowrap; }
+  html body .shell-side .v2-rail-item, html[data-theme='dark'] body .shell-side .v2-rail-item {
+    position: relative; width: auto; height: auto; min-height: 31px; padding: 6px 9px; flex-direction: row; align-items: center; gap: 11px; border-radius: 10px;
+    font-size: 13.5px; font-weight: 500; color: var(--calm-ink); white-space: nowrap; background: none; box-shadow: none; transition: background 160ms ease;
+  }
+  html body .shell-side .v2-rail-item:hover { background: var(--calm-fill); }
+  html body .shell-side .shell-ico { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; color: var(--calm-ink2); }
+  html body .shell-side .shell-ico svg { stroke-width: 1.5; }
+  html body .shell-side .v2-rail-label { display: inline; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  html body .shell-side .v2-rail-item.on, html[data-theme='dark'] body .shell-side .v2-rail-item.on {
+    background: var(--calm-solid); color: var(--calm-ink);
+    box-shadow: 0 0 0 .5px rgba(0, 0, 0, .05), 0 2px 6px rgba(40, 30, 80, .07), 0 8px 20px rgba(40, 30, 80, .06);
+  }
+  html[data-theme='dark'] body .shell-side .v2-rail-item.on { background: color-mix(in srgb, var(--calm-solid) 100%, #fff 6%); box-shadow: 0 0 0 .5px rgba(255, 255, 255, .06), 0 6px 18px rgba(0, 0, 0, .35); }
+  html body .shell-side .v2-rail-item.on .shell-ico { color: var(--calm-accent); }
+  html body .shell-side .v2-rail-item.on .v2-rail-label { font-weight: 600; }
+  /* badges: small pills (grey counts; red news; blue Approvals) */
+  html body .shell-side .v2-rail-item .v2-badge, html body .shell-side .v2-rail-item .v2-badge.calm {
+    position: static; margin-left: auto; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; line-height: 1; background: var(--calm-fill); color: var(--calm-ink2);
+  }
+  html body .shell-side .v2-rail-item .v2-badge:not(.calm):not(.blue) { background: var(--calm-red); color: #fff; }
+  html body .shell-side .v2-rail-item .v2-badge.blue { background: var(--calm-accent); color: #fff; }
+
+  html body .shell-side .shell-foot { margin-top: auto; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 0 0; box-shadow: 0 -1px 0 var(--calm-fill); }
+  html body .shell-side .shell-me { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  html body .shell-side .shell-me .acct-row { flex: 1; min-width: 0; }
+  html body .shell-side .shell-me .acct-row-chev { display: none; }
+
+  /* ---- expanded (1100px and up, unless collapsed) ---- */
+  @media (min-width: 1100px) {
+    html:not(.side-collapsed) body .v2-shell.v2-shell { --rail-w: var(--shell-side-w); }
+  }
+
+  /* ---- the icon rail (collapsed, or below 1100px) ---- */
+  html.side-collapsed body .shell-side .shell-ws { flex-direction: column; gap: 8px; padding: 2px 0 12px; }
+  html.side-collapsed body .shell-side .shell-ws-btn { flex: none; padding: 4px; }
+  html.side-collapsed body .shell-side .shell-wn,
+  html.side-collapsed body .shell-side .v2-rail-label,
+  html.side-collapsed body .shell-side .acct-row-text { display: none; }
+  html.side-collapsed body .shell-side .v2-rail-item { justify-content: center; padding: 8px 0; min-height: 36px; }
+  html.side-collapsed body .shell-side .v2-side-sl { font-size: 0; padding: 0; margin: 6px 10px; height: 1px; background: var(--calm-fill); }
+  html.side-collapsed body .shell-side .v2-rail-item .v2-badge, html.side-collapsed body .shell-side .v2-rail-item .v2-badge.calm {
+    position: absolute; top: 4px; right: 8px; min-width: 8px; width: 8px; height: 8px; padding: 0; font-size: 0; background: var(--calm-accent);
+  }
+  html.side-collapsed body .shell-side .v2-rail-item .v2-badge.calm { display: none; }
+  html.side-collapsed body .shell-side .shell-me { flex-direction: column; }
+  html.side-collapsed body .shell-side .shell-me .acct-row { flex: none; padding: 0; justify-content: center; }
+  html.side-collapsed body .shell-side .timer-chip .timer-chip-label { display: none; }
+}
+@media (min-width: 769px) and (max-width: 1099px) {
+  html body .shell-side .shell-ws { flex-direction: column; gap: 8px; padding: 2px 0 12px; }
+  html body .shell-side .shell-ws-btn { flex: none; }
+  html body .shell-side .shell-collapse { display: none; }
+  html body .shell-side .shell-wn, html body .shell-side .v2-rail-label, html body .shell-side .acct-row-text { display: none; }
+  html body .shell-side .v2-rail-item { justify-content: center; padding: 8px 0; min-height: 36px; }
+  html body .shell-side .v2-side-sl { font-size: 0; padding: 0; margin: 6px 10px; height: 1px; background: var(--calm-fill); }
+  html body .shell-side .v2-rail-item .v2-badge { position: absolute; top: 4px; right: 8px; min-width: 8px; width: 8px; height: 8px; padding: 0; font-size: 0; background: var(--calm-accent); }
+  html body .shell-side .v2-rail-item .v2-badge.calm { display: none; }
+  html body .shell-side .shell-me { flex-direction: column; }
+  html body .shell-side .shell-me .acct-row { flex: none; padding: 0; justify-content: center; }
+}
+@media (min-width: 769px) {
+  html body .v2-shell > .main.v2-main { margin-left: var(--rail-w); transition: margin-left 320ms var(--calm-spring); }
+  html body .v2-rail.v2-side.shell-side { transition: width 320ms var(--calm-spring); }
+}
+.shell-ws-sub { display: block; font-size: 11px; color: var(--calm-ink3-text); }
+html body .shell-ws-menu { min-width: 260px; }
+
+/* ------------------------------------------------------------------ header (769px and up) */
+@media (min-width: 769px) {
+  html body .v2-tb.shell-head { display: flex; position: sticky; top: 0; z-index: 40; height: 64px; align-items: center; gap: 8px; padding: 0 28px 0 40px;
+    background: transparent; box-shadow: none; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none; pointer-events: none; }
+  html body .v2-tb.shell-head > * { pointer-events: auto; }
+  html body .v2-tb.shell-head > .v2-tb-sp { pointer-events: none; }
+  html body .shell-head .ncx-bell { width: 34px; height: 34px; border-radius: 50%; background: none; box-shadow: none; color: var(--calm-ink2); }
+  html body .shell-head .ncx-bell:hover, html body .shell-head .ncx-bell.on { background: var(--calm-fill); color: var(--calm-ink); }
+  html body .shell-head .ncx-bell .ncx-badge { box-shadow: 0 0 0 2px var(--calm-bg); }
+  html body .shell-head .acct-icon .v2-avatar { width: 30px; height: 30px; font-size: 11px; }
+}
+.shell-hb { width: 34px; height: 34px; border: 0; border-radius: 50%; display: inline-grid; place-items: center; background: none; color: var(--calm-ink2); cursor: pointer; position: relative;
+  transition: background 160ms ease, transform 300ms var(--calm-spring); }
+.shell-hb:hover { background: var(--calm-fill); }
+.shell-hb:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: 1px; }
+.shell-orb .calm-orb { display: block; border-radius: 50%; background: var(--calm-orb); box-shadow: 0 0 10px rgba(163, 92, 255, .45); width: 20px; height: 20px; transition: transform 420ms var(--calm-spring); }
+.shell-orb.on .calm-orb { transform: rotate(180deg) scale(1.15); }
+
+/* the phone top bar: the logo as the workspace mark */
+html body .m-top .m-org-mark:has(.pt-logo) { background: none; box-shadow: none; width: 30px; height: 30px; border-radius: 0; }
+
+/* ------------------------------------------------------------------ the Aura panel (floating; grows from the header orb) */
+html body .groot-chat.float {
+  position: fixed; top: 60px; right: 28px; left: auto; bottom: auto; width: 420px; max-width: calc(100vw - 56px); height: min(680px, calc(100vh - 90px)); z-index: 96;
+  display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 0; border-radius: 26px;
+  background: color-mix(in srgb, var(--calm-solid) 92%, transparent); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .06), 0 0 0 1.5px color-mix(in srgb, #a35cff 18%, transparent), 0 30px 80px rgba(20, 10, 60, .24);
+  transform-origin: calc(100% - 66px) -10px;
+}
+html body .groot-chat.float .gc-head { padding: 0; border: 0; gap: 10px; align-items: center; }
+/* phone: a bottom sheet over a dimmed page, above the tab bar and the + */
+html body .groot-chat.phone { top: max(56px, calc(env(safe-area-inset-top) + 44px)); z-index: 96; gap: 10px; padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--calm-solid); border-radius: 26px 26px 0 0; }
+html body .groot-chat.phone .gc-head { padding: 4px 0 0; border: 0; gap: 10px; align-items: center; }
+html body .groot-chat.phone .gc-tabs button { min-height: 36px; }
+html body .groot-chat.phone .gc-body { flex: 1; min-height: 0; overflow: auto; }
+html body .groot-chat.phone .gc-compose { border-radius: 99px; padding: 6px 6px 6px 16px; background: var(--calm-fill); border: 0; }
+html body .gc-scrim { z-index: 95; background: color-mix(in srgb, #000 28%, transparent); }
+html body .groot-chat .gc-orb { display: block; flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--calm-orb); box-shadow: 0 0 10px rgba(163, 92, 255, .45); }
+html body .groot-chat .gc-title b { font-size: 16px; font-weight: 600; }
+html body .groot-chat .gc-kbd { margin-left: auto; font-size: 11px; color: var(--calm-ink3-text); background: none; border: 0; box-shadow: none; font-family: inherit; }
+html body .groot-chat.float .gc-head .gc-icon { width: 30px; height: 30px; border-radius: 50%; background: var(--calm-fill); }
+html body .groot-chat .gc-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 3px; border-radius: 12px; background: var(--calm-fill); flex: none; }
+html body .groot-chat .gc-tabs button { min-height: 30px; border: 0; border-radius: 9px; background: none; color: var(--calm-ink2); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+html body .groot-chat .gc-tabs button.on { background: var(--calm-solid); color: var(--calm-ink); box-shadow: var(--calm-sh-sm); }
+html body .groot-chat.float .gc-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 2px; }
+html body .groot-chat.float .gc-compose { flex: none; border-radius: 99px; padding: 6px 6px 6px 16px; background: var(--calm-solid); border: 0;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, #a35cff 22%, transparent), var(--calm-sh); }
+html body .groot-chat.float .gc-empty { padding-top: 12px; }
+.gc-tab-list { list-style: none; margin: 0; padding: 0; }
+.gc-tab-row { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px; border: 0; border-radius: 12px; background: none; color: var(--calm-ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.gc-tab-row:hover, .gc-tab-row.on { background: var(--calm-fill); }
+.gc-tab-row > svg { color: var(--calm-ink2); flex: none; }
+.gc-tab-row .t { flex: 1; min-width: 0; }
+.gc-tab-row .t b { display: block; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc-tab-row .t small { display: block; color: var(--calm-ink2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc-tab-row > small { flex: none; font-size: 11.5px; color: var(--calm-ink3-text); }
+.gc-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--calm-ink3); }
+.gc-dot.on { background: var(--calm-green); }
+.gc-tab-more { display: block; margin: 8px 8px 0 auto; min-height: 36px; border: 0; background: none; color: var(--calm-accent-text); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.gc-tab-empty { margin: 24px 12px; color: var(--calm-ink2); font-size: 13.5px; line-height: 1.5; }
+.gc-tab-skel i { display: block; height: 40px; margin: 6px 0; border-radius: 12px; background: var(--calm-fill); }
+
+/* ------------------------------------------------------------------ the floating + button */
+.shell-fab { position: fixed; right: 28px; bottom: 26px; z-index: 89; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; pointer-events: none; }
+.shell-fab > * { position: relative; }
+.shell-fab-scrim { position: fixed !important; inset: 0; background: color-mix(in srgb, var(--calm-bg) 55%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity 240ms ease; pointer-events: none; }
+.shell-fab.on .shell-fab-scrim { opacity: 1; pointer-events: auto; }
+.shell-fab-menu { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.shell-fab-menu button { pointer-events: none; display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 6px 6px 16px; border: 0; border-radius: 99px; background: var(--calm-solid); color: var(--calm-ink);
+  font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .06), 0 10px 26px rgba(20, 10, 60, .14);
+  opacity: 0; transform: translateY(14px) scale(.9); transform-origin: 100% 50%; transition: opacity 200ms ease, transform 380ms var(--calm-spring); transition-delay: calc(var(--i) * 30ms); }
+.shell-fab-menu button span { width: 30px; height: 30px; border-radius: 50%; background: var(--calm-fill); display: grid; place-items: center; color: var(--calm-ink2); }
+.shell-fab-menu button:hover span, .shell-fab-menu button:focus-visible span { background: var(--calm-accent); color: #fff; }
+.shell-fab-menu button:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: 2px; }
+.shell-fab.on .shell-fab-menu button { opacity: 1; transform: none; pointer-events: auto; }
+.shell-fab-btn { pointer-events: auto; width: 54px; height: 54px; border-radius: 50%; border: 0; cursor: pointer; background: var(--calm-ink); color: var(--calm-bg); display: grid; place-items: center;
+  box-shadow: 0 10px 26px rgba(20, 10, 60, .22), 0 1px 2px rgba(0, 0, 0, .1); transition: transform 380ms var(--calm-spring), box-shadow 300ms ease; }
+.shell-fab-btn:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(20, 10, 60, .26); }
+.shell-fab-btn:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: 3px; }
+.shell-fab-btn svg { transition: transform 420ms var(--calm-spring); }
+.shell-fab.on .shell-fab-btn svg { transform: rotate(45deg); }
+html[data-theme='dark'] .shell-fab-btn { background: #f5f5f7; color: #111; }
+/* the page under the open + stays put; the content keeps room at its foot so the last row is never behind the button */
+@media (min-width: 769px) { html body .v2-shell > .main.v2-main > .content { padding-bottom: 96px; } }
+html.groot-open-float .shell-fab { opacity: 0; pointer-events: none; }
+/* phone: above the tab bar */
+.m-shell .shell-fab { right: 18px; bottom: calc(var(--m-tab, 62px) + 14px + env(safe-area-inset-bottom, 0px)); }
+.m-shell .shell-fab-btn { width: 52px; height: 52px; }
+html body .m-shell.v2-shell:not(.m-conversation):not(.m-thread) .m-main > .content { padding-bottom: calc(var(--m-tab, 62px) + 80px + env(safe-area-inset-bottom, 0px)); }
+
+/* ------------------------------------------------------------------ phone tab bar and More */
+html body .v2-more-tile .shell-tile { background: var(--calm-fill); color: var(--calm-ink); box-shadow: none; }
+html body .v2-more-tile .shell-tile svg { stroke: currentColor; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-fab-menu button, .shell-fab-btn, .shell-fab-btn svg, .shell-fab-scrim, .shell-orb .calm-orb, .shell-hb { transition: none; }
+  html body .v2-rail.v2-side.shell-side, html body .v2-shell > .main.v2-main { transition: none; }
+}
+html body .groot-chat.float .gc-compose textarea, html body .groot-chat.phone .gc-compose textarea { border: 0; background: transparent; box-shadow: none; outline: none; }
+html body .groot-chat.float .gc-compose:focus-within { box-shadow: 0 0 0 2px color-mix(in srgb, #a35cff 40%, transparent), var(--calm-sh); }
+/* the demo's Aura panel: no big avatar, a greeting line and small pill suggestions */
+html body .groot-chat.float .gc-empty { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; text-align: left; padding: 0 2px; gap: 6px; }
+html body .groot-chat.float .gc-empty > :first-child, html body .groot-chat.float .gc-empty .gc-when, html body .groot-chat.phone .gc-empty .gc-when { display: none; }
+html body .groot-chat.float .gc-empty h3 { font-size: 15px; font-weight: 500; margin: 0; }
+html body .groot-chat.float .gc-empty p { font-size: 13.5px; color: var(--calm-ink2); margin: 0; }
+html body .groot-chat.float .gc-sugg, html body .groot-chat.phone .gc-sugg { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+html body .groot-chat.float .gc-chip, html body .groot-chat.phone .gc-chip { width: auto; min-height: 32px; padding: 6px 12px; border-radius: 99px; background: var(--calm-solid); box-shadow: inset 0 0 0 1px var(--calm-fill-2); color: var(--calm-ink2); font-size: 12.5px; }
+/* the demo's avatars: plain small circles (no theme ring) in the header and the sidebar foot */
+html body .shell-head .acct-ringed, html body .shell-side .acct-ringed { box-shadow: none; }
+html body .shell-head .acct-icon { padding: 3px; }
+html body .shell-head .acct-icon .v2-avatar { width: 28px; height: 28px; font-size: 10.5px; }
+html body .shell-side .shell-me .acct-row { padding: 4px 6px; gap: 9px; }
+html body .shell-side .shell-me .acct-row .v2-avatar { width: 28px; height: 28px; font-size: 10.5px; }
+html body .shell-side .shell-me .acct-row-text b { font-size: 12.5px; font-weight: 600; }
+html body .shell-side .shell-me .acct-row-text small { font-size: 11px; color: var(--calm-ink3-text); }
+html body .groot-chat.float .gc-empty, html body .groot-chat.float .gc-empty h3, html body .groot-chat.float .gc-empty p { text-align: left; align-items: flex-start; }
+html body .groot-chat.float .gc-sugg { flex-direction: row; align-items: center; justify-content: flex-start; }
+html body .groot-chat.float .gc-sugg .gc-chip, html body .groot-chat.phone .gc-sugg .gc-chip { flex: none; width: auto; max-width: 100%; }
+/* A page with a crumb row (Today's date and its Morning/Afternoon/Evening switch, a project's breadcrumb) shares the header's line, as in
+   the demo: the header overlays the top of the page, and the crumb row keeps clear of the header's controls on the right. */
+@media (min-width: 769px) {
+  html:has(main .calm-page-crumb) body .v2-tb.shell-head { margin-bottom: -64px; }
+  html body main .calm-page-crumb { min-height: 64px; margin-top: -4px; padding-right: var(--shell-head-w, 220px); }
+}

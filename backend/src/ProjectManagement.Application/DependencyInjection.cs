@@ -242,6 +242,8 @@ public static class DependencyInjection
         services.AddScoped<PlanningService>();
         services.AddScoped<TimeService>();
         services.AddScoped<PlannedLeaveService>();
+        services.AddScoped<ProjectManagement.Application.Features.Approvals.ApprovalService>();
+        services.AddScoped<ProjectManagement.Application.Features.Notes.NoteService>();
         services.AddScoped<TimesheetApprovalService>();
         services.AddScoped<TimesheetGridService>();
         services.AddScoped<TimesheetWordsService>();
@@ -271,6 +273,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiQualityService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiVoiceInput>();
         services.AddScoped<ProjectManagement.Application.Features.Calls.CallService>();
+        services.AddScoped<ProjectManagement.Application.Features.Calls.CallHistoryService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiHomeActions>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiFileService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiGuidance>();

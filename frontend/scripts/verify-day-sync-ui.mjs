@@ -151,7 +151,7 @@ try {
   }
   const yCounts = async () => (await page.getByTestId('your-day-counts').innerText()).replace(/\s+/g, ' ');
   const todayCol = () => page.locator(`.wp-col[data-day="${today}"]`);
-  const calLogged = async () => (await page.locator(`.wp-dh[data-day="${today}"] [data-testid="wp-logged"]`).innerText()).trim();
+  const calLogged = async () => { if (!(await page.getByTestId('wp-logged').isVisible().catch(() => false))) await page.getByRole('tab', { name: 'Day', exact: true }).click(); return (await page.getByTestId('wp-logged').innerText()).replace(/ logged$/, '').trim(); };
   const panelLogged = async () => (await page.locator('[data-testid="day-panel"] section[aria-label="Logged time"] h3').innerText()).replace(/\s+/g, ' ');
   const timeTotal = async () => page.locator(`[data-testid="tsg-day-total"][data-day="${today}"]`);
   async function totals(label, expect) {
@@ -161,7 +161,9 @@ try {
     assert.match(yd, new RegExp(`${expect} logged`), `${label}: Today says ${yd}`);
     await go('/calendar');
     await page.locator('[data-testid="week-planner"]').waitFor();
-    await page.locator(`.wp-dh[data-day="${today}"] [data-testid="wp-logged"]`).waitFor();
+    // the day's logged time is in the Day view's "at a glance" (the demo's day headers carry no pills)
+    if (!(await page.getByTestId('wp-logged').isVisible().catch(() => false))) await page.getByRole('tab', { name: 'Day', exact: true }).click();
+    await page.getByTestId('wp-logged').waitFor();
     assert.equal(await calLogged(), expect, `${label}: Calendar day header`);
     assert.match(await panelLogged(), new RegExp(`^Logged time ?${expect} of 8h`), `${label}: Day panel`);
     await go('/insights?tab=time');

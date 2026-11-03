@@ -46,7 +46,7 @@ try {
   async function context(theme) {
     const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
     await ctx.clock.setFixedTime(NOW);
-    await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
+    await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pt_classic_pages', '1'); localStorage.setItem('pm_theme', t); }, theme);
     await ctx.route('**/*', async (route) => {
       const url = new URL(route.request().url()), ep = url.pathname, method = route.request().method();
       if (url.origin !== origin) { await route.abort(); return; }
@@ -143,12 +143,14 @@ try {
   const pill = await col.locator('.wp-done', { hasText: 'INFRA-2' }).getAttribute('data-start');
   assert.ok(Math.abs(Number(pill) - 11.55) < 0.01, `INFRA-2 finished at 11:33 (${pill})`);
   // the now line agrees with Today's
-  assert.equal((await page.locator('.wp-nowl').innerText()).trim(), homeNow);
+  // the calendar reads the 24-hour clock, Today the 12-hour one: the same minute
+  const twelve = (t) => { const [h, m] = t.replace(/\s*[AP]M$/i, '').split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')}`; };
+  assert.equal(twelve((await page.locator('.wp-nowl').innerText()).trim()), twelve(homeNow));
   // the grid opens at the first thing of the week (07:40 on Tuesday), showing whole hours from 7 AM
   const scroll = await page.locator('[data-testid="wp-scroll"]').evaluate((el) => el.scrollTop);
   assert.ok(Math.abs(scroll - (7 * 73 - 12)) <= 2, `auto-scrolled to 7 AM (${scroll})`);
   const firstLabel = await page.locator('[data-testid="wp-scroll"]').evaluate((el) => { const top = el.getBoundingClientRect().top; return [...el.querySelectorAll('.wp-hrs span[data-hour]')].find((s) => s.getBoundingClientRect().top >= top - 1)?.textContent; });
-  assert.equal(firstLabel, '7 AM', 'the first hour is shown whole (not clipped)');
+  assert.equal(firstLabel, '7:00', 'the first hour is shown whole (not clipped)');
   checks.push('types + now line + auto-scroll');
   await capture('calendar-week-1440');
 
@@ -159,6 +161,7 @@ try {
     const scope = layer === 'deadlines' ? page.locator('.wp-cal') : page.locator('.wp-body');
     const before = await scope.locator(sel).count();
     assert.ok(before > 0, `${layer} drawn before the toggle`);
+    if ((await page.getByRole('button', { name: 'Show layers' }).getAttribute('aria-expanded')) !== 'true') await page.getByRole('button', { name: 'Show layers' }).click();
     await page.locator(`[data-testid="wp-layers"] label[data-layer="${layer}"]`).click();
     await page.waitForFunction(([s, d]) => document.querySelectorAll(`${d} ${s}`).length === 0, [sel, layer === 'deadlines' ? '.wp-allday' : '.wp-body']);
     await page.locator(`[data-testid="wp-layers"] label[data-layer="${layer}"]`).click();

@@ -24,7 +24,7 @@ const card=(n,name,key,desc,group,health,total,done,progress,priority,type,who,d
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
- await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme','light');});
+ await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pt_classic_pages','1');localStorage.setItem('pm_theme','light');});
  await ctx.route('**/*',async route=>{
   const url=new URL(route.request().url()),ep=url.pathname,method=route.request().method();
   if(url.origin!==origin){await route.abort();return;}
@@ -90,7 +90,7 @@ try{
   await page.locator(`.wp-col[data-day="${today}"] .wp-e:not(.f):not(.lg)`).nth(3).waitFor();
   await page.evaluate(()=>scrollTo(0,0));await capture('calendar-top-'+width);
   // The month card and filters never run under the week grid.
-  if(width>=1100){const chip=page.locator(`.wp-dh.tdy [data-testid="wp-logged"]`);await chip.waitFor();assert.equal(await chip.getAttribute('aria-label'),'4h 30m logged');assert.equal(await page.locator(`.wp-col[data-day="${today}"] .wp-e.lg:not(.ap)`).count(),1,'the timer entry sits at its hours');assert.equal(await page.locator(`.wp-col[data-day="${today}"] .wp-e.lg.ap`).count(),1,'the typed-in entry is placed on the day, marked approximate');}
+  if(width>=1100){await page.getByRole('tab',{name:'Day',exact:true}).click();const chip=page.getByTestId('wp-logged');await chip.waitFor();assert.equal(await chip.getAttribute('aria-label'),'4h 30m logged');await page.getByRole('tab',{name:'Week',exact:true}).click();assert.equal(await page.locator(`.wp-col[data-day="${today}"] .wp-e.lg:not(.ap)`).count(),1,'the timer entry sits at its hours');assert.equal(await page.locator(`.wp-col[data-day="${today}"] .wp-e.lg.ap`).count(),1,'the typed-in entry is placed on the day, marked approximate');}
   const apart=await page.evaluate(()=>{const l=document.querySelector('.wp-left'),m=document.querySelector('.wp-main');if(!l||!m||getComputedStyle(l).display==='none'||l.getBoundingClientRect().width===0)return true;const mm=document.querySelector('.wp-mm')?.getBoundingClientRect(),mb=m.getBoundingClientRect();return !mm||mm.right<=mb.left+1||mm.top>=mb.bottom-1;});
   assert.ok(apart,'Month card does not overlap the week grid at '+width);
   const inside=await page.locator('.wp-col .wp-e:not(.f):not(.lg)').evaluateAll(items=>items.map(el=>{const day=el.closest('.wp-col').getBoundingClientRect(),box=el.getBoundingClientRect();return box.left>=day.left-1&&box.right<=day.right+1&&box.bottom<=day.bottom+1;}));
@@ -110,7 +110,7 @@ try{
  await open('/preview-org/support','.page-title',390);await page.waitForURL(/\/work\?tab=tickets$/);/* v2: Tickets left the Work toolbar (Desk in the sidebar), but /work?tab=tickets still opens the ticket list */assert.ok(/\/work\?tab=tickets$/.test(page.url()),'Old support links land on Work › Tickets');
  assert.equal(await page.getByRole('link',{name:'Support center',exact:true}).count(),0);
  await open('/preview-org/portfolio?project='+pid,'.pp-head h1',1440);assert.equal(await page.getByRole('button',{name:'Ask Agent',exact:true}).count(),0);
- await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v2-tb .aura-hint').count(),1,'v2: Aura\'s "⌘K" hint replaces the animated agent mark (no bar at rest)');
+ await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v2-tb .shell-orb').count(),1,'calm shell: the Aura orb in the header (no bar at rest)');
  // Project cards line up across a row whatever the name, code or description length (the numbers, bar, badges and owner sit at the same height).
  cardProjects=[card(1,'idfc-qr-callback-api','IQCA','Api Configuration and Validation','Mule Soft','AtRisk',1,0,0,'Medium','Integration',owner(1,'Shiva kumar'),'2026-11-13'),
   card(2,'Payment Engine Disaster Recovery (DR) Setup','PEDR','Payment Engine Disaster Recovery (DR) setup in the AWS Hyderabad region, including failover runbooks and quarterly drills.','Mule Soft','AtRisk',1,0,0,'High','NewProject',owner(2,'Maya Chen'),'2026-11-21'),

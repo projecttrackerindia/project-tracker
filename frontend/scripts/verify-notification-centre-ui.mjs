@@ -119,11 +119,12 @@ try {
   await page.goto(origin + '/preview-org/work');
   await bell(page).waitFor();
 
-  // The bell is the last thing in the header (no + New any more), with the unread count (5) in a red pill; the tab title carries the same number.
-  const order = await page.evaluate(() => { const b = document.querySelector('.v2-tb [data-ncx-bell]'); return !!b && !b.nextElementSibling && document.querySelectorAll('.v2-tb-new').length === 0; });
-  assert.ok(order, 'the bell ends the header and there is no + New');
+  // The calm header, top right: check-in · bell · Aura orb · avatar (no + New there: the floating + creates), with the unread count (5) in a
+  // red pill; the tab title carries the same number.
+  const order = await page.evaluate(() => { const b = document.querySelector('.v2-tb [data-ncx-bell]'); const next = b?.nextElementSibling; return !!b && (!next || next.matches('.shell-orb, .acct-icon')) && document.querySelectorAll('.v2-tb-new').length === 0; });
+  assert.ok(order, 'the bell, then the orb and the avatar; no + New');
   const bb = await bell(page).boundingBox(), tb = await page.locator('.v2-tb').boundingBox();
-  assert.ok(tb.x + tb.width - (bb.x + bb.width) < 30, 'the bell sits at the right edge of the header');
+  assert.ok(tb.x + tb.width - (bb.x + bb.width) < 130, 'the bell sits at the right of the header, just before the orb and the avatar');
   await page.locator('.v2-tb .ncx-badge').waitFor();
   assert.equal(await page.locator('.v2-tb .ncx-badge').innerText(), '5');
   await page.waitForFunction(() => document.title.startsWith('(5) '));

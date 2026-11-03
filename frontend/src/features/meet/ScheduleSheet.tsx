@@ -238,6 +238,7 @@ export function ScheduleSheet({ open, onClose }: { open: ScheduleOpen; onClose: 
         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void submit()}>{busy && <span className="spinner" />}Schedule</button>
       </>}>
+      <div className="ms-2col">
       <div className="ms" data-testid="schedule-sheet">
         <div className="ms-top">
           {open.aura && <span className="ms-aura" data-testid="schedule-from-aura">✦ From Aura: “{open.aura}”</span>}
@@ -375,6 +376,8 @@ export function ScheduleSheet({ open, onClose }: { open: ScheduleOpen; onClose: 
           </div>
         </div>
       </div>
+      <Availability people={fb.data?.people ?? []} loading={fb.isLoading} me={me ?? null} date={date} tz={tz} start={start} minutes={minutes} onUse={setTime} />
+      </div>
     </Modal>
   );
 }
@@ -406,4 +409,52 @@ export function ScheduleHost() {
   const open = useScheduleSheet((s) => s.open);
   const close = useScheduleSheet((s) => s.close);
   return open ? <ScheduleSheet open={open} onClose={close} /> : null;
+}
+
+const H0 = 9, H1 = 17;
+/**
+ * Availability beside the form (design: meet-schedule): each person's busy time from 9 to 17 on the chosen day with the slot marked, one line
+ * that says whether everyone is free, and the other good times that day (everyone free for the whole length), each with Use.
+ */
+function Availability({ people, loading, me, date, tz, start, minutes, onUse }: {
+  people: { userId: string; name: string; busy: { start: string; end: string; kind: string }[]; freeAtSlot: boolean }[]; loading: boolean; me: string | null;
+  date: string; tz: string; start: Date | null; minutes: number; onUse: (time: string) => void;
+}) {
+  const hourOn = (iso: string) => { const p = zonedParts(new Date(iso), tz); const d = `${p.year}-${pad(p.month)}-${pad(p.day)}`; return d < date ? H0 - 24 : d > date ? H1 + 24 : p.hour + p.minute / 60; };
+  const rows = people.map((p) => ({ ...p, spans: p.busy.map((b) => [Math.max(H0, hourOn(b.start)), Math.min(H1, hourOn(b.end))] as const).filter(([a, b]) => b > a) }));
+  const s0 = start ? (() => { const p = zonedParts(start, tz); return p.hour + p.minute / 60; })() : null;
+  const pct = (h: number) => `${((h - H0) / (H1 - H0)) * 100}%`;
+  const len = minutes / 60;
+  const free = (a: number) => rows.every((r) => r.spans.every(([x, y]) => a + len <= x || a >= y));
+  const others: number[] = [];
+  for (let a = H0; a + len <= H1 && others.length < 3; a += .5) if (Math.abs(a - (s0 ?? -1)) > .01 && free(a)) others.push(a);
+  const busy = rows.filter((r) => !r.freeAtSlot);
+  const clock = (h: number) => `${pad(Math.floor(h))}:${pad(Math.round((h % 1) * 60))}`;
+  const day = dayLabel(date);
+  return (
+    <aside className="ms-avail" aria-label="Availability" data-testid="schedule-availability">
+      <div className="ms-av-h">Availability · {day}</div>
+      {rows.length === 0 ? <p className="ms-hint">{loading ? 'Checking who is free…' : 'Add people to see when everyone is free.'}</p> : (
+        <div className="ms-av-rows">
+          {rows.map((r) => (
+            <div key={r.userId} className="ms-av-r">
+              <span className="ms-av-n"><Avatar name={r.name} userId={r.userId} size="sm" />{r.userId === me ? 'You' : r.name.split(' ')[0]}</span>
+              <span className="ms-av-t">
+                {r.spans.map(([a, b], i) => <i key={i} className="busy" style={{ left: pct(a), width: `calc(${pct(b)} - ${pct(a)})` }} />)}
+                {s0 != null && s0 < H1 && s0 + len > H0 && <i className={`slot${r.freeAtSlot ? '' : ' clash'}`} style={{ left: pct(Math.max(H0, s0)), width: `calc(${pct(Math.min(H1, s0 + len))} - ${pct(Math.max(H0, s0))})` }} />}
+              </span>
+            </div>
+          ))}
+          <div className="ms-av-x" aria-hidden="true"><span />{Array.from({ length: H1 - H0 + 1 }, (_, i) => <b key={i} style={{ left: pct(H0 + i) }}>{H0 + i}</b>)}</div>
+        </div>
+      )}
+      {rows.length > 0 && s0 != null && (
+        <p className="ms-av-aura"><span className="calm-orb" aria-hidden="true" />{busy.length === 0 ? `Everyone is free ${day.split(' ')[0]} ${clock(s0)}.` : `${busy.map((b) => (b.userId === me ? 'You are' : `${b.name.split(' ')[0]} is`)).slice(0, 2).join(', ')} busy at ${clock(s0)}.`}{others[0] != null && busy.length > 0 ? ` ${clock(others[0])} works for everyone.` : ''}</p>
+      )}
+      {rows.length > 0 && others.length > 0 && <>
+        <div className="ms-av-h">Other good times</div>
+        {others.map((a) => <div key={a} className="ms-av-o"><span>{day} · {clock(a)}</span><button type="button" onClick={() => onUse(clock(a))}>Use</button></div>)}
+      </>}
+    </aside>
+  );
 }

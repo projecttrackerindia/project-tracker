@@ -11,7 +11,7 @@ import { makeState, origin, portfolioContext } from './lib/portfolioFixture.mjs'
 const out = path.resolve('test-results/whitespace-ui');
 await fs.mkdir(out, { recursive: true });
 const reportAt = process.argv.includes('--report') ? process.argv[process.argv.indexOf('--report') + 1] : null;
-const VIEWS = [['board', 'Board', ''], ['timeline', 'Timeline', ''], ['sheet', 'Plan sheet', ''], ['capacity', 'Capacity', ''], ['capacity-reports', 'Capacity · My reports', 'Reports']];
+const VIEWS = [['overview', 'Overview', ''], ['actions', 'Action items', ''], ['board', 'Board', ''], ['timeline', 'Timeline', ''], ['sheet', 'Plan sheet', ''], ['capacity', 'Capacity', ''], ['capacity-reports', 'Capacity · My reports', 'Reports']];
 // The most a page may leave empty: below the last content, inside a card, and on the right.
 const LIMIT = { bottom: 120, inCard: 120, right: 120 };
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
@@ -62,7 +62,7 @@ try {
       await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=${m}`);
       await page.locator('.pfx-stage').first().waitFor();
       await page.waitForTimeout(700);
-      if (scope) { await page.getByRole('radio', { name: 'My reports' }).or(page.getByRole('button', { name: 'My reports' })).or(page.getByRole('tab', { name: 'My reports' })).first().click(); await page.waitForTimeout(600); }
+      if (scope) { await page.getByRole('button', { name: /More on Portfolio/ }).click(); await page.getByRole('menuitem', { name: /my reports/i }).click(); await page.waitForTimeout(600); }
       await page.evaluate(() => document.fonts.ready);
       if (mode === 'timeline' && width > 500) {
         // One colour per row: the project's square only; the status is the bar's style and a word.

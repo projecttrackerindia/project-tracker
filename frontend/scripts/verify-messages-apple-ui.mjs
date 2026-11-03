@@ -131,23 +131,27 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/messages`);
   await page.locator('.talk-row[data-row="Lena Park"]').waitFor();
-  assert.equal(await page.locator('.talk-seg .talk-chip').count(), 3, 'a compact segmented filter: All · Unread · Chats (meetings have their own place)');
+  // The calm list head (demo 22): no visible filter or search, both in ⋯ / behind the search icon.
+  assert.equal(await page.locator('.talk-seg .talk-chip').filter({ visible: true }).count(), 0, 'no visible filter (it is in ⋯)');
+  await page.getByRole('button', { name: 'More in Messages' }).click();
+  for (const f of ['Show all', 'Show unread', 'Show chats']) assert.ok(await page.getByRole('menuitem', { name: new RegExp(f) }).isVisible(), f);
+  await page.keyboard.press('Escape');
   assert.equal(await page.locator('.talk-row[data-row="Lena Park"] .talk-dot').count(), 1, 'the blue unread dot');
   assert.equal(await bg(page.locator('.talk-row[data-row="Lena Park"] .talk-dot')), 'rgb(10, 132, 255)');
   assert.equal(await page.locator('.v2-tb-new, .v2-rail-new').count(), 0, 'no + New in Messages');
-  await page.locator('.v2-tb .aura-hint').waitFor();   // Aura's hint on the list (its capsule only when invoked)
+  // (The calm shell has no Aura hint in the toolbar any more: Aura is the floating panel the shell owns.)
   checks.push('list');
 
   // Right-click a row: Pin · Mute · Mark as read · Hide. Pinning puts it in the round avatars on top (one row, only when pinned).
-  assert.equal(await page.locator('.talk-pins').count(), 0, 'no pinned strip when nothing is pinned');
+  assert.equal(await page.locator('.talk-row.pinned').count(), 0, 'no pinned rows when nothing is pinned');
   await page.locator('.talk-row[data-row="Orbit Team"]').click({ button: 'right' });
   const rowMenu = page.getByRole('menu', { name: 'Orbit Team actions' });
   assert.deepEqual((await rowMenu.getByRole('menuitem').allInnerTexts()).map((t) => t.trim()), ['Pin', 'Mute', 'Hide']);
   await rowMenu.getByRole('menuitem', { name: 'Pin' }).click();
-  await page.locator('.talk-pin[data-pin="Orbit Team"]').waitFor();
-  const pinBox = await page.locator('.talk-pins').boundingBox();
+  await page.locator('.talk-row.pinned[data-pin="Orbit Team"]').waitFor();
+  const pinBox = await page.locator('.talk-row.pinned').first().boundingBox();
   assert.ok(pinBox.height < 110, `pinned avatars take one small row (${pinBox.height})`);
-  await page.locator('.talk-row[data-row="Orbit Team"]').waitFor({ state: 'detached' });   // a pinned chat leaves the list (after its exit animation)
+  await page.locator('.talk-row:not(.pinned)[data-row="Orbit Team"]').waitFor({ state: 'detached' });   // a pinned chat leaves the list (after its exit animation)
   await new Promise((r) => setTimeout(r, 200));
   const pinWrite = writes.filter((w) => w.ep === '/api/v1/me/ui/conversations' && w.method === 'PUT').at(-1);
   assert.ok(pinWrite, 'the pin is saved with the account (/me/ui/conversations)');
@@ -159,7 +163,8 @@ try {
   await page.locator(`[data-msg="${ID(8)}"]`).waitFor();
   await page.waitForTimeout(400);   // the selection highlight fades in
   // Selection and bubbles are blue; theirs grey; nothing green anywhere.
-  assert.equal(await bg(page.locator('.talk-row.active')), 'rgb(10, 132, 255)', 'selected row is Apple blue');
+  // The calm design: the selected chat sits in a quiet fill (not a solid blue row); my bubbles stay blue.
+  assert.notEqual(await bg(page.locator('.talk-row.active')), 'rgb(10, 132, 255)', 'the selected row is a quiet fill');
   assert.equal(await bg(page.locator(`[data-msg="${ID(8)}"] .bubble`)), 'rgb(0, 122, 255)', 'my bubble is iMessage blue');
   assert.equal(await page.locator(`[data-msg="${ID(8)}"] .bubble`).evaluate((e) => getComputedStyle(e).color), 'rgb(255, 255, 255)');
   assert.equal(await bg(page.locator(`[data-msg="${ID(6)}"] .bubble`)), 'rgb(233, 233, 235)', 'their bubble is grey');
@@ -294,7 +299,7 @@ try {
   ctx = await make('light'); page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/preview-org/messages`);
-  await page.locator('.talk-pin[data-pin="Lena Park"]').waitFor();
+  await page.locator('.talk-row.pinned[data-pin="Lena Park"]').waitFor();
   await page.waitForTimeout(300);
   assert.equal(await page.locator('.talk-row[data-row="Orbit Team"]').count(), 0, 'hidden on another device: hidden here');
   await ctx.close();
@@ -322,7 +327,7 @@ try {
   await page.waitForTimeout(400);
   assert.equal(await bg(page.locator(`[data-msg="${ID(8)}"] .bubble`)), 'rgb(10, 132, 255)', 'dark: blue bubble');
   assert.equal(await bg(page.locator(`[data-msg="${ID(6)}"] .bubble`)), 'rgb(38, 37, 42)', 'dark: grey bubble');
-  assert.equal(await bg(page.locator('.talk-row.active')), 'rgb(10, 132, 255)');
+  assert.notEqual(await bg(page.locator('.talk-row.active')), 'rgb(10, 132, 255)', 'dark: the selected row is a quiet fill');
   assert.deepEqual(await greens(page), [], 'dark: no green');
   await page.getByTestId('away-chip').getByRole('button', { name: 'Dismiss the summary' }).click();
   await page.reload();

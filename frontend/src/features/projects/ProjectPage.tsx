@@ -1,7 +1,8 @@
 import { useQueries } from '@tanstack/react-query';
+import { CalmJourney, calmStepPos, type CalmStep } from '../../components/calm';
 import { openSchedule } from '../meet/scheduleStore';
 import { motion, useReducedMotion } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { agentApi, documentApi, projectApi, timeApi } from '../../api/endpoints';
@@ -21,7 +22,9 @@ import { useChatEnabled } from '../chat/ProjectChat';
 import { useProjectChat } from '../chat/projectChatStore';
 import { ImportModal } from '../import/ImportModal';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
-import { DotsMenu } from '../talk/DotsMenu';
+import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
+import { CalmProject } from './CalmProject';
+import { useClassic } from '../calm/classic';
 import { pinItem, usePins } from '../../components/v2/pins';
 import { TaskModal } from '../tasks/TaskModal';
 import { ProjectTime } from '../time/ProjectTime';
@@ -92,6 +95,7 @@ export function ProjectPage() {
   const chatOn = useChatEnabled();
   const openChat = useProjectChat((s) => s.openChat);
   const q = useWsQuery(['project', id], () => projectApi.get(id));
+  const classic = useClassic();
 
   const rawTab = params.get('tab') ?? 'overview';
   const [editing, setEditing] = useState(false);
@@ -158,6 +162,48 @@ export function ProjectPage() {
     catch { toast(url, 'info'); }
   };
 
+  const menu: DotsItem[] = [
+            { label: 'Add work', icon: 'plus', hint: '+ New, in this project', hidden: !addWork, onSelect: () => openNew('task', '', { id: p.id, name: p.name }) },
+            { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/meetings?s=upcoming&project=${p.id}`) },
+            { label: 'Schedule a meeting', icon: 'calendar', hint: 'Linked to this project; its time logs here', hidden: archived, onSelect: () => openSchedule({ project: { id: p.id, name: p.name } }) },
+            { label: 'Chat', icon: 'message', hint: 'The project’s team chat', hidden: !chatOn, onSelect: () => openChat(p.id, p.name) },
+            { label: canEdit ? 'Settings' : 'Members', icon: canEdit ? 'settings' : 'users', hint: canEdit ? 'Members, task workflow and automation' : 'Who is on this project', onSelect: () => setSettings('members') },
+            { label: 'Delay risk', icon: 'sparkle', hint: 'How likely it is to be late, and why', hidden: !ai, onSelect: () => setRisk(true) },
+            { label: 'What if…', icon: 'target', hint: 'When it finishes if work slips, people join or scope is cut', hidden: isFinished(p), onSelect: () => setWhatIf(true) },
+            { label: 'Weekly report', icon: 'note', hint: 'What moved, what slipped, risks, next week', onSelect: () => nav(`/work/projects/${p.id}/report`) },
+            { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
+            { label: 'Edit details', icon: 'edit', hint: 'Every field: priority, status, group, type, delivery', hidden: !canEdit, onSelect: () => setEditing(true) },
+            { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
+            { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
+            { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },
+            pinItem(pins, p.id),
+            { label: 'Delete project', icon: 'trash', danger: true, hidden: !canDelete, onSelect: () => void remove() },
+          ];
+  if (!classic && tab === 'overview') return (
+    <>
+      <CalmProject detail={detail} menu={[
+        { label: 'Work · Board and list', icon: 'kanban', hint: 'Tasks, issues and action items; board, list and timeline', hidden: !allowed.includes('work'), onSelect: () => setTab('work') },
+        { label: 'Docs', icon: 'note', onSelect: () => setTab('docs') },
+        { label: 'Time', icon: 'clock', hidden: !allowed.includes('time'), onSelect: () => setTab('time') },
+        { label: 'Activity and agent', icon: 'activity', hidden: !allowed.includes('activity'), onSelect: () => setTab('activity') },
+        { label: 'Overview · stages and sign-off', icon: 'flag', hint: 'The earlier overview, with the timeline and sign-off', onSelect: () => nav(`${loc.pathname}?classic=1`) },
+        { label: 'Share link', icon: 'link', onSelect: () => void share() },
+        ...menu,
+      ]} canEdit={canEdit && !archived} addWork={addWork} onHealth={() => setHealthOpen(true)} onFullTask={(tid) => setParams({ task: tid })} />
+      {healthOpen && <HealthSheet projectId={p.id} projectName={p.name} onClose={() => setHealthOpen(false)} />}
+      {editing && <ProjectFormModal project={p} onClose={() => setEditing(false)} />}
+      {scheduling && <StageScheduleStudio project={p} stages={detail.stages} onClose={() => setScheduling(false)} />}
+      {importing && <ImportModal projectId={p.id} onClose={() => setImporting(false)} />}
+      {risk && <RiskModal projectId={p.id} onClose={() => setRisk(false)} />}
+      {whatIf && <WhatIf projectId={p.id} name={p.name} onClose={() => setWhatIf(false)} />}
+      {settings && <ProjectSettingsModal detail={detail} canEdit={canEdit} initial={settings} onClose={() => setSettings(null)} />}
+      {openTaskId && <TaskModal taskId={openTaskId} onClose={() => drop('task')} />}
+      {openIssueId && <IssueDetailModal projectId={p.id} issueId={openIssueId} stages={detail.stages} members={detail.members} onClose={() => drop('issue')} />}
+      {reporting && <ReportIssueModal projectId={p.id} stages={detail.stages} members={detail.members} defaultStageId={reporting.stageId}
+        onClose={() => setReporting(null)} onCreated={(issueId) => { setReporting(null); setParams({ tab: 'work', kind: 'issue', issue: issueId }); }} />}
+    </>
+  );
+
   return (
     <div className="pp">
       <header className="pp-head">
@@ -169,23 +215,7 @@ export function ProjectPage() {
         <div className="pp-actions">
           <ProjectStatePill p={p} />
           <button type="button" className="pa-btn pp-share" onClick={() => void share()}>Share</button>
-          <DotsMenu label="More on this project" listClassName="wide" items={[
-            { label: 'Add work', icon: 'plus', hint: '+ New, in this project', hidden: !addWork, onSelect: () => openNew('task', '', { id: p.id, name: p.name }) },
-            { label: 'Meet', icon: 'video', hint: 'The project’s calls and meetings', onSelect: () => nav(`/meetings?s=upcoming&project=${p.id}`) },
-            { label: 'Schedule a meeting', icon: 'calendar', hint: 'Linked to this project; its time logs here', hidden: archived, onSelect: () => openSchedule({ project: { id: p.id, name: p.name } }) },
-            { label: 'Chat', icon: 'message', hint: 'The project’s team chat', hidden: !chatOn, onSelect: () => openChat(p.id, p.name) },
-            { label: canEdit ? 'Settings' : 'Members', icon: canEdit ? 'settings' : 'users', hint: canEdit ? 'Members, task workflow and automation' : 'Who is on this project', onSelect: () => setSettings('members') },
-            { label: 'Delay risk', icon: 'sparkle', hint: 'How likely it is to be late, and why', hidden: !ai, onSelect: () => setRisk(true) },
-            { label: 'What if…', icon: 'target', hint: 'When it finishes if work slips, people join or scope is cut', hidden: isFinished(p), onSelect: () => setWhatIf(true) },
-            { label: 'Weekly report', icon: 'note', hint: 'What moved, what slipped, risks, next week', onSelect: () => nav(`/work/projects/${p.id}/report`) },
-            { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
-            { label: 'Edit details', icon: 'edit', hidden: !canEdit, onSelect: () => setEditing(true) },
-            { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
-            { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
-            { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },
-            pinItem(pins, p.id),
-            { label: 'Delete project', icon: 'trash', danger: true, hidden: !canDelete, onSelect: () => void remove() },
-          ]} />
+          <DotsMenu label="More on this project" listClassName="wide" items={menu} />
         </div>
       </header>
 
@@ -312,16 +342,13 @@ function Journey({ detail, still, canSign, meId, plan, onPlan, signOff, releases
   const done = (s: Stage) => signedOff(s) || signed.includes(s.id);
   const curIdx = stages.findIndex((s) => !done(s));
   const cur = curIdx >= 0 ? stages[curIdx] : null;
-  let lead = 0; while (lead < stages.length && done(stages[lead])) lead++;
   const n = stages.length;
-  const pos = (i: number) => (n > 1 ? (i / (n - 1)) * 100 : 50);
   const signer = cur ? signerOf(cur, p) : null;
   const since = cur ? (curIdx > 0 ? stages[curIdx - 1].actualEnd : null) ?? cur.actualStart ?? cur.plannedStart : null;
   const waitDays = since ? -(daysUntil(since) ?? 0) : null;
   const note = !n ? 'No stages yet' : !cur ? 'Every stage is signed off'
     : awaiting(cur) ? `${cur.name} is waiting on ${signer ? (signer.id === meId ? 'your' : `${signer.name}’s`) : 'a'} sign-off${waitDays && waitDays > 0 ? ` · ${plural(waitDays, 'day')}` : ''}`
     : `${cur.name} · ${cur.taskDone} of ${plural(cur.taskTotal, 'item')} done${cur.plannedEnd ? ` · ends ${dayMonth(cur.plannedEnd)}` : ''}`;
-  const ref = useRef<HTMLDivElement>(null);
   return (
     <motion.section className="card pp-journey" aria-label="Journey" layoutId={still ? undefined : `pdots-${p.id}`}>
       <div className="pp-stages-head pp-journey-head">
@@ -332,34 +359,23 @@ function Journey({ detail, still, canSign, meId, plan, onPlan, signOff, releases
         </span>
       </div>
       {n > 0 && (
-        <div className="pp-jl-scroll">
-          <div className="pp-jl" ref={ref} style={{ ['--n' as string]: n }}>
-            <div className="pp-rail" />
-            <div className="pp-done" style={{ width: lead > 1 ? `${pos(lead - 1)}%` : 0 }} />
-            <ol>
-              {stages.map((s, i) => {
-                const isDone = done(s), isCur = i === curIdx;
-                const who = signerOf(s, p);
-                const sub = isDone ? dayMonth(signedOff(s) ? s.actualEnd ?? s.plannedEnd : todayIso())
-                  : isCur ? (awaiting(s) ? 'Awaiting sign-off' : s.effectiveStatus === 'Delayed' ? 'Late' : s.effectiveStatus === 'InProgress' ? 'In progress' : s.plannedStart ? dayMonth(s.plannedStart) : 'Next')
-                  : i === n - 1 && s.plannedEnd ? `to ${dayMonth(s.plannedEnd)}` : dayMonth(s.plannedStart ?? s.plannedEnd);
-                return (
-                  <li key={s.id} className={`pp-nd ${isDone ? 's' : ''} ${isCur ? 'cur' : ''} ${isCur && awaiting(s) ? 'wait' : ''} ${signing === s.id ? 'press' : ''}`} style={{ left: `${pos(i)}%` }}
-                    data-stage={s.name} aria-label={`${s.name}: ${isDone ? `signed off ${sub}` : isCur ? sub : `stage ${i + 1}, ${sub}`}`}>
-                    <span className="pp-nd-c">
-                      {isDone ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg> : i + 1}
-                      {isDone && who && <Initials name={who.name} seed={who.id} userId={who.id} className="pp-nd-av" />}
-                    </span>
-                    <b>{s.name}</b>
-                    <small>{sub}</small>
-                    {isCur && canSign && awaiting(s) && !s.locked && <button type="button" className="pp-sr" onClick={() => void sign(s)}>Sign off {s.name}</button>}
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-          {releases && <JourneyReleases projectId={p.id} stages={stages} n={n} pos={pos} />}
-        </div>
+        <CalmJourney label="Stages" scrollClassName="pp-jl-scroll" className="pp-jl" color="var(--pa-tint)"
+          steps={stages.map((s, i): CalmStep => {
+            const isDone = done(s), isCur = i === curIdx;
+            const who = signerOf(s, p);
+            const sub = isDone ? dayMonth(signedOff(s) ? s.actualEnd ?? s.plannedEnd : todayIso())
+              : isCur ? (awaiting(s) ? 'Awaiting sign-off' : s.effectiveStatus === 'Delayed' ? 'Late' : s.effectiveStatus === 'InProgress' ? 'In progress' : s.plannedStart ? dayMonth(s.plannedStart) : 'Next')
+              : i === n - 1 && s.plannedEnd ? `to ${dayMonth(s.plannedEnd)}` : dayMonth(s.plannedStart ?? s.plannedEnd);
+            return {
+              key: s.id, label: s.name, sub, state: isDone ? 'done' : isCur ? 'current' : 'next',
+              className: `pp-nd ${isDone ? 's' : ''} ${isCur ? 'cur' : ''} ${isCur && awaiting(s) ? 'wait' : ''} ${signing === s.id ? 'press' : ''}`,
+              dotClassName: 'pp-nd-c', data: { 'data-stage': s.name },
+              ariaLabel: `${s.name}: ${isDone ? `signed off ${sub}` : isCur ? sub : `stage ${i + 1}, ${sub}`}`,
+              badge: isDone && who ? <Initials name={who.name} seed={who.id} userId={who.id} className="pp-nd-av" /> : undefined,
+              extra: isCur && canSign && awaiting(s) && !s.locked ? <button type="button" className="pp-sr" onClick={() => void sign(s)}>Sign off {s.name}</button> : undefined,
+            };
+          })}
+          after={releases ? <JourneyReleases projectId={p.id} stages={stages} n={n} pos={(i) => calmStepPos(i, n)} /> : undefined} />
       )}
       {n === 0 && releases && <div className="pp-jl-scroll"><JourneyReleases projectId={p.id} stages={[]} n={1} pos={() => 50} /></div>}
     </motion.section>
@@ -405,7 +421,7 @@ function JourneyReleases({ projectId, stages, n, pos }: { projectId: string; sta
     .filter((a): a is { d: string; at: number } => !!a.d).map((a) => ({ day: dayNum(a.d), at: a.at })).sort((a, b) => a.day - b.day);
   const placed = shown.map((r, k) => {
     const when = r.status === 'Shipped' ? r.shippedAt?.slice(0, 10) ?? r.targetDate : r.targetDate;
-    return { r, when, at: journeyPos(when ?? null, anchors, shown.length === 1 ? 50 : (k / (shown.length - 1)) * 100) };
+    return { r, when, at: journeyPos(when ?? null, anchors, shown.length === 1 ? 50 : 8 + (k / (shown.length - 1)) * 84) };
   }).sort((a, b) => a.at - b.at);
   // Flags closer than ~a label apart alternate above and below the lane, so their names never sit on each other.
   let last = -Infinity, flip = false;
@@ -417,7 +433,7 @@ function JourneyReleases({ projectId, stages, n, pos }: { projectId: string; sta
         {rows.map(({ r, when, at, low }) => {
           const st = relState(r, goOf(r.id));
           return (
-            <li key={r.id} className={`pp-rel ${st.tone} ${low ? 'low' : ''} ${at < 6 ? 'start' : at > 94 ? 'end' : ''}`} style={{ left: `${at}%` }}>
+            <li key={r.id} className={`pp-rel ${st.tone} ${low ? 'low' : ''} ${at < 9 ? 'start' : at > 91 ? 'end' : ''}`} style={{ left: `${at}%` }}>
               <Link to={`/quality?release=${encodeURIComponent(r.id)}`} aria-label={`Release ${r.name}: ${st.label}${when ? `, ${dayMonth(when)}` : ''}`}>
                 <span className="pp-rel-flag" aria-hidden="true" />
                 <b>{r.name}</b>
