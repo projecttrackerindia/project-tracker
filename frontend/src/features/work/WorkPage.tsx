@@ -18,6 +18,8 @@ import { AutomationsPage } from './Automations';
 import { WorkItemPanel } from './WorkItemPanel';
 import { WorkList } from './WorkList';
 import { MyWork } from './MyWork';
+import { CalmMyWork } from './CalmMyWork';
+import { useClassic } from '../calm/classic';
 import { MyActionItems } from '../meet/MyActionItems';
 import { openSchedule } from '../meet/scheduleStore';
 import { ProjectWorkTab } from './ProjectWorkTab';
@@ -46,6 +48,7 @@ export function WorkPage() {
   const hasReports = (useAuth((s) => s.ctx?.current?.reportCount) ?? 0) > 0;
   const seesWorkload = !personal && (hasReports || broad);
   const kinds = useWorkKinds();
+  const classic = useClassic();
   const me = useAuth((s) => s.ctx);
 
   // Mine · Team · Automations in the toolbar; Tickets moved to Desk in the sidebar but /work?tab=tickets still opens the ticket list here.
@@ -165,6 +168,7 @@ export function WorkPage() {
         </select></label>
     ) : null;
   if (tab === 'mine' && params.get('view') === 'actions') return <div className="wk wk-mine">{seg}<MyActionItems />{panel}</div>;
+  if (tab === 'mine' && !overdue && !classic) return <div className="wk wk-mine wk-calm"><CalmMyWork onOpen={open} more={[...dots.filter((d) => d.label !== 'New task'), ...tabs.filter((t) => t.id !== 'mine').map((t): DotsItem => ({ label: t.label, icon: t.id === 'team' ? 'users' : 'bolt', onSelect: () => setTab(t.id) }))]} />{panel}</div>;
   if (tab === 'mine' && !overdue) return <div className="wk wk-mine">{seg}<MyWork onOpen={open} />{panel}</div>;
   const body = tab === 'automations' ? <AutomationsPage /> : (
       <>

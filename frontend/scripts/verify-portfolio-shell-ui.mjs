@@ -82,6 +82,7 @@ try {
     assert.match(await page.getByRole('tablist', { name: 'Plan sheet tabs' }).getByRole('tab').first().innerText(), /Action items/);
     await page.getByRole('tablist', { name: 'Plan sheet tabs' }).getByRole('tab', { name: /Credit Bureau Integration/ }).click();
     await page.waitForFunction(() => new URL(location.href).searchParams.get('pt') !== null);
+    await page.waitForFunction(() => /pc-teal/.test(document.querySelector('.pfx-page')?.className ?? ''), null, { timeout: 5000 }).catch(() => {});   // the page colour follows the tab a render after the address
     assert.match(await page.locator('.pfx-page').getAttribute('class'), /pc-teal/);
     await page.getByRole('tablist', { name: 'Plan sheet tabs' }).getByRole('tab', { name: /Action items/ }).click();
     await page.waitForFunction(() => { const u = new URL(location.href); return u.searchParams.get('mode') === 'sheet' && u.searchParams.get('pt') === 'actions'; });

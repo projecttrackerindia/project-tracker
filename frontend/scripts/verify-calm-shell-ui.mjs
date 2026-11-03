@@ -158,7 +158,7 @@ try {
     assert.equal(await fab.locator('.shell-fab-btn').getAttribute('aria-label'), 'Close');
     assert.ok(Number(await fab.locator('.shell-fab-scrim').evaluate((e) => getComputedStyle(e).opacity)) > .9, 'the page blurs');
     await snap(page, 'shell-fab-1440-light');
-    await fab.getByRole('menuitem', { name: 'New task' }).click(); await page.locator('.v2-new-sheet').waitFor();
+    await fab.getByRole('menuitem', { name: 'New task' }).click(); await page.getByRole('dialog', { name: 'New task' }).waitFor();   // the calm New task sheet (features/calm/createSheets)
     await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     // the hook: a page agent's handler takes over an item
     await fab.locator('.shell-fab-btn').click(); await page.waitForTimeout(300);

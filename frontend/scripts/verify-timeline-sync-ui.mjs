@@ -46,7 +46,7 @@ try {
   async function context(theme) {
     const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
     await ctx.clock.setFixedTime(NOW);
-    await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
+    await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pt_classic_pages', '1'); localStorage.setItem('pm_theme', t); }, theme);
     await ctx.route('**/*', async (route) => {
       const url = new URL(route.request().url()), ep = url.pathname, method = route.request().method();
       if (url.origin !== origin) { await route.abort(); return; }

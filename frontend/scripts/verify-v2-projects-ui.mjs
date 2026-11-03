@@ -80,7 +80,7 @@ const PHOTO = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQ
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 const make = async (theme = 'light') => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
-  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); if (!localStorage.getItem('pm_theme_set')) { localStorage.setItem('pm_theme', t); localStorage.setItem('pm_theme_set', '1'); } }, theme);
+  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pt_classic_pages', '1'); if (!localStorage.getItem('pm_theme_set')) { localStorage.setItem('pm_theme', t); localStorage.setItem('pm_theme_set', '1'); } }, theme);
   await ctx.route('**/*', async (route) => {
     const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method();
     if (url.origin !== origin || ep.startsWith('/hubs/')) { await route.abort(); return; }
