@@ -135,7 +135,7 @@ try {
   assert.equal(await page.locator('.talk-row[data-row="Lena Park"] .talk-dot').count(), 1, 'the blue unread dot');
   assert.equal(await bg(page.locator('.talk-row[data-row="Lena Park"] .talk-dot')), 'rgb(10, 132, 255)');
   assert.equal(await page.locator('.v2-tb-new, .v2-rail-new').count(), 0, 'no + New in Messages');
-  await page.locator('.v2-tb .aura-hint').waitFor();   // Aura's hint on the list (its capsule only when invoked)
+  await page.locator('.v2-tb.shell-head').waitFor();   // the Aura orb in the header (its panel only when opened)
   checks.push('list');
 
   // Right-click a row: Pin · Mute · Mark as read · Hide. Pinning puts it in the round avatars on top (one row, only when pinned).

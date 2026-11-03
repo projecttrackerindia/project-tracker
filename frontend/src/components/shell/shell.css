@@ -193,7 +193,7 @@ html.groot-open-float .shell-fab { opacity: 0; pointer-events: none; }
 /* phone: above the tab bar */
 .m-shell .shell-fab { right: 18px; bottom: calc(var(--m-tab, 62px) + 14px + env(safe-area-inset-bottom, 0px)); }
 .m-shell .shell-fab-btn { width: 52px; height: 52px; }
-html body .m-shell.v2-shell .m-main > .content { padding-bottom: calc(var(--m-tab, 62px) + 80px + env(safe-area-inset-bottom, 0px)); }
+html body .m-shell.v2-shell:not(.m-conversation):not(.m-thread) .m-main > .content { padding-bottom: calc(var(--m-tab, 62px) + 80px + env(safe-area-inset-bottom, 0px)); }
 
 /* ------------------------------------------------------------------ phone tab bar and More */
 html body .v2-more-tile .shell-tile { background: var(--calm-fill); color: var(--calm-ink); box-shadow: none; }

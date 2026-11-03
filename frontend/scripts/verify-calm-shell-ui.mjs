@@ -214,6 +214,10 @@ try {
     await page.locator('.shell-fab-btn').click(); await page.waitForTimeout(300);
     await page.locator('.m-top .m-aura-orb').click(); const sheet = page.locator('.groot-chat.phone'); await sheet.waitFor(); await page.waitForTimeout(500);
     assert.deepEqual(await sheet.locator('.gc-tabs [role="tab"]').allTextContents(), ['Chat', 'Recent', 'Automations', 'Activity']);
+    // pinned to the bottom: the sheet reaches the screen's foot and its field sits just above it (no extra page padding pushes it up)
+    const sb = await sheet.boundingBox(), cb = await sheet.locator('.gc-compose').boundingBox();
+    assert.ok(Math.abs(sb.y + sb.height - 844) <= 1, `Aura sheet reaches the bottom: ${sb.y + sb.height}`);
+    assert.ok(844 - (cb.y + cb.height) <= 40, `Aura field pinned near the bottom: ${cb.y + cb.height}`);
     await snap(page, 'phone-aura-390-light'); checks.push('phone');
     await c.close();
   }
