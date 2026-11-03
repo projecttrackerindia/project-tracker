@@ -14,6 +14,10 @@ public static class ChatGroups
 {
     public static string User(Guid tenant, Guid user) => $"u:{tenant:N}:{user:N}";
     public static string Workspace(Guid tenant) => $"t:{tenant:N}";
+    /// <summary>Every open app of a person, whatever workspace it is in (sign-in approvals are about the account, not a workspace).</summary>
+    public static string Account(Guid user) => $"a:{user:N}";
+    /// <summary>The open apps of one signed-in session (told when that session is signed out).</summary>
+    public static string Session(Guid session) => $"s:{session:N}";
 }
 
 /// <summary>Sends chat events to the open tabs of the people they are for.</summary>
@@ -131,6 +135,8 @@ public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvid
 
         await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.User(tenant, user));
         await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.Workspace(tenant));
+        await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.Account(user));
+        await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.Session(session));
         await presence.ConnectedAsync(Context.ConnectionId, tenant, user);
 
         // The access token is only checked when the connection is made, so close the connection when the token runs out: the browser

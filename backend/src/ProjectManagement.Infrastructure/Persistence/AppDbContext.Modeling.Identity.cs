@@ -29,7 +29,14 @@ public partial class AppDbContext
         b.Entity<PasskeyChallenge>(e => { e.HasIndex(x => x.CreatedAt); e.Property(x => x.Purpose).HasMaxLength(20); });
         b.Entity<IdempotencyRecord>(e => { e.HasIndex(x => new { x.UserId, x.Key }).IsUnique(); e.HasIndex(x => x.CreatedAt); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.RequestHash).HasMaxLength(64); e.Property(x => x.ContentType).HasMaxLength(120); });
         b.Entity<DeviceLoginRequest>(e => { e.HasIndex(x => new { x.UserId, x.CreatedAt }); e.Property(x => x.SecretHash).HasMaxLength(128); e.Property(x => x.RequesterIp).HasMaxLength(64); e.Property(x => x.RequesterAgent).HasMaxLength(300); });
-        b.Entity<UserSession>(e => { e.HasIndex(x => x.UserId); e.Property(x => x.AuthMethod).HasMaxLength(32); });
+        b.Entity<UserSession>(e => { e.HasIndex(x => x.UserId); e.Property(x => x.AuthMethod).HasMaxLength(32); e.Property(x => x.EndedReason).HasMaxLength(200); });
+        b.Entity<SessionApproval>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            e.Property(x => x.Method).HasMaxLength(32); e.Property(x => x.SecretHash).HasMaxLength(128); e.Property(x => x.EmailTokenHash).HasMaxLength(128);
+            e.Property(x => x.DecidedVia).HasMaxLength(16); e.Property(x => x.IpAddress).HasMaxLength(64); e.Property(x => x.UserAgent).HasMaxLength(300);
+            e.Property(x => x.Device).HasMaxLength(80); e.Property(x => x.App).HasMaxLength(16); e.Property(x => x.Location).HasMaxLength(120);
+        });
         b.Entity<RefreshToken>(e =>
         {
             e.HasIndex(x => x.TokenHash).IsUnique();

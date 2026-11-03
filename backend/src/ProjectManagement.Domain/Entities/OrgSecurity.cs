@@ -29,6 +29,9 @@ public class TenantSecuritySettings : TenantEntity, ITenantScoped
     /// <summary>Keep data in India: integrations and AI providers that would process the workspace's data outside India cannot be turned on.</summary>
     public bool KeepDataInIndia { get; set; }
 
+    /// <summary>Single active session: a member signing in on a new device must allow it from the device already signed in, which is then signed out.</summary>
+    public bool SingleActiveSession { get; set; }
+
     // The password vault's workspace rules.
     /// <summary>Every reveal, copy or one-time code from the vault needs a two-step check made in the last few minutes.</summary>
     public bool VaultStepUpAlways { get; set; }

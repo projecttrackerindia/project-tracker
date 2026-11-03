@@ -86,7 +86,7 @@ public class AiAgentLevelUpgradeTests
         {
             base.OnModelCreating(b);
             b.Entity<Project>().Ignore(x => x.HealthOverride).Ignore(x => x.HealthNote).Ignore(x => x.HealthUntil).Ignore(x => x.HealthSetById).Ignore(x => x.HealthSetAt);
-            b.Entity<User>().Ignore(x => x.LockoutStreak);   // added later (SecurityHardening)
+            b.Entity<User>().Ignore(x => x.LockoutStreak).Ignore(x => x.SingleSession);   // added later (SecurityHardening, SessionApproval)
         }
     }
 }

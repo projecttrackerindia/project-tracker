@@ -9974,6 +9974,95 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("SensitiveValues");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.SessionApproval", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("App")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("Code")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DecidedBySessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DecidedVia")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Device")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTime?>("EmailSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EmailTokenHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FallbackFailures")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("ResultSessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SecretHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid?>("SsoTenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("SessionApprovals");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.SetupCheckDismissal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12230,6 +12319,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<int>("SessionHours")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("SingleActiveSession")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -12807,6 +12899,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("PasswordResetTokenHash")
                         .HasColumnType("text");
 
+                    b.Property<bool>("SingleSession")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("TimeZone")
                         .IsRequired()
                         .HasColumnType("text");
@@ -12924,6 +13019,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EndedReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");

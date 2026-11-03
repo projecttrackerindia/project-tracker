@@ -57,6 +57,8 @@ const ForgotPasswordPage = page(loadAuthPages, 'ForgotPasswordPage');
 const ResetPasswordPage = page(loadAuthPages, 'ResetPasswordPage');
 const AcceptInvitePage = page(loadAuthPages, 'AcceptInvitePage');
 const AuthCompletePage = page(loadAuthPages, 'AuthCompletePage');
+// The emailed "approve this sign-in" link (Single active session fallback): opened without signing in.
+const ApproveSignInPage = lazy(() => import('./features/auth/SessionApproval').then((m) => ({ default: m.ApproveSignInPage })));
 // Two-step setup (and its QR-code library) is only shown here when a workspace insists on it.
 const TwoStepRow = page(() => import('./features/settings/TwoStep'), 'TwoStepRow');
 const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
@@ -371,7 +373,7 @@ function OrgRedirect() {
 
 const OrgGateContext = createContext<() => void>(() => undefined);
 
-const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'download', 'r', 's', 'dev', 'welcome', 'signup']);
+const PUBLIC_PAGES = new Set(['login', 'register', 'verify-email', 'forgot-password', 'reset-password', 'invite', 'unsubscribe', 'auth', 'security', 'download', 'r', 's', 'dev', 'welcome', 'signup', 'approve-sign-in']);
 
 function AppRoutes({ scoped }: { scoped: boolean }) {
   const loc = useLocation();
@@ -405,6 +407,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       <Route path="/invite" element={<AcceptInvitePage />} />
       <Route path="/unsubscribe" element={<Suspense fallback={<PageLoader />}><UnsubscribePage /></Suspense>} />
       <Route path="/auth/complete" element={<AuthCompletePage />} />
+      <Route path="/approve-sign-in" element={<Suspense fallback={<PageLoader />}><ApproveSignInPage /></Suspense>} />
       <Route path="/terms" element={<LegalPage type="tos" />} />
       <Route path="/privacy" element={<LegalPage type="privacy" />} />
       {/* Done / snooze from a reminder e-mail or push notification: the link's one-time key stands in for signing in. */}

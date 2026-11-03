@@ -1,4 +1,5 @@
 import { del, get, post, put, uploadFile, fetchBlobUrl } from './client';
+import type { ApprovalStart } from './endpoints.sessionApproval';
 import type { AppContext,AuthResponse,MfaChallenge,MfaSetup,MfaStatus,PasswordPolicy,NotificationPreference,TestEmailResult,Invitation,InvitationLookup,Member,MemberProfile,MemberStatus,ImpactPreview,ImpactRequest,PermissionMatrix,OrgSecurity,ProjectVisibility,SecurityOverview,Session,SignIn,Team,TeamDetail,User,Workspace,ExternalProvider,SsoDiscovery,UserLogin,SsoSettings,SsoConnectionInput,ScimToken,WorkspaceLogo,GroupMappings } from './types';
 
 export const authApi = {
@@ -6,8 +7,8 @@ export const authApi = {
   register: (b: { email: string; password: string; displayName: string; acceptedTerms: boolean; returnUrl?: string; workspaceType?: 'personal' | 'organization' | 'invited'; organizationName?: string; website?: string; formToken?: string; turnstileToken?: string }) => post<{ userId: string; requiresEmailVerification: boolean }>('/auth/register', b, { auth: false }),
   /** A signed "form loaded at" token for sign-up's time-to-submit check, and Turnstile's public site key when it is switched on. */
   signupForm: () => get<{ formToken: string; minSubmitSeconds: number; turnstileSiteKey: string | null }>('/auth/signup-form', undefined, { auth: false }),
-  login: (b: { email: string; password: string }) => post<AuthResponse | MfaChallenge>('/auth/login', b, { auth: false }),
-  loginMfa: (b: { challenge: string; code: string }) => post<AuthResponse>('/auth/login/mfa', b, { auth: false }),
+  login: (b: { email: string; password: string }) => post<AuthResponse | MfaChallenge | ApprovalStart>('/auth/login', b, { auth: false }),
+  loginMfa: (b: { challenge: string; code: string }) => post<AuthResponse | ApprovalStart>('/auth/login/mfa', b, { auth: false }),
   logout: () => post('/auth/logout', {}, { auth: true, retry: false }),
   logoutAll: () => post('/auth/logout-all'),
   verifyEmail: (token: string) => post('/auth/verify-email', { token }, { auth: false }),

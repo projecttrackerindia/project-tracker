@@ -130,6 +130,10 @@ export function ChatRealtime() {
     // Calls: one ringing for me, one that stopped ringing (ended, missed, or declined on another device), my call turned down.
     connection.on('call.incoming', (e: { callId: string; title?: string; fromName?: string; startedAt?: string }) => emitCallEvent({ event: 'incoming', ...e }));
     connection.on('call.stopped', (e: { callId: string; reason?: string }) => emitCallEvent({ event: 'stopped', ...e }));
+    // "Single active session": a new device of mine asks to sign in; the question was answered; this session was replaced.
+    connection.on('sessionApproval', (p: unknown) => window.dispatchEvent(new CustomEvent('pm:session-approval', { detail: p })));
+    connection.on('sessionApprovalClosed', (p: unknown) => window.dispatchEvent(new CustomEvent('pm:session-approval-closed', { detail: p })));
+    connection.on('sessionEnded', (p: unknown) => window.dispatchEvent(new CustomEvent('pm:session-ended', { detail: p })));
     connection.on('call.declined', (e: { callId: string; name?: string }) => emitCallEvent({ event: 'declined', ...e }));
 
     const refreshLists = () => {

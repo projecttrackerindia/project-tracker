@@ -182,6 +182,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<DeviceLoginRequest> DeviceLoginRequests => Set<DeviceLoginRequest>();
+    public DbSet<SessionApproval> SessionApprovals => Set<SessionApproval>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
