@@ -1,0 +1,35 @@
+/* Calm settings (shots 54–56d): a frosted list card on the left, the pane on the right; full width, 22–40px gutters */
+.set-mac.set-calm { grid-template-columns: 250px minmax(0, 1fr); gap: 20px; padding: 0 clamp(16px, 2.6vw, 40px) 24px; }
+.set-calm .set-mac-title { display: none; }
+.set-mac-nav.cs-nav { background: var(--calm-card); border: 0; border-radius: var(--calm-r-hero); box-shadow: var(--calm-sh); padding: 16px 10px; display: flex; flex-direction: column; gap: 10px;
+  align-self: start; position: sticky; top: 62px; max-height: calc(100vh - 80px); overflow-y: auto; height: auto; }
+.cs-grp { display: grid; gap: 1px; }
+.cs-grp-t { font-size: 12px; font-weight: 500; color: var(--calm-ink3-text); padding: 6px 10px 4px; }
+.cs-item { display: flex; align-items: center; min-height: 34px; padding: 0 12px; border-radius: 10px; font-size: 14px; color: var(--calm-ink); text-decoration: none;
+  transition: background-color var(--motion-micro) var(--ease-standard); }
+.cs-item:hover { background: var(--calm-fill); }
+.cs-item.on { background: var(--calm-fill); font-weight: 600; }
+.cs-item:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: -2px; }
+.set-calm .set-mac-pane { padding: 0; }
+
+/* panes built in the calm style (approval policies) */
+.cs-pane { display: flex; flex-direction: column; gap: 16px; }
+.cs-head { display: flex; align-items: flex-end; gap: 16px; }
+.cs-head h1 { margin: 0; font-size: var(--calm-display); font-weight: var(--calm-display-w); letter-spacing: var(--calm-display-ls); line-height: var(--calm-display-lh); }
+.cs-head h1 em { display: block; font-style: normal; color: var(--calm-ink3); }
+.cs-saved { margin-left: auto; color: var(--calm-green); font-size: 13.5px; font-weight: 600; }
+.cs-note { margin: 0; color: var(--calm-ink2); font-size: 14px; }
+.cs-chain { list-style: none; margin: 0 0 12px; padding: 0; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.cs-chain li { display: inline-flex; gap: 8px; align-items: center; min-height: 36px; padding: 0 6px 0 8px; border-radius: 99px; background: var(--calm-fill); font-size: 14px; }
+.cs-chain li.cs-note { background: none; padding: 0; }
+.cs-step { width: 22px; height: 22px; border-radius: 50%; background: var(--calm-solid); display: inline-grid; place-items: center; font-size: 12px; font-weight: 600; }
+.cs-x { border: 0; background: none; color: var(--calm-ink3-text); font-size: 18px; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; }
+.cs-x:hover { background: var(--calm-solid); color: var(--calm-ink); }
+.cs-add select { height: 36px; border: 0; border-radius: 99px; padding: 0 14px; background: var(--calm-fill); color: var(--calm-ink); font: inherit; font-size: 13.5px; }
+
+@media (max-width: 900px) {
+  .set-mac.set-calm { grid-template-columns: 1fr; gap: 14px; }
+  .set-mac-nav.cs-nav { position: static; max-height: none; }
+  .cs-item { min-height: 44px; }
+  .cs-head h1 { font-size: 34px; }
+}

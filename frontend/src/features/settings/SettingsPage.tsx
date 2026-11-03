@@ -53,13 +53,15 @@ import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
 import { AiProfileCard } from '../ai/AiInstructions';
 import { MyAiProviderCard } from '../ai/OwnAiKey';
-import { LastChanged, LatestChanges, SectionHistory, SettingsSearch, SetupHealthCard, useSettingJump } from './SettingsCenter';
+import { LastChanged, LatestChanges, SectionHistory, SetupHealthCard, useSettingJump } from './SettingsCenter';
 import { NotificationDefaultsSection } from './NotificationDefaults';
 import { MobileAppSection } from './MobileAppSection';
 import { ConnectedAccountsSection } from './ConnectedAccounts';
 import { MailIntegrationSettings } from './MailIntegration';
 import { SlackSettings } from './SlackSettings';
 import { WhatsAppSettings } from './WhatsAppSettings';
+import { ApprovalPoliciesPane, approvalPoliciesEnabled } from './ApprovalPolicies';
+import { CalmSettingsNav } from './CalmSettingsNav';
 
 
 /** How the session was opened, in the person's words ("with a passkey · "). Empty when it is the ordinary password. */
@@ -94,7 +96,7 @@ const PLACE_IDS = new Set<string>(['profile', 'notifications', ...WORKSPACE_PLAC
 
 interface SubTab { id: string; label: string }
 
-type NavId = 'profile' | 'workspace' | 'people' | 'ai' | 'notifications' | 'integrations' | 'security' | 'billing' | 'appearance';
+type NavId = 'profile' | 'workspace' | 'people' | 'ai' | 'notifications' | 'integrations' | 'security' | 'billing' | 'appearance' | 'approvals';
 /** The left list of the macOS System Settings layout: coloured icon tiles, in three groups (apple/s-settings). */
 const NAV: { id: NavId; label: string; color: string; glyph: string; sub: string }[] = [
   { id: 'profile', label: 'Profile', color: '#8e8e93', glyph: '☺', sub: PLACE_INFO.profile.sub },
@@ -107,7 +109,6 @@ const NAV: { id: NavId; label: string; color: string; glyph: string; sub: string
   { id: 'billing', label: 'Billing', color: '#ff9500', glyph: '₹', sub: PLACE_INFO.billing.sub },
   { id: 'appearance', label: 'Appearance', color: '#1d1d1f', glyph: '◐', sub: 'Light or dark, and whose work your lists and numbers show.' },
 ];
-const NAV_GAP_AFTER = new Set<NavId>(['ai', 'integrations']);
 const WORKSPACE_LEAVES: WorkspaceSection[] = [...PLACE_LEAVES.general, ...PLACE_LEAVES.fields, ...PLACE_LEAVES.timelines];
 
 /**
@@ -142,6 +143,9 @@ export function SettingsPage() {
   const open = new Set(leaves.map((l) => l.id));
   // Integrations is open to everyone (their own mail accounts live there); its workspace pages stay for admins.
   const places = WORKSPACE_PLACES.filter((p) => PLACE_LEAVES[p].some((l) => open.has(l)) || (p === 'integrations' && !isPlatformAdmin));
+  if (section === 'approvals') return <SettingsShell nav={nav} places={places} current="approvals" isPlatformAdmin={isPlatformAdmin}>{approvalPoliciesEnabled() && (ctx?.current?.role === 'Owner' || ctx?.current?.role === 'Admin') ? <ApprovalPoliciesPane /> : <Navigate to="/settings/profile" replace />}</SettingsShell>;
+  // Billing is for owners only.
+  if (section === 'billing' && ctx?.current?.role !== 'Owner') return <Navigate to="/settings/profile" replace />;
   if (section === 'appearance') return <SettingsShell nav={nav} places={places} current="appearance" isPlatformAdmin={isPlatformAdmin}><AppearancePane /></SettingsShell>;
   const place = section as SettingsPlace;
   // Your own sign-in security moved from Profile to the top-level Security section.
@@ -198,42 +202,13 @@ export function SettingsPage() {
   );
 }
 
-/** The window: "Settings" in the toolbar row, the left list and the pane. */
-function SettingsShell({ nav, places, current, isPlatformAdmin, children }: { nav: (to: string) => void; places: readonly string[]; current: NavId; isPlatformAdmin: boolean; children: React.ReactNode }) {
-  const me = useAuth((s) => s.ctx?.user);
-  const ws = useAuth((s) => s.ctx?.current);
-  const has = (p: string) => places.includes(p);
-  const target: Record<NavId, string | null> = {
-    profile: '/settings/profile',
-    workspace: has('general') ? '/settings/general' : has('fields') ? '/settings/fields' : has('timelines') ? '/settings/timelines' : null,
-    people: has('people') ? '/settings/people' : null,
-    ai: has('ai') ? '/settings/ai' : null,
-    notifications: isPlatformAdmin ? null : '/settings/notifications',
-    integrations: has('integrations') ? '/settings/integrations' : null,
-    security: '/settings/security/account',
-    billing: has('billing') ? '/settings/billing' : null,
-    appearance: '/settings/appearance',
-  };
-  const initials = (me?.displayName ?? '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+/** The window: "Settings" in the toolbar row, the calm grouped list (Personal / Workspace / My teams) and the pane. */
+function SettingsShell({ places, isPlatformAdmin, children }: { nav: (to: string) => void; places: readonly string[]; current: NavId; isPlatformAdmin: boolean; children: React.ReactNode }) {
   return (
-    <div className="set-mac">
+    <div className="set-mac set-calm">
       <h1 className="set-mac-title">Settings</h1>
       <ToolbarTitle>Settings</ToolbarTitle>
-      <nav className="set-mac-nav" aria-label="Settings sections">
-        <SettingsSearch compact />
-        <Link to="/settings/profile" className="set-mac-me">
-          <span className="set-mac-av" aria-hidden="true">{initials}</span>
-          <span><b>{me?.displayName}</b><small>{[ws?.role === 'Owner' || ws?.role === 'Admin' ? 'Admin' : ws?.role, ws?.name].filter(Boolean).join(' · ')}</small></span>
-        </Link>
-        {NAV.filter((n) => target[n.id]).map((n) => (
-          <span key={n.id} className={NAV_GAP_AFTER.has(n.id) ? 'set-mac-gap' : undefined}>
-            <a href={target[n.id]!} className={`set-mac-item${current === n.id ? ' on' : ''}`} aria-current={current === n.id ? 'page' : undefined}
-              onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); nav(target[n.id]!); }}>
-              <STile color={n.color} size={20}>{n.glyph}</STile><span>{n.label}</span>
-            </a>
-          </span>
-        ))}
-      </nav>
+      <CalmSettingsNav places={places} isPlatformAdmin={isPlatformAdmin} />
       <div className="set-mac-pane"><Embedded>{children}</Embedded></div>
     </div>
   );
