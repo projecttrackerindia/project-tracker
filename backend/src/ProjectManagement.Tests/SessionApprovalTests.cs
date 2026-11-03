@@ -259,6 +259,7 @@ public class SessionApprovalTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, "Olga Owner");
         await owner.CreateOrgAsync("Fictional Freight Co");
+        await owner.UpgradeAsync("PRO");
         var member = await owner.AddMemberAsync(factory, ProjectManagement.Domain.Enums.TenantRole.Member, "Milo Member");
         Assert.Equal(HttpStatusCode.Forbidden, (await member.Put("/api/v1/workspace/session-policy", new { singleActiveSession = true })).Status);
         var set = await owner.Put("/api/v1/workspace/session-policy", new { singleActiveSession = true });

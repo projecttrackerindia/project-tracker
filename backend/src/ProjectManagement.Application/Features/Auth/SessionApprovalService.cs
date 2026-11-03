@@ -123,8 +123,16 @@ public static class SessionDevice
         return null;
     }
 
+    // The countries the app is mostly used in; the server may run with invariant globalization, where RegionInfo knows no names.
+    private static readonly Dictionary<string, string> Countries = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["IN"] = "India", ["US"] = "United States", ["GB"] = "United Kingdom", ["AE"] = "United Arab Emirates", ["SG"] = "Singapore",
+        ["AU"] = "Australia", ["CA"] = "Canada", ["DE"] = "Germany", ["NL"] = "Netherlands", ["SA"] = "Saudi Arabia",
+    };
+
     private static string CountryName(string code)
     {
+        if (Countries.TryGetValue(code, out var known)) return known;
         try { return new System.Globalization.RegionInfo(code).EnglishName; }
         catch (ArgumentException) { return code.ToUpperInvariant(); }
     }
