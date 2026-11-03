@@ -57,6 +57,7 @@ const handler = async (route) => {
   else if (ep.startsWith('/api/v1/work-items/')) { const t = tickets.find((r) => ep.endsWith(r.id)); data = t ? detail(t) : null; }
   else if (ep === '/api/v1/activity' || ep.endsWith('/insights/activity')) data = { items: [{ id: id(400), action: 'task.created', summary: 'added the release checklist', actor: { id: id(12), name: 'Cara Lund' }, createdAt: iso(-10) }], page: 1, totalPages: 1, totalItems: 1 };
   else if (ep.endsWith('/projects') || ep.endsWith('/tasks') || ep.endsWith('/work-tasks')) data = { items: [], page: 1, totalPages: 0, totalItems: 0 };
+  else if (ep.endsWith('/matrix')) data = { runs: [], cases: [], results: [] };
   else if (ep === '/api/v1/settings/health') data = { score: 90, checks: [] };
   else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
   else if (ep === '/api/v1/timer') data = null;
