@@ -174,14 +174,14 @@ try {
     // ---------------- Reminders: one Done per tap, disabled in flight, with the occurrence it saw
     st.reminder = seed().reminder;   // back to "went off" for this part
     await page.goto(`${origin}/preview-org/reminders`);
-    const card = page.locator('.rp-card', { hasText: 'DEMO reminder' });
+    const card = page.locator('.rm-row', { hasText: 'DEMO reminder' });
     await card.waitFor();
     if (theme === 'light') await shot(page, 'reminders-1440.png');
-    const check = card.locator('.rp-check');
+    const check = card.locator('.rm-ck');
     const before = st.writes.length;
     await check.click();
     await check.click({ force: true }).catch(() => undefined);   // the double tap
-    recon('DEMO reminder', 'Done disabled in flight', 'true', String(await card.locator('.rp-check').isDisabled().catch(() => true)));
+    recon('DEMO reminder', 'Done disabled in flight', 'true', String(await card.locator('.rm-ck').isDisabled().catch(() => true)));
     await page.waitForTimeout(1000);
     const dones = st.writes.slice(before).filter((w) => w.ep.endsWith('/done'));
     recon('DEMO reminder', 'Done requests for a double tap', '1', String(dones.length));
@@ -197,13 +197,13 @@ try {
   const page = await ctx.newPage(); watch(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${origin}/preview-org/reminders`);
-  const card = page.locator('.rp-card', { hasText: 'DEMO reminder' });
+  const card = page.locator('.rm-row', { hasText: 'DEMO reminder' });
   await card.waitFor();
   await fitsPhone(page, 'demo reminders', assert);
   await shot(page, 'reminders-390.png');
   st.reminder.lastFiredAt = new Date().toISOString();   // it went off again elsewhere
   const gets = st.gets.length;
-  await card.locator('.rp-check').click();
+  await card.locator('.rm-ck').click();
   await page.locator('.toast, [role="status"]', { hasText: /changed since you opened it/ }).first().waitFor();
   await waitFor(() => st.gets.slice(gets).includes('GET /api/v1/reminders'), 'the list reloads after a stale Done');
   recon('DEMO reminder', 'stale Done', 'refused + reloaded', 'refused + reloaded');

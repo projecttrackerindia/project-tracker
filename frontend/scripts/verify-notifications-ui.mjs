@@ -207,8 +207,8 @@ try{
  // Reminders offered from what was said: one tap on the Reminders page sets it.
  suggestions=[offer];
  await page.goto(origin+'/preview-org/reminders');
- const sug=page.getByRole('region',{name:'Suggested from what you said'});await sug.waitFor();
- assert.ok(await sug.getByText("You said in chat: “Sure, I'll send the estimate tomorrow.”").isVisible());
+ const sug=page.locator('.rm-sug').first();await sug.waitFor();
+ assert.ok(await sug.getByText("“Sure, I'll send the estimate tomorrow.”").isVisible());
  await shot(page,'reminders-suggested.png');
  await sug.getByRole('button',{name:'Remind me'}).click();
  assert.ok(await waitWrite(w=>w.ep==='/api/v1/reminders/suggestions/s1/accept'));

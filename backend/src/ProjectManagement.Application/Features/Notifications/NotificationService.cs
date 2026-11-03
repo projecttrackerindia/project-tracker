@@ -79,8 +79,8 @@ public static class NotificationCategories
 public static class NotificationDestinations
 {
     public const string Messages = "messages", Meetings = "meetings", Calendar = "calendar", Work = "work", Today = "today", Mail = "mail",
-        Library = "library", Portfolio = "portfolio", Desk = "desk";
-    public static readonly string[] All = [Today, Work, Desk, Portfolio, Calendar, Meetings, Messages, Mail, Library];
+        Library = "library", Portfolio = "portfolio", Desk = "desk", Approvals = "approvals";
+    public static readonly string[] All = [Today, Work, Desk, Portfolio, Calendar, Meetings, Messages, Mail, Library, Approvals];
 
     private static bool Starts(string? link, string prefix) => link is not null && link.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
 
@@ -89,6 +89,7 @@ public static class NotificationDestinations
         if (NotificationCategories.Of(type, link) == NotificationCategories.Meetings) return Meetings;
         if (Starts(link, "/mail")) return Mail;
         if (Starts(link, "/?tab=calendar") || Starts(link, "/calendar")) return Calendar;
+        if (Starts(link, "/approvals")) return Approvals;   // requests waiting on you, and decisions on yours (the Approvals tab)
         if (type is NotificationType.Message or NotificationType.Call) return Messages;
         if (type == NotificationType.Mention && (Starts(link, "/chat/") || Starts(link, "/messages") || (link?.Contains("chat=1", StringComparison.Ordinal) ?? false))) return Messages;
         if (type is NotificationType.Document || Starts(link, "/documents") || Starts(link, "/library")) return Library;
