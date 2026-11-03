@@ -24,7 +24,7 @@ const card=(n,name,key,desc,group,health,total,done,progress,priority,type,who,d
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
 try{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
- await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme','light');});
+ await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pt_classic_pages','1');localStorage.setItem('pm_theme','light');});
  await ctx.route('**/*',async route=>{
   const url=new URL(route.request().url()),ep=url.pathname,method=route.request().method();
   if(url.origin!==origin){await route.abort();return;}

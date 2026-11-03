@@ -172,7 +172,7 @@ export function ProjectPage() {
             { label: 'What if…', icon: 'target', hint: 'When it finishes if work slips, people join or scope is cut', hidden: isFinished(p), onSelect: () => setWhatIf(true) },
             { label: 'Weekly report', icon: 'note', hint: 'What moved, what slipped, risks, next week', onSelect: () => nav(`/work/projects/${p.id}/report`) },
             { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
-            { label: 'Edit all details', icon: 'edit', hint: 'Priority, status, group, type and delivery', hidden: !canEdit, onSelect: () => setEditing(true) },
+            { label: 'Edit details', icon: 'edit', hint: 'Every field: priority, status, group, type, delivery', hidden: !canEdit, onSelect: () => setEditing(true) },
             { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
             { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
             { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },

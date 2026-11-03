@@ -65,7 +65,7 @@ export function CalmProject({ detail, menu, canEdit, addWork, onHealth, onFullTa
   const phases: { key: string; name: string; pct: number; items: Task[] }[] = [
     ...stages.map((s: Stage) => ({ key: s.id, name: s.name, pct: s.taskTotal ? Math.round((s.taskDone / s.taskTotal) * 100) : s.effectiveStatus === 'Completed' ? 100 : 0, items: byStage.get(s.id) ?? [] })),
     ...(byStage.get('')?.length ? [{ key: 'none', name: stages.length ? 'Not in a phase' : 'Tasks', pct: 0, items: byStage.get('')! }] : []),
-  ].filter((ph) => ph.items.length > 0 || stages.length <= 8);
+  ].filter((ph) => ph.items.length > 0);
 
   const crumb = (
     <>
@@ -147,7 +147,7 @@ function ProjectRail({ detail, onHealth, onTask, overdue }: { detail: ProjectDet
   const meets = useWsQuery(['calendar', 'project', p.id, today], () => insightApi.calendar(today, shiftIsoDate(today, 14), p.id), { staleTime: 60_000, retry: false });
   const files = useWsQuery(['documents', 'project', p.id, 'count'], () => documentApi.list({ projectId: p.id, limit: 3 }), { staleTime: 60_000, retry: false });
   const act = useWsQuery(['project', p.id, 'activity'], () => projectApi.activity(p.id), { staleTime: 60_000, retry: false });
-  const next = (meets.data ?? []).filter((e) => e.type === 'meeting' && e.startsAt && Date.parse(e.startsAt) > Date.now() - 30 * 60_000).sort((a, b) => (a.startsAt ?? '').localeCompare(b.startsAt ?? ''))[0];
+  const next = (Array.isArray(meets.data) ? meets.data : []).filter((e) => e.type === 'meeting' && e.startsAt && Date.parse(e.startsAt) > Date.now() - 30 * 60_000).sort((a, b) => (a.startsAt ?? '').localeCompare(b.startsAt ?? ''))[0];
   const h = healthOf(p);
   const fileNames = (files.data?.items ?? []).slice(0, 2).map((d) => d.title).join(', ');
   const late = overdue[0];
@@ -157,12 +157,11 @@ function ProjectRail({ detail, onHealth, onTask, overdue }: { detail: ProjectDet
       <div className="pd-line"><span>People</span><span className="pd-avs">{detail.members.slice(0, 5).map((m) => <CalmAv key={m.userId} name={m.name} size={26} />)}</span><span className="cp-lk">{detail.members.length} ›</span></div>
       <div className="pd-line"><span>Next</span><span>{next ? `${next.title} · ${when!.getHours()}:${String(when!.getMinutes()).padStart(2, '0')}` : 'No meeting booked'}</span>
         {next?.joinUrl ? <a className="calm-join" href={next.joinUrl} target="_blank" rel="noreferrer">Join</a> : <Link className="cp-lk" to={`/meetings?s=upcoming&project=${p.id}`}>›</Link>}</div>
-      <div className="pd-line"><span>Files</span><span>{fileNames || 'None yet'}</span><Link className="cp-lk" to={`/library/p/${p.id}`}>{files.data?.total ?? files.data?.items.length ?? ''} ›</Link></div>
-      <div className="pd-line"><span>Due</span><span>{p.dueDate ? shortDay(p.dueDate) : 'No date'}</span><span /></div>
+      <div className="pd-line"><span>Files</span><span>{fileNames || 'None yet'}</span><Link className="cp-lk" to={`/library/p/${p.id}`}>{files.data?.total ?? files.data?.items?.length ?? ''} ›</Link></div>
       <div className="pd-line"><span>Health</span><span className={`calm-tone-${h.tone}`} style={{ fontWeight: 600 }}>{h.label}</span><button type="button" className="cp-lk" onClick={onHealth}>Why ›</button></div>
       <h5>Recent</h5>
       {(act.data?.items ?? []).slice(0, 4).map((a) => <CalmRailRow key={a.id} lead={<CalmAv name={a.actor?.name ?? 'System'} size={24} />} title={a.summary} right={ago(a.createdAt)} />)}
-      {act.data && act.data.items.length === 0 && <p className="calm-week-note">Nothing yet.</p>}
+      {act.data?.items?.length === 0 && <p className="calm-week-note">Nothing yet.</p>}
       <AuraLine text={late ? `${late.title} is ${late.assignee ? `${late.assignee.name.split(' ')[0]}’s and ` : ''}late.` : undefined} action="Open it" onAction={() => late && onTask(late.id)} />
     </CalmCard>
   );

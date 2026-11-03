@@ -94,7 +94,7 @@ export function CalmToday() {
   const logged = day?.loggedMin ?? 0;
   const planned = Math.round((workEnd - workStart - 1) * 60);
   const doneToday = day?.done.length ?? 0;
-  const overdue = dash.data?.counts.myOverdue ?? open.filter((w) => w.isOverdue).length;
+  const overdue = dash.data?.counts?.myOverdue ?? open.filter((w) => w.isOverdue).length;
   const dueToday = open.filter((w) => w.dueDate === today).length;
   const cut = hero?.dueTime ? hero.dueTime.slice(0, 5) : nextMeet ? hhmm(nextMeet.start) : null;
 

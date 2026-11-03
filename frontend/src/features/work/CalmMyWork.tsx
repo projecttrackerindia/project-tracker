@@ -85,7 +85,7 @@ export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; mor
 
   const dots = <DotsMenu label="More in My work" items={[{ label: 'Focus stack', hint: 'The earlier My work, with Do this now', icon: 'target', onSelect: () => nav('/work?classic=1') }, ...more]} />;
   return (
-    <CalmSplit crumb={<><span>My work</span><span style={{ flex: 1 }} />{dots}</>} label="My work" rail={<MyWorkRail waiting={waiting} doneWeek={doneWeek} first={first ?? null} onOpen={onOpen} />}>
+    <CalmSplit crumb={<><span>My work</span><span style={{ flex: 1 }} />{dots}</>} label="My work" rail={<MyWorkRail waiting={waiting} doneWeek={doneWeek} first={first ?? null} onOpen={onOpen} onDone={() => setTab('done')} />}>
       <header className="cp-hero"><h1>{title}<em>{second}</em></h1></header>
       <div className="cp-tools">
         <CalmPills label="Show" value={tab} onChange={setTab} options={[{ value: 'week', label: 'This week' }, { value: 'later', label: 'Later' }, { value: 'done', label: 'Done' }, { value: 'waiting', label: 'Waiting on others' }]} />
@@ -137,7 +137,7 @@ export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; mor
 
 const shortTitle = (t: string) => (t.length > 34 ? `${t.slice(0, 32).trimEnd()}…` : t);
 
-function MyWorkRail({ waiting, doneWeek, first, onOpen }: { waiting: WorkRow[]; doneWeek: WorkRow[]; first: WorkRow | null; onOpen: (id: string) => void }) {
+function MyWorkRail({ waiting, doneWeek, first, onOpen, onDone }: { waiting: WorkRow[]; doneWeek: WorkRow[]; first: WorkRow | null; onOpen: (id: string) => void; onDone: () => void }) {
   const nav = useNavigate();
   const ai = useAi();
   const ask = useAssistant((s) => s.ask);
@@ -147,15 +147,15 @@ function MyWorkRail({ waiting, doneWeek, first, onOpen }: { waiting: WorkRow[]; 
   return (
     <>
       <WeekCard link />
-      <CalmRailCard title="Waiting on others" link={waiting.length ? 'All ›' : undefined} onLink={() => nav('/work?classic=1&filter=raised')}>
+      <CalmRailCard title="Waiting on others" link={waiting.length ? 'Nudge all ›' : undefined} onLink={() => nav('/work?classic=1&filter=raised')}>
         {waiting.length === 0 ? <p className="calm-week-note">Nobody owes you anything.</p> : waiting.slice(0, 4).map((w) => (
           <CalmRailRow key={w.id} lead={<CalmAv name={w.assignee?.name ?? '?'} />} title={w.assignee?.name ?? 'Unassigned'} sub={w.title} hot={w.isOverdue}
             right={w.isOverdue ? 'Late' : dayText(w.dueDate)} onClick={() => onOpen(w.id)} />
         ))}
       </CalmRailCard>
-      <CalmRailCard title={`Done this week · ${doneWeek.length}`}>
+      <CalmRailCard title={`Done this week · ${doneWeek.length}`} link="All ›" onLink={onDone}>
         {doneWeek.length === 0 ? <p className="calm-week-note">Nothing finished yet this week.</p> : doneWeek.slice(0, 3).map((w) => (
-          <CalmRailRow key={w.id} lead={<span className="cp-ring done" aria-hidden="true" />} title={w.title} sub={w.key} right={dayText((w.completedAt ?? '').slice(0, 10) || null)} onClick={() => onOpen(w.id)} />
+          <CalmRailRow key={w.id} lead={<span className="cp-ring done" aria-hidden="true" />} title={w.title} sub={w.key} right={w.completedAt ? new Date(w.completedAt).toLocaleDateString('en-GB', { weekday: 'short' }) : ''} onClick={() => onOpen(w.id)} />
         ))}
       </CalmRailCard>
       {first && !dismissed && (

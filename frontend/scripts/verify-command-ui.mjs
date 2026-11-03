@@ -54,7 +54,7 @@ try{
  // home: 'classic' starts on the classic Home (the person chose it once); null keeps the default, which is the AI-first Home.
  const make=async(theme,home='classic')=>{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
- await ctx.addInitScript(([t,h])=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme',t);if(h&&!localStorage.getItem('pm_home_mode'))localStorage.setItem('pm_home_mode',h);},[theme,home]);
+ await ctx.addInitScript(([t,h])=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pt_classic_pages','1');localStorage.setItem('pm_theme',t);if(h&&!localStorage.getItem('pm_home_mode'))localStorage.setItem('pm_home_mode',h);},[theme,home]);
  await ctx.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url()),ep=url.pathname,method=req.method();
   if(url.origin!==origin){await route.abort();return;}

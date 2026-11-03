@@ -51,6 +51,7 @@ export function CalmProjects() {
   const mode: Mode = params.get('browse') === 'folders' ? 'folders' : 'list';
   const set = (k: string, v: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (v === null) n.delete(k); else n.set(k, v); return n; }, { replace: true });
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<'recent' | 'name'>('recent');
   const dq = useDebounced(q, 150).trim().toLowerCase();
   const all = useAllProjects({ mineOnly: !oversees, includeArchived: scope === 'archived' });
   const items = useMemo(() => [...(all.data?.items ?? [])].sort(byNeed), [all.data]);
@@ -58,7 +59,8 @@ export function CalmProjects() {
   const mine = live.filter((p) => p.owner?.id === meId);
   const pinned = live.filter((p) => pins.isPinned(p.id));
   const scoped = scope === 'mine' ? mine : scope === 'pinned' ? pinned : scope === 'archived' ? items.filter((p) => p.status === 'Archived') : live;
-  const shown = scoped.filter((p) => !dq || `${p.name} ${p.key} ${p.owner?.name ?? ''}`.toLowerCase().includes(dq));
+  const found = scoped.filter((p) => !dq || `${p.name} ${p.key} ${p.owner?.name ?? ''}`.toLowerCase().includes(dq));
+  const shown = mode === 'folders' ? [...found].sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))) : found;
   const needs = live.find((p) => healthOf(p).tone === 'bad') ?? live.find((p) => healthOf(p).tone === 'warn');
   const [sel, setSel] = useState<string | null>(null);
   const selected = shown.find((p) => p.id === sel) ?? (mode === 'folders' ? shown[0] : undefined);
@@ -81,7 +83,10 @@ export function CalmProjects() {
         <CalmPills label="Projects" value={scope} onChange={(v) => set('scope', v === 'all' ? null : v)} options={[
           { value: 'all', label: `All ${live.length}` }, { value: 'mine', label: `Mine ${mine.length}` }, { value: 'pinned', label: `Pinned ${pinned.length}` }, { value: 'archived', label: 'Archived' }]} />
       ) : (
-        <CalmPills label="Projects" value={scope} onChange={(v) => set('scope', v === 'all' ? null : v)} options={[{ value: 'all', label: 'All' }, { value: 'mine', label: 'Mine' }, { value: 'pinned', label: 'Pinned' }, { value: 'archived', label: 'Archived' }]} />
+        <>
+          <button type="button" className="pd-pill" onClick={() => set('scope', ({ all: 'mine', mine: 'pinned', pinned: 'archived', archived: null } as Record<Scope, string | null>)[scope])}><Icon name="filter" size={12} /> {scope === 'all' ? 'Filter' : scope[0].toUpperCase() + scope.slice(1)}</button>
+          <button type="button" className="pd-pill" onClick={() => setSort(sort === 'recent' ? 'name' : 'recent')}>Sort: {sort === 'recent' ? 'Recent' : 'Name'}</button>
+        </>
       )}
       <span className="cp-sp" />
       <label className="cp-search"><Icon name="search" size={13} /><input type="search" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search projects" /></label>
@@ -186,14 +191,12 @@ function InfoPanel({ p, onClose, onEdit }: { p: Project; onClose: () => void; on
       <div className="pj3-props">
         <span>Owner</span><span>{p.owner?.name ?? '—'}</span>
         <span>Open tasks</span><span>{open(p)}</span>
-        <span>Overdue</span><span>{p.stats.overdue}</span>
         <span>Due</span><span>{p.dueDate ? shortDay(p.dueDate) : '—'}</span>
         <span>Health</span><span>{h.label}</span>
-        {p.projectGroupName && <><span>Group</span><span>{p.projectGroupName}</span></>}
       </div>
       <h4>Activity</h4>
       {(act.data?.items ?? []).slice(0, 3).map((x) => <div key={x.id} className="calm-rr"><CalmAv name={x.actor?.name ?? 'System'} size={22} /><span className="calm-rr-t"><b style={{ fontWeight: 400 }}>{x.summary}</b></span></div>)}
-      {act.data && act.data.items.length === 0 && <p className="calm-week-note">Nothing yet.</p>}
+      {act.data?.items?.length === 0 && <p className="calm-week-note">Nothing yet.</p>}
       <div className="acts"><CalmGo onClick={() => nav(`/work/projects/${p.id}`)}>Open project</CalmGo>{canEdit && <CalmLink onClick={onEdit}>Edit</CalmLink>}</div>
     </CalmCard>
   );

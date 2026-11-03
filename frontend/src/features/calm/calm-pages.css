@@ -265,3 +265,6 @@
   .cm-foot-r { display: none; }
   .mw2-list { padding: 4px 6px 10px; }
 }
+
+.ts-crumb { display: block; margin-bottom: 14px; font-size: 14px; font-weight: 400; letter-spacing: 0; }
+.ts-crumb .cp-tag { font-size: 13.5px; }

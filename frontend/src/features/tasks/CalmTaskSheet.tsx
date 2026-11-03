@@ -67,8 +67,8 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
   const crumb = t ? <span className="cp-tag"><CalmDot color={projectColor(t.projectId)} />{[t.projectName, t.stageName, t.key].filter(Boolean).join(' · ')}</span> : null;
 
   return (
-    <CalmSheet open={on} onClose={onClose} width={835} label="Task" title={t?.title ?? 'Task'} sub={crumb}
-      actions={<span className={`cp-saved${saved ? ' on' : ''}`} aria-live="polite"><Icon name="check" size={13} /> Saved</span>}>
+    <CalmSheet open={on} onClose={onClose} width={835} label="Task" title={<>{crumb && <span className="ts-crumb">{crumb}</span>}{t?.title ?? 'Task'}</>}
+      actions={<><span className={`cp-saved${saved ? ' on' : ''}`} aria-live="polite"><Icon name="check" size={13} /> Saved</span>{t && onFull && <button type="button" className="cp-lk" onClick={() => onFull(t.id)} aria-label="Open full task">Full ›</button>}</>}>
       {!t ? <p className="calm-week-note">{q.isError ? 'This task could not be opened.' : 'Loading…'}</p> : (
         <div className="ts-grid">
           <div className="ts-col">
@@ -96,7 +96,6 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
                 <Icon name="chevronR" size={13} />
               </Link>
             ))}
-            <button type="button" className="ts-link" onClick={() => onFull?.(t.id)}><Icon name="note" size={14} /><span><b>Open full task</b><small>Subtasks, labels, files, dependencies and history</small></span><Icon name="chevronR" size={13} /></button>
             {left != null && t.statusCategory !== 'Done' && <div className="ts-aura"><CalmOrb /><span>{left > 0 ? `About ${hm(left)} left${t.dueDate ? `, due ${shortDay(t.dueDate)}` : ''}.` : `${hm(loggedMin - estMin)} over the ${hm(estMin)} estimate.`}</span></div>}
           </div>
           <div className="ts-col">
