@@ -59,6 +59,9 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<AccountDeletionService>();
         services.AddScoped<DeviceLoginService>();
+        services.AddScoped<ProjectManagement.Application.Features.Auth.SignInClient>();
+        services.AddScoped<ProjectManagement.Application.Features.Auth.SessionApprovalGate>();
+        services.AddScoped<ProjectManagement.Application.Features.Auth.SessionApprovalService>();
         services.AddScoped<PasskeyService>();
         services.AddScoped<ProjectManagement.Application.Features.Billing.InvoiceService>();
         services.AddScoped<ProjectManagement.Application.Features.Billing.BillingMailer>();

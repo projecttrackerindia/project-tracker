@@ -42,7 +42,7 @@ public record UpdateProfileRequest(string DisplayName, string? TimeZone);
 public record RefreshRequest(string? RefreshToken);
 
 public record UserDto(Guid Id, string Email, string DisplayName, bool EmailVerified, bool IsPlatformAdmin, string TimeZone, bool MfaEnabled = false, bool MustChangePassword = false, bool HasAvatar = false);
-public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent, string? AuthMethod = null);
+public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent, string? AuthMethod = null, string? Device = null, string? Location = null);
 /// <summary>One sign-in of the person's account: when, from which browser and network, how, whether it is still signed in, and whether it was new.</summary>
 public record SignInDto(Guid Id, DateTime At, DateTime LastSeenAt, string Device, string? Network, string? AuthMethod, bool Current, bool Active, bool NewDevice, DateTime? ReportedAt);
 
@@ -86,9 +86,11 @@ public class AuthService(
     IAppDbContext db, ICurrentContext ctx, IPasswordHasher hasher, ITokenService tokens, IEmailSender email,
     IOptions<AppOptions> options, AppClock clock, Recorder recorder, WorkspaceProvisioner provisioner, MfaService mfa, SecurityAlerts alerts, ProjectManagement.Application.Features.Admin.PlatformSettingsCache platform,
     PasswordPolicyService passwordPolicy, ProjectManagement.Application.Features.Consent.ConsentService consent, ProjectManagement.Application.Features.Sso.SsoPolicy ssoPolicy,
-    ILogger<AuthService> log, WelcomeMailer? welcome = null, SignupGuard? signupGuard = null)
+    ILogger<AuthService> log, WelcomeMailer? welcome = null, SignupGuard? signupGuard = null, SessionApprovalGate? approvalGate = null)
 {
     private readonly AppOptions _opt = options.Value;
+    /// <summary>The session the last IssueSessionAsync opened (not saved yet), so "Single active session" can end the others.</summary>
+    private Guid _issuedSessionId;
 
     public static UserDto ToDto(User u) => new(u.Id, u.Email, u.DisplayName, u.EmailVerified, u.IsPlatformAdmin, u.TimeZone, u.MfaEnabled, u.MustChangePassword, u.AvatarKey is not null);
 
@@ -274,17 +276,44 @@ public class AuthService(
     /// Opens a session for someone already authenticated (password, a social sign-in, or an organization's single sign-on). With
     /// <paramref name="ssoTenantId"/>, that organization's identity provider vouched for the person, which satisfies its two-step rule.
     /// </summary>
-    public async Task<AuthResult> SignInExternalAsync(User user, string method, Guid? preferredWorkspace, Guid? ssoTenantId, CancellationToken ct)
+    public Task<AuthResult> SignInExternalAsync(User user, string method, Guid? preferredWorkspace, Guid? ssoTenantId, CancellationToken ct) =>
+        SignInCoreAsync(user, method, preferredWorkspace, ssoTenantId, null, ct);
+
+    /// <summary>
+    /// "Single active session": a sign-in that a signed-in device allowed (or the person approved with the fallback) opens its session now and
+    /// ends every other session of the account, each told why.
+    /// </summary>
+    public Task<AuthResult> SignInApprovedAsync(User user, SessionApproval approval, CancellationToken ct) =>
+        SignInCoreAsync(user, approval.Method, approval.WorkspaceId, approval.SsoTenantId, approval, ct);
+
+    private async Task<AuthResult> SignInCoreAsync(User user, string method, Guid? preferredWorkspace, Guid? ssoTenantId, SessionApproval? approved, CancellationToken ct)
     {
         user.FailedLoginCount = 0;
         user.LockoutEnd = null;
         user.LockoutStreak = 0;
-        user.LastLoginAt = clock.Now;
         var workspaceId = await PickWorkspaceAsync(user.Id, preferredWorkspace, ct);
+        // Signed in somewhere already and "Single active session" applies: the password (and code) were right, but a device that is signed in must
+        // allow this one first. A sign-in approved on the phone (device login) was already allowed by a signed-in device.
+        var replaces = approved is not null;
+        if (approvalGate is not null && approved is null && await approvalGate.RequiredAsync(user, ct))
+        {
+            if (method != "device") throw new SessionApprovalRequired(await approvalGate.StartAsync(user, method, workspaceId, ssoTenantId, ct));
+            replaces = true;
+        }
+        user.LastLoginAt = clock.Now;
         var result = await IssueSessionAsync(user, workspaceId, ct, method, ssoTenantId);
-        recorder.Audit("user.login", "User", user.Id, newValue: new { Method = method }, userId: user.Id, tenantId: workspaceId);
+        var newSession = _issuedSessionId;
+        List<Guid> ended = [];
+        var device = approved?.Device ?? SessionDevice.Describe(Text.Truncate(ctx.UserAgent, 300), null, SessionDevice.App(ctx.UserAgent, false));
+        if (replaces && approvalGate is not null)
+        {
+            ended = await approvalGate.EndOtherSessionsAsync(user.Id, newSession, device, ct);
+            if (approved is not null) approved.ResultSessionId = newSession;
+        }
+        recorder.Audit("user.login", "User", user.Id, newValue: new { Method = method, Approved = approved?.DecidedVia }, userId: user.Id, tenantId: workspaceId);
         AppTelemetry.Count(AppTelemetry.Logins, "success");
         await db.SaveChangesAsync(ct);
+        if (ended.Count > 0 && approvalGate is not null) await approvalGate.AnnounceSignedOutAsync(user.Id, ended, device, ct);
         return result;
     }
 
@@ -322,6 +351,7 @@ public class AuthService(
             AuthMethod = method, SsoTenantId = ssoTenantId, NewDevice = newDevice,
         };
         db.UserSessions.Add(session);
+        _issuedSessionId = session.Id;
         var (raw, refresh) = NewRefreshToken(session, user.Id);
         var access = tokens.CreateAccessToken(user, session.Id, workspaceId);
         if (newDevice)
@@ -414,6 +444,9 @@ public class AuthService(
         var session = await db.UserSessions.FirstOrDefaultAsync(s => s.Id == stored.SessionId, ct);
         var now = clock.Now;
 
+        // Ended by "Single active session" (signed in on another device) or to secure the account: say so, in the person's words.
+        if (session?.RevokedAt is not null && session.EndedReason is { Length: > 0 } reason)
+            throw new UnauthorizedException(reason, "SESSION_REPLACED");
         if (session is null || session.RevokedAt is not null || stored.ExpiresAt <= now)
             throw new UnauthorizedException("Session expired. Please sign in again.", "SESSION_EXPIRED");
 
@@ -506,7 +539,12 @@ public class AuthService(
         var rows = await db.UserSessions.AsNoTracking()
             .Where(s => s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now)
             .OrderByDescending(s => s.LastSeenAt).ToListAsync(ct);
-        return rows.Select(s => new SessionDto(s.Id, s.CreatedAt, s.LastSeenAt, s.IpAddress, s.UserAgent, s.Id == ctx.SessionId, s.AuthMethod)).ToList();
+        return rows.Select(s =>
+        {
+            var app = SessionDevice.App(s.UserAgent, false);
+            return new SessionDto(s.Id, s.CreatedAt, s.LastSeenAt, s.IpAddress, s.UserAgent, s.Id == ctx.SessionId, s.AuthMethod,
+                SessionDevice.Describe(s.UserAgent, null, app), SessionDevice.Location(s.IpAddress, null, false));
+        }).ToList();
     }
 
     public async Task RevokeSessionAsync(Guid sessionId, CancellationToken ct = default)

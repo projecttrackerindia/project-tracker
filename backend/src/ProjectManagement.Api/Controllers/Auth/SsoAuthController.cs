@@ -143,6 +143,12 @@ public class SsoAuthController(SsoLoginService sso, ProjectManagement.Applicatio
     private async Task<IActionResult> Run(Func<Task<SignInCompletion>> work, string page = "/login", CancellationToken ct = default)
     {
         try { return await FinishAsync(await work(), ct); }
+        catch (ProjectManagement.Application.Features.Auth.SessionApprovalRequired wait)
+        {
+            // Signed in somewhere else with "Single active session" on: the waiting screen, holding the request's secret in its cookie.
+            AuthCookies.WriteApproval(Response, AuthCookies.IsSecure(Request), wait.Start.Secret);
+            return Bounce($"{Web}/login?approval={wait.Start.ApprovalId}", AppOf(wait));
+        }
         catch (MfaRequiredRedirect mfa) { return Bounce($"{Web}/login?mfa_challenge={Uri.EscapeDataString(mfa.Challenge)}&via={mfa.Provider}&to={Uri.EscapeDataString(mfa.ReturnUrl)}", AppOf(mfa)); }
         catch (AppException ex) { return Bounce(Fail(ex.Code, ex.Message, page), AppOf(ex)); }
         catch (Exception ex) when (ex is not OperationCanceledException)
