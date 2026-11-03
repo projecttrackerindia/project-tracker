@@ -193,8 +193,8 @@ try {
   assert.equal(await page.locator('[data-testid="ed-countdown"]').innerText(), 'in 18 min');
   assert.match(await page.locator('[data-testid="ed-why"]').innerText(), /Meeting from Google Calendar · Rhea Kapoor invited you/);
   const join = page.locator('[data-testid="ed-join"]');
-  assert.match(await join.innerText(), /Join Google Meet/);
-  assert.equal(await join.evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(0, 113, 227)', 'Join is the big blue button');
+  assert.match(await join.innerText(), /Join video/);
+  assert.equal(await join.evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(10, 132, 255)', 'Join is the big blue button');
   await page.locator('.ed-rsvp button', { hasText: 'Yes' }).click();
   await page.waitForTimeout(150);
   assert.deepEqual(writes.find((w) => w.ep === `/api/v1/meet/w/${ids.m1}/rsvp`)?.body, { response: 'accepted' });
@@ -207,7 +207,7 @@ try {
   await page.locator('.wp-e', { hasText: 'Design review' }).focus();
   await page.keyboard.press('Enter');
   await card().waitFor();
-  assert.match(await page.locator('[data-testid="ed-join"]').innerText(), /Join Project Tracker call/);
+  assert.match(await page.locator('[data-testid="ed-join"]').innerText(), /Join video/);
   await page.keyboard.press('Escape');
   await card().waitFor({ state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement?.textContent?.includes('Design review')), true, 'focus goes back to the block');

@@ -30,7 +30,6 @@ import { dayMarks, type DayMark } from './deadline';
 import { packColumns, packStyle, type Packed } from './pack';
 import { clock24 } from '../work/dueTime';
 import './planner.css';
-import { ZoneBadge } from '../../components/ZoneBadge';
 import { CalmSheet } from '../../components/calm';
 import { Face } from '../../components/Face';
 
@@ -480,17 +479,17 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
       <MiniMonth y={mini.y} m={mini.m} today={today} week={view === 'day' ? [anchor] : week} onPick={(d) => { setAnchor(d); if (view === 'month') setView('week'); }}
         onShift={(n) => setMini(({ y, m }) => { const d = new Date(y, m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; })} />
       <section className="wp-rc wp-filters" aria-label="Calendars" data-testid="wp-layers">
-        <div className="wp-ft">Calendars</div>
+        <div className="wp-ft wp-ft-row">Calendars<button type="button" className="wp-show-dots" aria-expanded={showLayers} aria-label="Show layers" title="Show: meetings, calls, logged time, done, focus, deadlines, reminders" onClick={() => setShowLayers((v) => !v)}>⋯</button></div>
         {projects.map((p) => (
           <label key={p} className={`wp-fr${hidden.has(p) ? ' off' : ''}`}><input type="checkbox" className="sr-only" checked={!hidden.has(p)} onChange={() => toggleCal(p)} />
             <i className="wp-ck" style={{ ['--ck' as string]: DOT[tintOf(p)] }} aria-hidden="true" /><span>{p}</span><em>{calCount(p) || ''}</em></label>
         ))}
         <label className={`wp-fr${hidden.has(PERSONAL) ? ' off' : ''}`}><input type="checkbox" className="sr-only" checked={!hidden.has(PERSONAL)} onChange={() => toggleCal(PERSONAL)} />
           <i className="wp-ck" style={{ ['--ck' as string]: DOT.g }} aria-hidden="true" /><span>Personal</span><em>{calCount(null) || ''}</em></label>
-        <button type="button" className="wp-show" aria-expanded={showLayers} onClick={() => setShowLayers((v) => !v)}>Show<span>{LAYERS.filter(([k]) => !layers[k]).length ? `${LAYERS.filter(([k]) => layers[k]).length} of ${LAYERS.length}` : 'Everything'}</span><Icon name={showLayers ? 'chevronD' : 'chevronR'} size={12} /></button>
         {showLayers && LAYERS.map(([k, label]) => (
           <label key={k} className={`wp-fr sub${layers[k] ? '' : ' off'}`} data-layer={k}><input type="checkbox" className="sr-only" checked={layers[k]} onChange={(e) => setLayers((s) => ({ ...s, [k]: e.target.checked }))} /><i className={`k-${k}`} aria-hidden="true" /><span>{label}</span></label>
         ))}
+        {showLayers && extra && <div className="wp-extra-in">{extra}</div>}
       </section>
       <section className="wp-rc wp-up" aria-label="Upcoming" data-testid="wp-upcoming">
         <div className="wp-ft">Upcoming</div>
@@ -512,12 +511,11 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
         <div>
           {firstFree && <p className="wp-ai-free">{fmtMins(Math.round((firstFree.end - firstFree.start) * 60))} free at {hm(firstFree.start)}.{' '}
             <button type="button" className="wp-ai-act" onClick={() => { setRailOpen(false); live.current.free(today, firstFree.start, firstFree.end); }}>Hold it?</button></p>}
-          <p>{tl.isLoading ? 'Reading the week…' : <>This week: <b>{fmtH(meetH)} meetings</b>{callsN > 0 && <>, {callsN} call{callsN === 1 ? '' : 's'}</>}, {fmtH(focusH)} focus{loggedM > 0 && <>, {fmtMins(loggedM)} logged</>}{doneN > 0 && <>, {doneN} done</>}.{' '}
+          {!firstFree && <p>{tl.isLoading ? 'Reading the week…' : <>This week: <b>{fmtH(meetH)} meetings</b>{callsN > 0 && <>, {callsN} call{callsN === 1 ? '' : 's'}</>}, {fmtH(focusH)} focus{loggedM > 0 && <>, {fmtMins(loggedM)} logged</>}{doneN > 0 && <>, {doneN} done</>}.{' '}
             {busiest && busiest.h >= 4 && longest ? <>{dateOf(busiest.d).toLocaleDateString('en-GB', { weekday: 'long' })} is overbooked — move {longest.e.title}?</>
-              : perDay.length > 0 && <>{dateOf(perDay.reduce((a, b) => (b.h < a.h ? b : a), perDay[0]).d).toLocaleDateString('en-GB', { weekday: 'long' })} is clearest for focused work.</>}</>}</p>
+              : perDay.length > 0 && <>{dateOf(perDay.reduce((a, b) => (b.h < a.h ? b : a), perDay[0]).d).toLocaleDateString('en-GB', { weekday: 'long' })} is clearest for focused work.</>}</>}</p>}
         </div>
       </section>
-      {extra && <div className="wp-extra">{extra}</div>}
     </>
   );
 
@@ -541,7 +539,6 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
 
       <header className="wp-top">
         <h2 className="wp-title" aria-label={titleText}>{title}</h2>
-        <ZoneBadge />
         <div className="wp-navs">
           <button type="button" className="wp-nav" aria-label={view === 'day' ? 'Previous day' : view === 'month' ? 'Previous month' : 'Previous week'} onClick={() => shift(-1)}><Icon name="chevronL" size={14} /></button>
           <button type="button" className="wp-today" onClick={() => { setAnchor(today); const d = dateOf(today); setMini({ y: d.getFullYear(), m: d.getMonth() }); }}>Today</button>

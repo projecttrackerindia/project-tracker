@@ -594,3 +594,9 @@ html[data-theme='dark'] .wp-task { background: color-mix(in srgb, var(--calm-p2)
 .wp .dp-hd h2 { font-size: 22px; font-weight: 600; }
 @media (min-width: 761px) { .wp-title { font-size: 28px; } .wp-new { white-space: nowrap; flex: none; } .wp-seg.tb-seg { flex: none; } .wp-seg.tb-seg button { padding: 0 13px; } }
 @media (min-width: 1500px) { .wp-title { font-size: 32px; } .wp-seg.tb-seg button { padding: 0 16px; } }
+.wp-ft-row { display: flex; align-items: center; justify-content: space-between; }
+.wp-show-dots { border: 0; background: none; width: 28px; height: 22px; border-radius: 11px; color: var(--calm-ink3-text); font-size: 15px; cursor: pointer; }
+.wp-show-dots:hover, .wp-show-dots[aria-expanded='true'] { background: var(--calm-fill); }
+.wp > .wp-left > .wp-extra { display: none; }
+.wp-left.in-sheet > .wp-extra { display: block; }
+.wp-ai-free + p { display: none; }

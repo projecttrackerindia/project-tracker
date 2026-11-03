@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { DotsMenu } from '../talk/DotsMenu';
 import { projectApi, taskApi } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
 import { Icon, type IconName } from '../../components/Icon';
@@ -18,6 +19,7 @@ import { Composer, type ComposeInit } from './Composer';
 import { TAG_LABEL, daysSince, describeSearch, matchesSearch, parseSearch, serverQuery, type MailSearch } from './mailSmart';
 import { useMailData, useMailLocal, type MailRow } from './useMail';
 import { actionMeta, isBulk, aiRank } from './mailFocus';
+import '../../components/calm/calm-kit.css';
 import './mail.css';
 
 type Box = 'inbox' | 'needs' | 'waiting' | 'snoozed' | 'sent' | 'drafts' | 'archive';
@@ -36,6 +38,7 @@ export function MailPage() {
   const wid = useWorkspaceId();
   const uid = useAuth((s) => s.ctx?.user.id);
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const box = (params.get('box') ?? 'inbox') as string;
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState<MailSearch | null>(null);
@@ -146,10 +149,12 @@ export function MailPage() {
   return (
     <div className={`ml-shell${row ? ' is-open' : ''}`} key={`${wid}-${uid}`} data-testid="mail">
       <h1 className="sr-only">Mail</h1>
-      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Mail</span>} />
+      <ToolbarSlot title={<span className="tb-big" aria-hidden="true">Mail</span>}>
+        <button type="button" className="ml-compose-top" onClick={() => setCompose({})} disabled={sendable.length === 0} data-testid="ml-new">Compose</button>
+      </ToolbarSlot>
 
       <aside className="ml-side" aria-label="Mail folders and accounts">
-        <button type="button" className="btn btn-primary ml-new" onClick={() => setCompose({})} disabled={sendable.length === 0} data-testid="ml-new"><Icon name="edit" size={15} /> New message</button>
+        <button type="button" className="btn btn-primary ml-new" onClick={() => setCompose({})} disabled={sendable.length === 0} data-testid="ml-new-side"><Icon name="edit" size={15} /> New message</button>
         <nav className="ml-boxes" aria-label="Mailboxes">
           {BOXES.map((b) => (
             <button key={b.id} type="button" className={`ml-box${box === b.id && !query ? ' on' : ''}`} aria-current={box === b.id && !query ? 'page' : undefined} onClick={() => choose(b.id)}>
@@ -190,6 +195,20 @@ export function MailPage() {
           <div className="ml-understood" data-testid="ml-understood"><span>Showing</span>{describeSearch(query).map((t) => <span key={t} className="ml-pill">{t}</span>)}
             <button type="button" className="link-btn" onClick={() => { setQuery(null); setSearch(''); }}>Clear</button></div>
         )}
+        {/* The calm list head (demo 23): Inbox · Sent · Drafts as pills, every other mailbox, account and smart folder in "Mailboxes". */}
+        <div className="ml-pills-row">
+          <div className="calm-pills ml-pills" role="group" aria-label="Mailbox pills">
+            {(['inbox', 'sent', 'drafts'] as const).map((id) => (
+              <button key={id} type="button" aria-pressed={box === id && !query} onClick={() => choose(id)}>{BOXES.find((b) => b.id === id)!.label}{counts[id] ? <em>{counts[id]}</em> : null}</button>
+            ))}
+          </div>
+          <DotsMenu label="Mailboxes" icon="inbox" items={[
+            ...BOXES.filter((b) => !['inbox', 'sent', 'drafts'].includes(b.id)).map((b) => ({ label: b.label, icon: b.icon, hint: counts[b.id] ? `${counts[b.id]}` : undefined, onSelect: () => choose(b.id) })),
+            ...data.accounts.map((a) => ({ label: a.label, icon: 'mail' as IconName, hint: a.email, onSelect: () => choose(`account:${a.key}`) })),
+            ...smart.map(({ p, rows }) => ({ label: p.name, icon: 'folder' as IconName, hint: `${rows.length} in this project`, onSelect: () => choose(`project:${p.id}`) })),
+            { label: 'Manage accounts', icon: 'settings' as IconName, onSelect: () => navigate('/settings/integrations/mail') },
+          ]} />
+        </div>
         <div className="ml-boxchips" role="group" aria-label="Mailbox">
           {BOXES.map((b) => <button key={b.id} type="button" className={`ds-chip${box === b.id && !query ? ' on' : ''}`} aria-pressed={box === b.id && !query} onClick={() => choose(b.id)}>{b.label}{counts[b.id] ? ` ${counts[b.id]}` : ''}</button>)}
           <Link className="ds-chip" to="/settings/integrations/mail">Accounts</Link>
@@ -218,6 +237,7 @@ export function MailPage() {
               <button key={r.key} type="button" className={`ml-row${r.unread ? ' unread' : ''}${selected === r.key ? ' on' : ''}`} style={{ ['--i' as string]: Math.min(i, 14) }}
                 onClick={() => setSelected(r.key)} aria-current={selected === r.key ? 'true' : undefined} data-testid="ml-row">
                 {r.unread && <span className="ml-dot" aria-label="Unread" />}
+                <span className="ml-av" aria-hidden="true">{initials(r.folder === 'sent' ? displayName(r.to) : displayName(r.from) || '?')}</span>
                 <span className="ml-row-top">
                   <b>{r.folder === 'sent' ? `To: ${displayName(r.to)}` : displayName(r.from) || '(unknown)'}</b>
                   {r.priority === 'high' && <span className="ml-prio" title="High priority" aria-label="High priority">!</span>}
