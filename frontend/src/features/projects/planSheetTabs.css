@@ -250,3 +250,13 @@ html[data-theme='dark'] .ps4-notify { --p-ink2: #9a9aa0; --p-line: rgba(255, 255
   .ps4-aibar { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) { .ps4-tabs .ft, .ps4-tg::after { transition: none; } }
+
+/* ⇧S: snooze an action item to a day you pick. */
+.ps4-snz { display: flex; gap: 8px; align-items: center; padding: 8px 12px 6px; border-top: .5px solid var(--ds-border, rgba(0, 0, 0, .08)); margin-top: 4px; }
+.ps4-snz input { flex: 1; min-width: 0; height: 32px; border-radius: 8px; border: .5px solid var(--ds-border, rgba(0, 0, 0, .12)); background: var(--ds-surface, transparent); color: inherit; font: inherit; padding: 0 8px; color-scheme: light dark; }
+
+/* "+ Subtask" on hover of any task in the tree (and on keyboard focus), not only the selected one. */
+.ps4-tree .tw .ps4-hadd { margin-left: auto; flex: none; border: 0; background: var(--p-fill); color: var(--p-ink2); border-radius: 6px; font: inherit; font-size: 11.5px; padding: 2px 7px; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.ps4-tree .trow:hover .ps4-hadd, .ps4-tree .trow:focus-within .ps4-hadd, .ps4-tree .ps4-hadd:focus-visible { opacity: 1; }
+.ps4-tree .tw .ps4-hadd:hover { color: var(--pc, var(--p-blue)); }
+@media (hover: none) { .ps4-tree .trow.sel .ps4-hadd { opacity: 1; } }

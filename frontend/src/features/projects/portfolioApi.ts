@@ -1,4 +1,4 @@
-import { download, get, post } from '../../api/client';
+import { del, download, get, post, put } from '../../api/client';
 import type { PortfolioBrief } from '../ai/aiApi';
 
 /** What the board shows (projects the person may open); empty values mean no filter. */
@@ -52,7 +52,9 @@ export interface SheetChange { id: string; version?: number; assigneeId?: string
   progress?: number; clearProgress?: boolean; notes?: string }
 export interface SheetMove { id: string; projectId?: string; afterId?: string | null; beforeId?: string | null; version?: number }
 export interface SheetMoveResult { id: string; key: string; projectId: string; version: number; position: number; movedProject: boolean }
-export interface SheetRowResult { id: string; key: string | null; ok: boolean; error: string | null; field: string | null; code: string | null; version: number | null }
+export interface SheetRowResult { id: string; key: string | null; ok: boolean; error: string | null; field: string | null; code: string | null; version: number | null;
+  /** How many people the change was told to, and how many of them by e-mail. */ told?: number; emailed?: number }
+export interface TaskWatchers { taskId: string; watching: boolean; watchers: { userId: string; name: string }[] }
 export interface SheetBulkResult { changed: number; failed: number; rows: SheetRowResult[] }
 export interface PasteRowIn { title: string; owner?: string; start?: string; due?: string; status?: string }
 export interface PasteRowOut {
@@ -75,6 +77,10 @@ export const portfolioApi = {
   sheet: (f: PortfolioFilter, mine = false) => get<PlanSheet>('/portfolio/sheet', { ...q(f), ...(mine ? { mine: 'true' } : {}) }),
   sheetBulk: (changes: SheetChange[], dueDateReason?: string | null, dueDateDependency?: string | null) =>
     post<SheetBulkResult>('/portfolio/sheet/bulk', { changes, dueDateReason: dueDateReason || null, dueDateDependency: dueDateDependency || null }),
+  /** Undo a change from its notice (notificationId) or its e-mail's signed link (token). */
+  sheetUndo: (by: { token?: string; notificationId?: string }) => post<SheetBulkResult>('/portfolio/sheet/undo', by),
+  watchers: (taskId: string) => get<TaskWatchers>(`/portfolio/sheet/tasks/${taskId}/watchers`),
+  watch: (taskId: string, on: boolean) => (on ? put<TaskWatchers>(`/portfolio/sheet/tasks/${taskId}/watch`, {}) : del<TaskWatchers>(`/portfolio/sheet/tasks/${taskId}/watch`)),
   sheetMove: (m: SheetMove) => post<SheetMoveResult>('/portfolio/sheet/move', m),
   sheetPaste: (projectId: string, rows: PasteRowIn[], commit = false, include?: number[], dueDateReason?: string | null) =>
     post<PasteResult>('/portfolio/sheet/paste', { projectId, rows, commit, include: include ?? null, dueDateReason: dueDateReason || null }),

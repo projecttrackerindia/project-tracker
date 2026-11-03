@@ -293,7 +293,8 @@ function ProjectsMoved() {
   const loc = useLocation();
   const q = new URLSearchParams(loc.search);
   const id = q.get('task') ?? q.get('issue') ?? q.get('action');
-  if (id) return <Navigate to={`/work?item=${encodeURIComponent(id)}${loc.hash}`} replace />;
+  const undo = q.get('undo');   // "Undo change" from a change e-mail: the prompt (ChangeUndoPrompt) asks on the page the task opens in
+  if (id) return <Navigate to={`/work?item=${encodeURIComponent(id)}${undo ? `&undo=${encodeURIComponent(undo)}` : ''}${loc.hash}`} replace />;
   return <Moved to="/work/projects" prefix="/projects" />;
 }
 

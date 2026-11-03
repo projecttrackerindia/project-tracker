@@ -23,7 +23,8 @@ import { useChatUnread } from '../../chat/unreadBadge';
 import { reminderApi } from '../../reminders/api';
 import { CHECK_NOTIFICATIONS } from '../events';
 import { applyBadge, clearBadge } from './badge';
-import { arrange, badgeText, totalBadge, canJoin, CATEGORY_META, categoryOf, conversationOf, FILTERS, iconOf, shortTime, snoozePresets, type Stack } from './model';
+import { arrange, badgeText, totalBadge, canJoin, CATEGORY_META, categoryOf, changeLines, conversationOf, FILTERS, iconOf, shortTime, snoozePresets, type Stack } from './model';
+import { portfolioApi } from '../../projects/portfolioApi';
 import { maySound, useAlertPrefs } from './prefs';
 import '../../../styles/notification-centre-apple.css';
 import { lockScroll } from '../../../lib/scrollLock';
@@ -372,6 +373,18 @@ function Card({ n, go, acts, phone }: { n: AppNotification; go: (n: AppNotificat
   const canReply = cat === 'messages' && (!!conv || (n.actions ?? []).includes('reply'));
   const reminder = cat === 'reminders' || (n.type === 'Reminder' && cat === 'meetings');
   const join = cat === 'meetings' && canJoin(n);
+  // A Plan sheet change (design plansheet8/05): before → after, whether it was e-mailed, View and Undo.
+  const diff = changeLines(n);
+  const [undoing, setUndoing] = useState(false);
+  const undo = async () => {
+    setUndoing(true);
+    try {
+      const res = await portfolioApi.sheetUndo({ notificationId: n.id });
+      if (res.changed) { toast(`Undone · ${res.rows[0]?.key ?? 'the task'} is back as it was.`); void acts.read([n]); settle(useAuth.getState().ctx?.current?.id ?? null); }
+      else toast(res.rows[0]?.error ?? 'The change could not be undone.', 'error');
+    } catch (e) { toast(e instanceof Error ? e.message : 'The change could not be undone.', 'error'); }
+    finally { setUndoing(false); }
+  };
 
   // Swipe (phone): the card slides left over Read · Snooze · Delete; a long swipe deletes.
   const body = useRef<HTMLDivElement>(null);
@@ -429,8 +442,21 @@ function Card({ n, go, acts, phone }: { n: AppNotification; go: (n: AppNotificat
           <button type="button" className="ncx-open" onClick={open} aria-label={`${n.title}${n.isRead ? '' : ', unread'}. Open`}>
             <span className="ncx-row1"><b>{n.title}</b><time dateTime={n.shownAt ?? n.createdAt} title={new Date(n.shownAt ?? n.createdAt).toLocaleString()}>{shortTime(n.shownAt ?? n.createdAt)}</time></span>
             {n.reason && <span className="ncx-why" data-testid="ncx-reason">{n.reason}</span>}
-            {n.body && <span className="ncx-text">{n.body}</span>}
+            {diff ? (
+              <span className="ncx-diff" data-testid="ncx-diff">
+                {diff.map((d, i) => d.after !== undefined
+                  ? <span key={i} className="ncx-diff-row"><em>{d.label}</em> <s>{d.before}</s> <span aria-hidden="true">→</span><span className="sr-only"> to </span> <b>{d.after}</b>{d.delta && <b className="ncx-delta"> ({d.delta})</b>}</span>
+                  : <span key={i} className="ncx-diff-note">{d.label}: {d.note}</span>)}
+              </span>
+            ) : n.body && <span className="ncx-text">{n.body}</span>}
+            {diff && n.emailed && <span className="ncx-mailed" data-testid="ncx-emailed"><Icon name="mail" size={11} /> emailed</span>}
           </button>
+          {diff && n.link && (
+            <div className="ncx-quick">
+              <button type="button" className="ncx-btn" onClick={() => go(n)}>View</button>
+              {n.canUndo && <button type="button" className="ncx-btn ghost" disabled={undoing} onClick={() => void undo()}><Icon name="undo" size={13} /> Undo</button>}
+            </div>
+          )}
           {(join || reminder || canReply) && (
             <div className="ncx-quick">
               {join && <button type="button" className="ncx-btn primary" onClick={() => go(n, n.joinLink)}><Icon name="video" size={13} /> Join</button>}

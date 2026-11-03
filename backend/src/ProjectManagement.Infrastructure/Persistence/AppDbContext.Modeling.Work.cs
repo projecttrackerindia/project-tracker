@@ -278,6 +278,16 @@ public partial class AppDbContext
             e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.DependsOnTask).WithMany().HasForeignKey(x => x.DependsOnTaskId).OnDelete(DeleteBehavior.Restrict);
         });
+        b.Entity<TaskWatcher>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.TaskId, x.UserId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.UserId });
+        });
+        b.Entity<TaskChange>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.TaskId, x.CreatedAt });
+            e.Property(x => x.Effect).HasMaxLength(300);
+        });
         b.Entity<Milestone>(e =>
         {
             e.HasIndex(x => new { x.ProjectId, x.SortOrder });

@@ -25,7 +25,7 @@ export function useActionReview() {
 /**
  * The Action items tab (design plansheet6/04–07, plansheet8/04): every meeting's action items, grouped by meeting, owner or project, each with
  * its owner, due date, project and status; tick to finish one. New ones that nobody has looked at carry "Needs review": Review walks them one at a
- * time — A accept, R reassign, S snooze a day, ⌫ discard, J/K next and previous.
+ * time — A accept, R reassign, S snooze a day, ⇧S snooze to a date you pick, ⌫ discard, J/K next and previous.
  */
 export function ActionItemsTab({ review, colourOfProject, colours, text, people, command }: {
   review: ReturnType<typeof useActionReview>; colourOfProject: (id: string | null) => Colour | null; colours: Colour[]; text: string;
@@ -37,6 +37,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
   const [reviewing, setReviewing] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [reassign, setReassign] = useState<{ item: ReviewItem; anchor: HTMLElement | null } | null>(null);
+  const [snoozeAt, setSnoozeAt] = useState<{ item: ReviewItem; anchor: HTMLElement | null } | null>(null);
   const d: Review | undefined = review.data;
   const items = useMemo(() => (d?.items ?? []).filter((i) => (!colours.length || colours.includes(colourOfProject(i.projectId) ?? 'blue'))
     && (!text.trim() || `${i.title} ${i.key} ${i.owner?.name ?? ''} ${i.projectName ?? ''} ${i.sourceTitle ?? ''}`.toLowerCase().includes(text.trim().toLowerCase()))), [d, colours, text, colourOfProject]);
@@ -69,6 +70,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
       const k = e.key.toLowerCase();
       if (k === 'a') { e.preventDefault(); void decide(cur, 'carry', {}, `Accepted ${cur.key}`); }
       else if (k === 'r') { e.preventDefault(); setReassign({ item: cur, anchor: document.querySelector<HTMLElement>('.rvcard') }); }
+      else if (k === 's' && e.shiftKey) { e.preventDefault(); setSnoozeAt({ item: cur, anchor: document.querySelector<HTMLElement>('.rvcard [data-snooze]') ?? document.querySelector<HTMLElement>('.rvcard') }); }
       else if (k === 's' && !e.shiftKey) { e.preventDefault(); void decide(cur, 'replan', { dueDate: addDays(cur.dueDate ?? new Date().toISOString().slice(0, 10), 1) }, `Snoozed ${cur.key} a day`); }
       else if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); void decide(cur, 'drop', {}, `Discarded ${cur.key}`); }
       else if (k === 'j') setReviewing((x) => Math.min(queue.length - 1, (x ?? 0) + 1));
@@ -115,6 +117,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
             <button type="button" className="kb on" onClick={() => void decide(cur, 'carry', {}, `Accepted ${cur.key}`)}><kbd>A</kbd> Accept</button>
             <button type="button" className="kb" onClick={(e) => setReassign({ item: cur, anchor: e.currentTarget })}><kbd>R</kbd> Reassign</button>
             <button type="button" className="kb" onClick={() => void decide(cur, 'replan', { dueDate: addDays(cur.dueDate ?? new Date().toISOString().slice(0, 10), 1) }, `Snoozed ${cur.key} a day`)}><kbd>S</kbd> Snooze</button>
+            <button type="button" className="kb" data-snooze="" aria-haspopup="dialog" onClick={(e) => setSnoozeAt({ item: cur, anchor: e.currentTarget })}><kbd>⇧S</kbd> Snooze to…</button>
             <button type="button" className="kb" onClick={() => void decide(cur, 'drop', {}, `Discarded ${cur.key}`)}><kbd>⌫</kbd> Discard</button>
             <span className="ps3-sp" /><span className="ps3-dim" style={{ fontSize: 11.5 }}><kbd>J</kbd> <kbd>K</kbd> next / previous</span>
             <button type="button" className="ps3-link" onClick={() => setReviewing(null)}>Done</button>
@@ -141,6 +144,8 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
           );
         })}
       </div>
+      {snoozeAt && <SnoozePicker item={snoozeAt.item} anchor={snoozeAt.anchor} onClose={() => setSnoozeAt(null)}
+        onPick={(day) => { const it = snoozeAt.item; setSnoozeAt(null); void decide(it, 'replan', { dueDate: day }, `Snoozed ${it.key} to ${dm(day)}`); }} />}
       {reassign && (
         <Floating anchor={reassign.anchor} onClose={() => setReassign(null)} width={260} label="Reassign to" style={{ padding: '6px 0', maxHeight: 320, overflow: 'auto' }}>
           <div className="ph">Reassign {reassign.item.key} to</div>
@@ -149,5 +154,25 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
         </Floating>
       )}
     </div>
+  );
+}
+
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** ⇧S in the review: snooze an action item to a day — Tomorrow, In 3 days, Next Monday, Next week, or any date from the picker. */
+function SnoozePicker({ item, anchor, onPick, onClose }: { item: ReviewItem; anchor: HTMLElement | null; onPick: (day: string) => void; onClose: () => void }) {
+  const today = iso(new Date());
+  const [day, setDay] = useState(() => addDays(today, 1));
+  const monday = (() => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return iso(d); })();
+  const presets: [string, string][] = [['Tomorrow', addDays(today, 1)], ['In 3 days', addDays(today, 3)], ['Next Monday', monday], ['Next week', addDays(today, 7)]];
+  return (
+    <Floating anchor={anchor} onClose={onClose} width={268} label={`Snooze ${item.key} to`} style={{ padding: '6px 0' }}>
+      <div className="ph">Snooze {item.key} to</div>
+      {presets.map(([label, d]) => <button key={label} type="button" className="it" onClick={() => onPick(d)}><span style={{ flex: 1 }}>{label}</span><span className="ps3-dim">{dm(d)}</span></button>)}
+      <form className="ps4-snz" onSubmit={(e) => { e.preventDefault(); if (!day || day < today) { toast('Pick today or a later day.', 'error'); return; } onPick(day); }}>
+        <input type="date" aria-label="Snooze until" value={day} min={today} onChange={(e) => setDay(e.target.value)} autoFocus />
+        <button type="submit" className="ps3-qc pri">Snooze</button>
+      </form>
+    </Floating>
   );
 }

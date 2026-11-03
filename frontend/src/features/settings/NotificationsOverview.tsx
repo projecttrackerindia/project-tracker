@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, get } from '../../api/client';
 import { meApi, pushApi } from '../../api/endpoints';
@@ -73,6 +73,16 @@ export function NotificationsOverview({ more }: { more: { id: string; label: str
     try { queryClient.setQueryData(SETTINGS_KEY, await reminderApi.saveSettings(next)); }
     catch (e) { queryClient.setQueryData(SETTINGS_KEY, s); toast(e instanceof ApiError ? e.message : 'Could not save your schedule.', 'error'); }
   };
+  // "Switch to digest" in a change e-mail opens /settings/notifications?digest=on: turn the daily digest on (9:00) once, say so, and drop the flag.
+  const [params, setParams] = useSearchParams();
+  const digestAsked = useRef(false);
+  useEffect(() => {
+    if (params.get('digest') !== 'on' || !s || digestAsked.current) return;
+    digestAsked.current = true;
+    setParams((x) => { const n = new URLSearchParams(x); n.delete('digest'); return n; }, { replace: true });
+    if (s.digestTime) { toast(`You already get one daily digest at ${s.digestTime}.`); return; }
+    void saveSettings({ digestTime: '09:00' }).then(() => toast('Daily digest on: updates arrive in one e-mail at 9:00.'));
+  }, [params, s]);
   const quiet = !!s?.quietStart;
   const weekends = !!s && !s.workDays.includes(0) && !s.workDays.includes(6);
   const showWa = !!wa.data && (wa.data.canEnable === true || wa.data.optedIn === true);

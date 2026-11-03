@@ -142,3 +142,19 @@ export function snoozePresets(now = new Date()): { label: string; until: Date }[
     { label: 'Tomorrow 9:00', until: tomorrow },
   ];
 }
+
+/** A task-change notice's lines ("Due: 28 Oct → 30 Oct (+2d)", "Effect: CB-03 starts later"): before → after rows, and the rest as plain notes. */
+export interface ChangeLine { label: string; before?: string; after?: string; delta?: string; note?: string }
+export function changeLines(n: Pick<AppNotification, 'type' | 'body'>): ChangeLine[] | null {
+  if (n.type !== 'TaskUpdated' || !n.body) return null;
+  const lines = n.body.split('\n').map((l) => l.trim()).filter(Boolean);
+  const out: ChangeLine[] = [];
+  for (const l of lines) {
+    const i = l.indexOf(': ');
+    if (i <= 0) return null;
+    const label = l.slice(0, i), rest = l.slice(i + 2);
+    const m = /^(.*?) → (.*?)(?: \(([+-]\d+d)\))?$/.exec(rest);
+    out.push(m ? { label, before: m[1], after: m[2], delta: m[3] } : { label, note: rest });
+  }
+  return out.some((x) => x.after !== undefined) ? out : null;
+}

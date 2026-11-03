@@ -107,6 +107,15 @@ const board = () => ({ asOf: today, filter: {}, brief, decisions: [], summary: b
   capacity: { from: today, to: today, people: 6, over: [], projectsAtRisk: [], notes: [] } });
 
 
+// Watchers of a task (the eye in the inspector) and the change notices in the Notification Centre (design plansheet8/05).
+let watching = false;
+const watchersOf = (id) => ({ taskId: id, watching, watchers: [{ userId: S.LP[0], name: 'Lena Park' }, ...(watching ? [{ userId: user.id, name: 'Asha Rao' }] : [])] });
+const notice = (n, title, body, at, extra = {}) => ({ id: g(1200 + n), type: 'TaskUpdated', title, body, link: `/projects/${CB}?task=${T['CB-02']}`, isRead: false, createdAt: at, browser: false, needsYou: false,
+  archived: false, snoozedUntil: null, shownAt: at, actions: [], category: 'work', startsAt: null, joinLink: null, reason: null, deliverAfter: null, emailed: true, canUndo: true, ...extra });
+const changeNotices = [
+  notice(1, 'Ravi Menon moved CB-02 due 28 Oct → 30 Oct (+2d) · Credit Bureau Integration', 'Due: 28 Oct → 30 Oct (+2d)\nEffect: CB-03 starts later', new Date(NOW.getTime() - 2 * 60_000).toISOString()),
+  notice(2, 'Lena Park reassigned AA-05 assignee Ravi Menon → Lena Park · Account Aggregator', 'Assignee: Ravi Menon → Lena Park', new Date(NOW.getTime() - 18 * 60_000).toISOString(), { canUndo: false, link: `/projects/${AA}?task=${T['AA-05']}` }),
+];
 const writes = [], errors = [], checks = [], views = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 async function context(theme, width) {
@@ -126,7 +135,14 @@ async function context(theme, width) {
     let data = [];
     if (ep === '/api/v1/portfolio/sheet/bulk' && method === 'POST') {
       const b = req.postDataJSON(); writes.push({ ep, b });
-      data = { changed: b.changes.length, failed: 0, rows: b.changes.map((c) => ({ id: c.id, key: null, ok: true, error: null, field: null, code: null, version: (c.version ?? 3) + 1 })) };
+      data = { changed: b.changes.length, failed: 0, rows: b.changes.map((c) => ({ id: c.id, key: null, ok: true, error: null, field: null, code: null, version: (c.version ?? 3) + 1, told: 3, emailed: 2 })) };
+    } else if (/\/api\/v1\/notifications\/[^/]+\/read$/.test(ep) && method === 'POST') { writes.push({ ep }); data = null;
+    } else if (ep === '/api/v1/portfolio/sheet/undo' && method === 'POST') {
+      const b = req.postDataJSON(); writes.push({ ep, b });
+      data = { changed: 1, failed: 0, rows: [{ id: T['CB-02'], key: 'CB-02', ok: true, error: null, field: null, code: null, version: 5, told: 2, emailed: 1 }] };
+    } else if (/\/api\/v1\/portfolio\/sheet\/tasks\/[^/]+\/watch$/.test(ep) && (method === 'PUT' || method === 'DELETE')) {
+      writes.push({ ep, method }); watching = method === 'PUT';
+      data = watchersOf(ep.split('/')[6]);
     } else if (ep === '/api/v1/portfolio/sheet/move' && method === 'POST') {
       const b = req.postDataJSON(); writes.push({ ep, b });
       data = { id: b.id, key: b.projectId === CB ? 'CB-4' : 'PR-01', projectId: b.projectId, version: 4, position: 2048, movedProject: b.projectId === CB };
@@ -160,6 +176,7 @@ async function context(theme, width) {
       else if (ep === '/api/v1/portfolio/board') data = board();
       else if (ep === '/api/v1/portfolio/sheet') data = sheet();
       else if (ep === '/api/v1/portfolio/timeline') data = tl;
+      else if (/\/api\/v1\/portfolio\/sheet\/tasks\/[^/]+\/watchers$/.test(ep)) data = watchersOf(ep.split('/')[6]);
       else if (ep === '/api/v1/resources/plan') data = plan(url.searchParams.get('from'));
       else if (/\/api\/v1\/tasks\/[^/]+\/checklist$/.test(ep)) data = checklist;
       else if (/\/api\/v1\/work-items\/[^/]+\/history$/.test(ep)) data = history;
@@ -169,8 +186,8 @@ async function context(theme, width) {
       else if (ep === '/api/v1/reminders/settings') data = reminderSettings;
       else if (ep === '/api/v1/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
       else if (ep.endsWith('/ai/status')) data = { enabled: true, configured: true, entitled: true, allowedHere: true };
-      else if (ep === '/api/v1/notifications/counts') data = { unread: 0, needsYou: 0, forInfo: 0, snoozed: 0 };
-      else if (ep === '/api/v1/notifications') data = { items: [], page: 1, pageSize: 20, totalPages: 0, totalItems: 0 };
+      else if (ep === '/api/v1/notifications/counts') data = { unread: 2, needsYou: 0, forInfo: 2, snoozed: 0, messages: 0, reminders: 0, meetings: 0, work: 2 };
+      else if (ep === '/api/v1/notifications') data = { items: changeNotices, page: 1, pageSize: 50, totalPages: 1, totalItems: changeNotices.length };
       else if (ep === '/api/v1/timer') data = null;
       else if (ep.endsWith('/me/fingerprint')) data = { fingerprint: 'preview' };
       else if (ep.endsWith('/workspace/logo')) data = { hasLogo: false };
@@ -494,8 +511,27 @@ try {
   await tree.locator(`[data-row="${T['CB-02']}"] .tw b`).click();
   assert.equal(await tree.locator('.guide.hf').count(), 1, 'the chosen branch is highlighted');
   assert.match(await page.locator('.ps4-path').innerText(), /Credit Bureau Integration › Report parsing/);
-  await page.getByRole('complementary', { name: 'CB-02 details' }).waitFor();
+  const cbi = page.getByRole('complementary', { name: 'CB-02 details' });
+  await cbi.waitFor();
+  await cbi.getByTestId('ps-watchers').getByText('Lena Park').waitFor();
+  n = writes.length; await cbi.getByRole('button', { name: 'Watch this task' }).click();
+  assert.equal((await waitWrite((w) => /\/watch$/.test(w.ep), n)).method, 'PUT');
+  await cbi.getByRole('button', { name: 'Stop watching' }).waitFor();
+  assert.match(await cbi.getByTestId('ps-watchers').innerText(), /2 watching/);
   await shot(page, '13-focus-tree-inspector-light-1440.png');
+  checks.push('watch-eye');
+  // "+ Subtask" on hover of a task that is not selected.
+  const cb3row = tree.locator(`[data-row="${T['CB-03']}"]`);
+  await cb3row.hover();
+  await cb3row.getByRole('button', { name: 'Add a subtask to CB-03' }).click();
+  await tree.getByRole('textbox', { name: 'New subtask title' }).fill('Dead-letter queue for failed enquiries');
+  n = writes.length; await tree.getByRole('textbox', { name: 'New subtask title' }).press('Enter');
+  const hsub = await waitWrite((w) => /\/projects\/[^/]+\/tasks$/.test(w.ep), n);
+  assert.deepEqual([hsub.b.title, hsub.b.parentTaskId], ['Dead-letter queue for failed enquiries', T['CB-03']]);
+  checks.push('hover-add-subtask');
+  await tree.locator(`[data-row="${T['CB-02']}"] .tw b`).click();
+  await tree.locator(`[data-row="${T['CB-02']}"] .tw b`).click();
+  await cbi.waitFor();
   await tree.getByRole('button', { name: '＋ Add subtask' }).click();
   await tree.getByRole('textbox', { name: 'New subtask title' }).fill('Map v2 fields to internal model');
   n = writes.length; await tree.getByRole('textbox', { name: 'New subtask title' }).press('Enter');
@@ -510,7 +546,7 @@ try {
   await bulkAfter(n);
   const t2 = page.locator('.ps3-toast', { hasText: 'You moved CB-03' });
   await t2.waitFor();
-  assert.match(await t2.innerText(), /You moved CB-03 due 24 Nov → 20 Nov \(-4d\) · Credit Bureau Integration[\s\S]*Owner, watchers and lead told[\s\S]*Undo/);
+  assert.match(await t2.innerText(), /You moved CB-03 due 24 Nov → 20 Nov \(-4d\) · Credit Bureau Integration[\s\S]*3 people told · 2 emailed[\s\S]*Undo/);
   // Notify settings: who is told, e-mail digest, quiet hours.
   await page.getByRole('button', { name: '🔔 Notify' }).click();
   const nd = page.getByRole('dialog', { name: 'Notify' });
@@ -540,6 +576,17 @@ try {
   await rv.waitFor();
   assert.match(await rv.innerText(), /Needs review · 1 of 3[\s\S]*A\s*Accept[\s\S]*R\s*Reassign[\s\S]*S\s*Snooze[\s\S]*⌫\s*Discard/);
   await shot(page, '16-action-items-review-light-1440.png');
+  // ⇧S: snooze to a day picked from the calendar.
+  await page.keyboard.press('Shift+S');
+  const snz = page.getByRole('dialog', { name: /^Snooze .+ to$/ });
+  await snz.waitFor();
+  assert.match(await snz.innerText(), /Tomorrow[\s\S]*In 3 days[\s\S]*Next Monday[\s\S]*Next week/);
+  await snz.getByLabel('Snooze until').fill('2026-11-06');
+  await shot(page, '16b-action-items-snooze-date-light-1440.png');
+  n = writes.length; await snz.getByRole('button', { name: 'Snooze', exact: true }).click();
+  const sd = await waitWrite((w) => /\/decide$/.test(w.ep), n);
+  assert.deepEqual([sd.b.decision, sd.b.dueDate], ['replan', '2026-11-06']);
+  checks.push('snooze-date-picker');
   n = writes.length; await page.keyboard.press('a');
   const dec = await waitWrite((w) => /\/decide$/.test(w.ep), n);
   assert.equal(dec.b.decision, 'carry');
@@ -554,6 +601,29 @@ try {
   await page.waitForURL(/pt=actions/);
   await page.locator('.ps4-ai').waitFor();
   checks.push('v4-old-action-items-link');
+  // The Notification Centre (design plansheet8/05): a change shows before → after, "emailed", View and Undo.
+  await page.getByRole('button', { name: /^Notifications/ }).first().click();
+  const ncp = page.getByRole('dialog', { name: 'Notifications' });
+  await ncp.waitFor();
+  const d1 = ncp.getByTestId('ncx-diff').first();
+  await d1.waitFor();
+  assert.match(await d1.innerText(), /Due 28 Oct\s*→\s*(to\s*)?30 Oct \(\+2d\)[\s\S]*Effect: CB-03 starts later/);
+  assert.equal(await ncp.getByTestId('ncx-emailed').count(), 2);
+  assert.equal(await ncp.getByRole('button', { name: 'Undo' }).count(), 1, 'only a change that still stands can be undone');
+  await shot(page, '18-notification-centre-changes-light-1440.png');
+  n = writes.length; await ncp.getByRole('button', { name: 'Undo' }).click();
+  assert.equal((await waitWrite((w) => w.ep === '/api/v1/portfolio/sheet/undo', n)).b.notificationId, g(1201));
+  await page.locator('[role="status"], .toast', { hasText: 'Undone · CB-02' }).first().waitFor();
+  await page.keyboard.press('Escape');
+  checks.push('notification-centre-change-diff-undo');
+  // "Undo change" in the e-mail: the signed link opens the app and asks first.
+  await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=sheet&undo=signed-token-123`);
+  const ask = page.getByRole('dialog', { name: 'Undo this change?' });
+  await ask.waitFor();
+  n = writes.length; await ask.getByRole('button', { name: 'Undo change' }).click();
+  assert.equal((await waitWrite((w) => w.ep === '/api/v1/portfolio/sheet/undo', n)).b.token, 'signed-token-123');
+  assert.equal(new URL(page.url()).searchParams.get('undo'), null);
+  checks.push('email-undo-link-prompt');
   assert.deepEqual(errors, []);
 
   // ------------------------------------------------------------------ Timeline
@@ -653,6 +723,14 @@ try {
   await why2.waitFor();
   await why2.getByRole('button', { name: 'Cancel' }).click();
   checks.push('phone-sheet');
+  await page.getByRole('button', { name: /^Notifications/ }).first().click();
+  const ncPhone = page.getByRole('dialog', { name: 'Notifications' });
+  await ncPhone.getByTestId('ncx-diff').first().waitFor();
+  await page.waitForTimeout(300);
+  await fitsPhone(page, 'notification centre phone', assert);
+  await shot(page, '18b-notification-centre-changes-390.png');
+  await page.keyboard.press('Escape');
+  checks.push('phone-notification-centre');
   await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=timeline`);
   await page.locator('.ptl-prow-ph').first().waitFor();
   assert.ok(await page.getByText('Today 29 Oct').isVisible());

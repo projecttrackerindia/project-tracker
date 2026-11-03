@@ -53,6 +53,20 @@ public class PortfolioController(PortfolioBoardService board, PlanSheetService s
     public async Task<IActionResult> SheetBulk([FromBody] PlanSheetBulkRequest req, CancellationToken ct) => Ok(await sheet.BulkAsync(req, ct));
 
     /// <summary>A row dragged to a new place in its project, or into another project (next number there, column of the same name).</summary>
+    /// <summary>Undo one change from its notice (notificationId) or its e-mail's signed link (token).</summary>
+    [HttpPost("sheet/undo")]
+    public async Task<IActionResult> SheetUndo([FromBody] PlanSheetUndoRequest req, CancellationToken ct) => Ok(await sheet.UndoAsync(req, ct));
+
+    /// <summary>Who watches a task, and whether I do.</summary>
+    [HttpGet("sheet/tasks/{taskId:guid}/watchers")]
+    public async Task<IActionResult> Watchers(Guid taskId, CancellationToken ct) => Ok(await sheet.WatchersAsync(taskId, ct));
+
+    [HttpPut("sheet/tasks/{taskId:guid}/watch")]
+    public async Task<IActionResult> Watch(Guid taskId, CancellationToken ct) => Ok(await sheet.WatchAsync(taskId, true, ct));
+
+    [HttpDelete("sheet/tasks/{taskId:guid}/watch")]
+    public async Task<IActionResult> Unwatch(Guid taskId, CancellationToken ct) => Ok(await sheet.WatchAsync(taskId, false, ct));
+
     [HttpPost("sheet/move")]
     public async Task<IActionResult> SheetMove([FromBody] PlanSheetMoveRequest req, CancellationToken ct) => Ok(await sheet.MoveAsync(req, ct));
 

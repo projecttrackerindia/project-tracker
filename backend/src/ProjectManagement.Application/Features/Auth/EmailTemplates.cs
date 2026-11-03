@@ -5,6 +5,11 @@ namespace ProjectManagement.Application.Features.Auth;
 /// <summary>What the message is about: it sets the small label and the accent color above the headline.</summary>
 public enum EmailKind { Update, Security, Invitation, Reminder, Welcome, Billing }
 
+/// <summary>What the task-change e-mail shows (see <see cref="EmailTemplates.Change"/>). Plain text: the template encodes it.</summary>
+public record ChangeEmail(string Project, string Accent, string Headline, string Subtitle, string? Before, string? After, string? Delta,
+    IReadOnlyList<(string Label, string Value)> Facts, string OpenUrl, string? UndoUrl, string? DigestUrl, string DigestTime, string? SettingsUrl, string? UnsubscribeUrl,
+    string Reason, string Preheader, string? Workspace = null, string? AfterTint = null);
+
 /// <summary>
 /// The one look every e-mail shares: a dark gradient header with the product mark, a clean card with the message, one bold button and the link in words
 /// for programs that block buttons. Table layout and inline styles because mail programs ignore almost everything else; the button is a real
@@ -118,6 +123,88 @@ public static class EmailTemplates
                 </td></tr>
                 <tr><td class="pad" style="padding:20px 32px 0;font-family:Inter,'Segoe UI',Roboto,Arial,sans-serif;text-align:center">{{{foot}}}{{{stop}}}{{{links}}}{{{help}}}
                   <p class="tx3" style="margin:6px 0 0;font-size:11px;line-height:17px;color:#a59ec3">Sent by Project Tracker{{{(host.Length > 0 ? " · " + Enc(host) : "")}}} · Hyderabad, India</p></td></tr>
+              </table>
+            </td></tr></table></body></html>
+            """;
+    }
+
+    /// <summary>
+    /// The task-change e-mail (design plansheet8/06): the project's colour as a stripe over the card, the project as an eyebrow, who changed what as the
+    /// headline, the main change as a struck-through BEFORE card and a tinted AFTER card, then the facts (owner, changed by, the other changes, the
+    /// effect on other work), "Open in ProjectTracker" and "Undo change", and a box to switch to the daily digest. Tables and inline styles only, a
+    /// VML button for Outlook, and a dark scheme for the mail programs that honour one. Every value is encoded here.
+    /// </summary>
+    public static string Change(ChangeEmail m)
+    {
+        var accent = System.Text.RegularExpressions.Regex.IsMatch(m.Accent, "^#[0-9a-fA-F]{6}$") ? m.Accent : "#14b8a6";
+        var tint = m.AfterTint is { } t && System.Text.RegularExpressions.Regex.IsMatch(t, "^#[0-9a-fA-F]{6}$") ? t : "#e8f7f5";
+        const string font = "font-family:Inter,-apple-system,'Segoe UI',Roboto,Arial,sans-serif";
+        var hidden = $"<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px\">{Enc(m.Preheader)}&#8199;&zwnj;&#8199;&zwnj;&#8199;&zwnj;</div>";
+        var delta = string.IsNullOrEmpty(m.Delta) ? "" : $" <span style=\"font-size:13px;font-weight:700;color:#f59e0b\">{Enc(m.Delta)}</span>";
+        var cards = m.Before is null ? "" :
+            $"<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 0 22px\"><tr>" +
+            $"<td width=\"46%\" valign=\"top\" class=\"was\" bgcolor=\"#f2f2f5\" style=\"background:#f2f2f5;border-radius:12px;padding:12px 16px;{font}\">" +
+            $"<div class=\"tx3\" style=\"font-size:11px;line-height:16px;letter-spacing:.6px;color:#6e6e73;text-transform:uppercase\">Before</div>" +
+            $"<div class=\"tx3\" style=\"font-size:18px;line-height:26px;font-weight:700;color:#a1a1a6;text-decoration:line-through\">{Enc(m.Before)}</div></td>" +
+            $"<td width=\"8%\" align=\"center\" valign=\"middle\" class=\"tx3\" style=\"font-size:18px;color:#a1a1a6;{font}\">&rarr;</td>" +
+            $"<td width=\"46%\" valign=\"top\" class=\"now\" bgcolor=\"{tint}\" style=\"background:{tint};border-radius:12px;padding:12px 16px;{font}\">" +
+            $"<div style=\"font-size:11px;line-height:16px;letter-spacing:.6px;color:{accent};text-transform:uppercase;font-weight:600\">After</div>" +
+            $"<div class=\"tx\" style=\"font-size:18px;line-height:26px;font-weight:700;color:#1d1d1f\">{Enc(m.After ?? "")}{delta}</div></td></tr></table>";
+        var facts = m.Facts.Count == 0 ? "" :
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 0 24px\">" +
+            string.Concat(m.Facts.Select(f => $"<tr><td width=\"108\" valign=\"top\" class=\"tx3\" style=\"padding:4px 0;font-size:14px;line-height:20px;color:#6e6e73;{font}\">{Enc(f.Label)}</td>" +
+                $"<td valign=\"top\" class=\"tx\" style=\"padding:4px 0;font-size:14px;line-height:20px;color:#1d1d1f;{font}\">{Enc(f.Value)}</td></tr>")) + "</table>";
+        const string cta = "Open in ProjectTracker";
+        var button =
+            $"<!--[if mso]><v:roundrect xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:w=\"urn:schemas-microsoft-com:office:word\" href=\"{Enc(m.OpenUrl)}\" style=\"height:40px;v-text-anchor:middle;width:200px\" arcsize=\"25%\" stroke=\"f\" fillcolor=\"#0a84ff\"><w:anchorlock/><center style=\"color:#ffffff;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:bold\">{cta}</center></v:roundrect><![endif]-->" +
+            $"<!--[if !mso]><!--><a href=\"{Enc(m.OpenUrl)}\" style=\"display:inline-block;background:#0a84ff;color:#ffffff;padding:10px 20px;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;line-height:20px;{font}\">{cta}</a><!--<![endif]-->";
+        var undo = m.UndoUrl is null ? "" : $"<td style=\"padding-left:16px;{font}\"><a class=\"lnk\" href=\"{Enc(m.UndoUrl)}\" style=\"color:#0a84ff;font-size:15px;text-decoration:none\">Undo change</a></td>";
+        var digest = m.DigestUrl is null ? "" :
+            $"<tr><td style=\"padding-top:12px\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" class=\"card\" bgcolor=\"#ffffff\" style=\"background:#ffffff;border-radius:16px\"><tr>" +
+            $"<td class=\"pad\" style=\"padding:16px 20px;{font}\"><div class=\"tx\" style=\"font-size:14px;line-height:20px;font-weight:700;color:#1d1d1f\">Too many emails?</div>" +
+            $"<div class=\"tx2\" style=\"font-size:13px;line-height:19px;color:#6e6e73\">Get one daily digest at {Enc(m.DigestTime)} instead of instant updates.</div></td>" +
+            $"<td align=\"right\" style=\"padding:16px 20px 16px 0;{font}\"><a href=\"{Enc(m.DigestUrl)}\" class=\"chip\" style=\"display:inline-block;background:#f2f2f5;color:#1d1d1f;padding:8px 14px;border-radius:9px;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap\">Switch to digest</a></td>" +
+            "</tr></table></td></tr>";
+        var stop = m.UnsubscribeUrl is null ? "" : $" &middot; <a href=\"{Enc(m.UnsubscribeUrl)}\" style=\"color:#8e8e93;text-decoration:none\">Stop emails like this</a>";
+        var settings = m.SettingsUrl is null ? "" : $"<a href=\"{Enc(m.SettingsUrl)}\" style=\"color:#8e8e93;text-decoration:none\">Notification settings</a>";
+
+        return $$$"""
+            <!doctype html><html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><meta http-equiv="X-UA-Compatible" content="IE=edge"><title>{{{Enc(m.Headline)}}}</title>
+            <!--[if mso]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+            <style>
+              body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}
+              table,td{mso-table-lspace:0;mso-table-rspace:0}
+              @media (max-width:520px){.wrap{padding:16px 8px!important}.pad{padding-left:20px!important;padding-right:20px!important}.h1{font-size:21px!important;line-height:28px!important}}
+              @media (prefers-color-scheme:dark){
+                .bg{background:#000000!important}.card{background:#1c1c1e!important}
+                .tx{color:#f5f5f7!important}.tx2{color:#c7c7cc!important}.tx3{color:#98989d!important}
+                .was{background:#2c2c2e!important}.now{background:#12302c!important}.chip{background:#2c2c2e!important;color:#f5f5f7!important}.lnk{color:#4da3ff!important}
+              }
+              [data-ogsc] .bg{background:#000000!important}[data-ogsc] .card{background:#1c1c1e!important}[data-ogsc] .tx{color:#f5f5f7!important}[data-ogsc] .tx2{color:#c7c7cc!important}
+            </style></head>
+            <body class="bg" style="margin:0;padding:0;background:#ebebf0;word-spacing:normal">{{{hidden}}}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bg" bgcolor="#ebebf0" style="background:#ebebf0"><tr><td align="center" class="wrap" style="padding:36px 14px">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
+                <tr><td style="padding:0 6px 14px;{{{font}}}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                  <td><table role="presentation" cellpadding="0" cellspacing="0"><tr><td width="20" height="20" bgcolor="#0a84ff" style="width:20px;height:20px;border-radius:6px;background:#0a84ff;background-image:linear-gradient(135deg,#0a84ff,#30b0c7);font-size:0;line-height:0">&nbsp;</td>
+                    <td class="tx" style="padding-left:8px;font-size:13px;font-weight:700;color:#1d1d1f;{{{font}}}">ProjectTracker</td></tr></table></td>
+                  <td align="right" class="tx3" style="font-size:13px;color:#6e6e73;{{{font}}}">{{{Enc(m.Workspace ?? "")}}}</td>
+                </tr></table></td></tr>
+                <tr><td class="card" bgcolor="#ffffff" style="background:#ffffff;border-radius:16px;border-top:6px solid {{{accent}}}">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="pad" style="padding:28px 32px;{{{font}}}">
+                    <p style="margin:0 0 8px;font-size:12px;line-height:16px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:{{{accent}}}">{{{Enc(m.Project)}}}</p>
+                    <h1 class="h1 tx" style="margin:0 0 6px;font-size:23px;line-height:30px;font-weight:700;letter-spacing:-.3px;color:#1d1d1f">{{{Enc(m.Headline)}}}</h1>
+                    <p class="tx2" style="margin:0 0 20px;font-size:14px;line-height:21px;color:#6e6e73">{{{Enc(m.Subtitle)}}}</p>
+                    {{{cards}}}
+                    {{{facts}}}
+                    <table role="presentation" cellpadding="0" cellspacing="0"><tr><td>{{{button}}}</td>{{{undo}}}</tr></table>
+                  </td></tr></table>
+                </td></tr>
+                {{{digest}}}
+                <tr><td align="center" style="padding:22px 12px 0;{{{font}}}">
+                  <p class="tx3" style="margin:0 0 4px;font-size:12px;line-height:18px;color:#8e8e93">{{{Enc(m.Reason)}}}</p>
+                  <p class="tx3" style="margin:0;font-size:12px;line-height:18px;color:#8e8e93">{{{settings}}}{{{stop}}}</p>
+                </td></tr>
               </table>
             </td></tr></table></body></html>
             """;

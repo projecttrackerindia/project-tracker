@@ -39,8 +39,13 @@ public record PlanSheetChange(Guid Id, int? Version = null, Guid? AssigneeId = n
     int? Progress = null, bool ClearProgress = false, string? Notes = null);
 /// <summary>Many rows at once. One reason covers every due date in the batch that moves later (the existing date-change rule).</summary>
 public record PlanSheetBulkRequest(IReadOnlyList<PlanSheetChange>? Changes, string? DueDateReason = null, string? DueDateDependency = null);
-public record PlanSheetRowResultDto(Guid Id, string? Key, bool Ok, string? Error = null, string? Field = null, string? Code = null, int? Version = null);
+/// <param name="Told">How many people the change was told to (in the app or by e-mail); <paramref name="Emailed"/> of them get an e-mail.</param>
+public record PlanSheetRowResultDto(Guid Id, string? Key, bool Ok, string? Error = null, string? Field = null, string? Code = null, int? Version = null, int Told = 0, int Emailed = 0);
 public record PlanSheetBulkResultDto(int Changed, int Failed, IReadOnlyList<PlanSheetRowResultDto> Rows);
+/// <summary>Undo one change told about in a notice: from its e-mail (the signed <see cref="Token"/>) or from the notice in the app.</summary>
+public record PlanSheetUndoRequest(string? Token = null, Guid? NotificationId = null);
+public record TaskWatcherDto(Guid UserId, string Name);
+public record TaskWatchersDto(Guid TaskId, bool Watching, IReadOnlyList<TaskWatcherDto> Watchers);
 
 /// <summary>
 /// A row dragged on the sheet: to a new place among its project's tasks (between <see cref="AfterId"/> and <see cref="BeforeId"/>), or into another
@@ -66,7 +71,8 @@ public record PlanSheetPasteResultDto(Guid ProjectId, string ProjectKey, string 
 /// workflow, the due-date reason rule and version checks apply exactly as when the row is edited on its own. What fails is reported per row.
 /// </summary>
 public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock clock, AiPortfolio portfolio, ProjectAccess access, WorkItemApiService work,
-    ProjectService projects, Recorder recorder, PermissionService permissions, ProjectManagement.Application.Features.Notifications.NotificationService notifications)
+    ProjectService projects, Recorder recorder, PermissionService permissions, ProjectManagement.Application.Features.Notifications.NotificationService notifications,
+    ProjectManagement.Application.Features.Notifications.EmailLinks links)
 {
     public const int MaxRows = 5000, MaxBulk = 500, MaxPaste = 500;
 
@@ -265,9 +271,10 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                     }
                     recorder.Audit("plansheet.row_updated", "WorkItem", c.Id, newValue: new { c.AssigneeId, c.Unassign, c.StartDate, c.DueDate, c.DueTime, c.StatusId, c.Progress, c.ClearProgress, Notes = c.Notes is not null, Reason = c.DueDate is null ? null : reason });
                     await db.SaveChangesAsync(ct);
+                    var told = (0, 0);
                     if (c.AssigneeId is not null || c.Unassign || c.StartDate is not null || c.ClearStart || c.DueDate is not null || c.StatusId is not null)
-                        await TellChangeAsync((TaskItem)item, key, since, ct);
-                    results.Add(new(c.Id, key, true, Version: version));
+                        told = await TellChangeAsync((TaskItem)item, key, since, ct);
+                    results.Add(new(c.Id, key, true, Version: version, Told: told.Item1, Emailed: told.Item2));
                 }
                 else throw new NotFoundException("Not found, or you cannot see it.");
                 changed++;
@@ -305,23 +312,26 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
     }
 
     /// <summary>
-    /// A task's due or start date, assignee, status or project changed on the sheet: tell its owner, its watchers (the person who raised it) and the
-    /// project lead, as the actor chose in Notify, with one line ("Asha moved CB-02 due 28 Oct → 30 Oct (+2d) · Credit Bureau") and the before → after
-    /// lines. The task's own update has already told its assignee and reporter that it changed: those notices become this one instead of a second.
+    /// A task's due or start date, assignee, status or project changed on the sheet: tell its owner, its watchers (who raised it, who watches it with
+    /// the eye, and active "tell me when…" watches) and the project lead, as the actor chose in Notify, with one line ("Asha moved CB-02 due 28 Oct →
+    /// 30 Oct (+2d) · Credit Bureau"), the before → after lines and what it does to other work. The change is kept (<see cref="TaskChange"/>) for the
+    /// e-mail and for Undo. The task's own update has already told its assignee and reporter that it changed, and a new assignee that they were
+    /// assigned: those notices become this one instead of a second (the new assignee's reads "Ravi assigned CB-02 to you · due 30 Oct").
+    /// Returns how many people were told and how many of them get an e-mail.
     /// </summary>
-    private async Task TellChangeAsync(TaskItem before, string? key, DateTime since, CancellationToken ct, Guid? fromProject = null)
+    private async Task<(int Told, int Emailed)> TellChangeAsync(TaskItem before, string? key, DateTime since, CancellationToken ct, Guid? fromProject = null)
     {
         var uid = ctx.RequireUserId();
         var after = await db.Tasks.AsNoTracking().Where(t => t.Id == before.Id)
-            .Select(t => new { t.ProjectId, t.AssigneeId, t.ReporterId, t.StartDate, t.DueDate, t.StatusId, t.Number }).FirstOrDefaultAsync(ct);
-        if (after is null) return;
+            .Select(t => new { t.ProjectId, t.AssigneeId, t.ReporterId, t.StartDate, t.DueDate, t.StatusId, t.Number, t.TenantId }).FirstOrDefaultAsync(ct);
+        if (after is null) return (0, 0);
         var userIds = new[] { before.AssigneeId, after.AssigneeId, uid }.Where(x => x != null).Select(x => x!.Value).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         var statusIds = new[] { before.StatusId, after.StatusId }.Distinct().ToList();
         var statusNames = await db.WorkflowStatuses.AsNoTracking().Where(s => statusIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
         var projectIds = new[] { before.ProjectId, after.ProjectId, fromProject ?? after.ProjectId }.Distinct().ToList();
         var projectsBy = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => new { p.Name, p.Key, p.OwnerId }, ct);
-        if (!projectsBy.TryGetValue(after.ProjectId, out var project)) return;
+        if (!projectsBy.TryGetValue(after.ProjectId, out var project)) return (0, 0);
         key ??= $"{project.Key}-{after.Number}";
         static string D(DateOnly? d) => d?.ToString("d MMM", CultureInfo.InvariantCulture) ?? "no date";
         string P(Guid? id) => id is { } x ? names.GetValueOrDefault(x) ?? "someone" : "nobody";
@@ -335,7 +345,17 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         if (before.StatusId != after.StatusId && statusNames.GetValueOrDefault(before.StatusId) != statusNames.GetValueOrDefault(after.StatusId)) diff.Add(("Status", "set", statusNames.GetValueOrDefault(before.StatusId) ?? "—", statusNames.GetValueOrDefault(after.StatusId) ?? "—", ""));
         var oldProject = fromProject ?? before.ProjectId;
         if (oldProject != after.ProjectId && projectsBy.TryGetValue(oldProject, out var was)) diff.Add(("Project", "moved", was.Name, project.Name, ""));
-        if (diff.Count == 0) return;
+        if (diff.Count == 0) return (0, 0);
+
+        var effect = await EffectAsync(before.Id, before.DueDate, after.DueDate, project.Key, ct);
+        var change = new TaskChange
+        {
+            TenantId = after.TenantId, TaskId = before.Id, ProjectId = after.ProjectId, FromProjectId = oldProject != after.ProjectId ? oldProject : null, ActorId = uid,
+            BeforeDue = before.DueDate, AfterDue = after.DueDate, BeforeStart = before.StartDate, AfterStart = after.StartDate,
+            BeforeAssigneeId = before.AssigneeId, AfterAssigneeId = after.AssigneeId, BeforeStatusId = before.StatusId, AfterStatusId = after.StatusId,
+            Effect = ProjectManagement.Application.Common.Text.Truncate(effect, 300), CreatedAt = clock.Now, CreatedBy = uid,
+        };
+        db.TaskChanges.Add(change);
 
         var prefs = await NotifySettingsAsync(uid, ct);
         var who = new HashSet<Guid>();
@@ -343,8 +363,9 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         if (prefs.Owner && before.AssigneeId is { } previous) who.Add(previous);
         if (prefs.Watchers)
         {
-            // Watchers: who raised it, and anyone with an active "tell me when…" watch on it.
+            // Watchers: who raised it, who watches it (the eye), and anyone with an active "tell me when…" watch on it.
             who.Add(after.ReporterId);
+            foreach (var watcher in await db.TaskWatchers.AsNoTracking().Where(w => w.TaskId == before.Id).Select(w => w.UserId).Take(200).ToListAsync(ct)) who.Add(watcher);
             foreach (var watcher in await db.AiWatches.AsNoTracking().Where(aw => aw.TargetId == before.Id && aw.State == "active").Select(aw => aw.UserId).Distinct().Take(100).ToListAsync(ct)) who.Add(watcher);
         }
         if (prefs.Lead) who.Add(project.OwnerId);
@@ -353,13 +374,132 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
 
         var f = diff[0];
         var title = $"{P(uid)} {f.Verb} {key} {f.Label.ToLowerInvariant()} {f.Before} → {f.After}{f.Extra} · {project.Name}";
-        var body = string.Join("\n", diff.Select(d => $"{d.Label}: {d.Before} → {d.After}{d.Extra}"));
+        // The new owner hears it as theirs: "Ravi assigned CB-02 to you · due 30 Oct".
+        var newOwner = before.AssigneeId != after.AssigneeId ? after.AssigneeId : null;
+        var ownerTitle = $"{P(uid)} assigned {key} to you{(after.DueDate is { } due ? " · due " + D(due) : "")}";
+        string TitleFor(Guid user) => newOwner == user ? ownerTitle : title;
+        var lines = diff.Select(d => $"{d.Label}: {d.Before} → {d.After}{d.Extra}").ToList();
+        if (effect is not null) lines.Add($"Effect: {effect}");
+        var body = string.Join("\n", lines);
         var link = $"/projects/{after.ProjectId}?task={before.Id}";
-        var dedupe = $"{ChangeDedupePrefix}{before.Id:N}:{since.Ticks}";
-        var earlier = await db.Notifications.Where(n => n.Link == link && n.CreatedAt >= since && n.Type == NotificationType.TaskUpdated && n.UserId != uid).ToListAsync(ct);
-        foreach (var note in earlier) { note.Title = ProjectManagement.Application.Common.Text.Truncate(title, 200)!; note.Body = ProjectManagement.Application.Common.Text.Truncate(body, 500); note.DedupeKey = dedupe; who.Remove(note.UserId); }
-        if (prefs.InApp) foreach (var u in who) await notifications.AddAsync(u, NotificationType.TaskUpdated, title, body, link, dedupe, ct: ct);
+        var dedupe = $"{ChangeDedupePrefix}{change.Id:N}";
+        var earlier = await db.Notifications.Where(n => n.Link == link && n.CreatedAt >= since && (n.Type == NotificationType.TaskUpdated || n.Type == NotificationType.TaskAssigned) && n.UserId != uid).ToListAsync(ct);
+        foreach (var note in earlier)
+        {
+            // "You were assigned CB-02" and the task's own "CB-02 updated" are this change: one notice each, not two.
+            if (note.Type == NotificationType.TaskAssigned && (newOwner != note.UserId || earlier.Any(o => o.UserId == note.UserId && o.Type == NotificationType.TaskUpdated))) { db.Notifications.Remove(note); continue; }
+            note.Type = NotificationType.TaskUpdated;
+            note.Title = ProjectManagement.Application.Common.Text.Truncate(TitleFor(note.UserId), 200)!; note.Body = ProjectManagement.Application.Common.Text.Truncate(body, 500); note.DedupeKey = dedupe;
+            who.Remove(note.UserId);
+        }
+        if (prefs.InApp) foreach (var u in who) await notifications.AddAsync(u, NotificationType.TaskUpdated, TitleFor(u), body, link, dedupe, ct: ct);
         await db.SaveChangesAsync(ct);
+        var told = await db.Notifications.AsNoTracking().Where(n => n.DedupeKey == dedupe).Select(n => new { n.UserId, Mail = n.EmailPending || n.EmailedAt != null }).ToListAsync(ct);
+        return (told.Select(t => t.UserId).Distinct().Count(), told.Where(t => t.Mail).Select(t => t.UserId).Distinct().Count());
+    }
+
+    /// <summary>What a due date that moved does to the work waiting on it: "CB-03 starts later" (its start is now before this task is due), or "CB-03 can start sooner".</summary>
+    private async Task<string?> EffectAsync(Guid taskId, DateOnly? oldDue, DateOnly? newDue, string projectKey, CancellationToken ct)
+    {
+        if (oldDue == newDue || newDue is null) return null;
+        var next = await db.TaskDependencies.AsNoTracking().Where(d => d.DependsOnTaskId == taskId)
+            .Join(db.Tasks.AsNoTracking(), d => d.TaskId, t => t.Id, (d, t) => new { t.Number, t.StartDate, ProjectKey = t.Project!.Key }).Take(20).ToListAsync(ct);
+        if (next.Count == 0) return null;
+        string Keys(IEnumerable<string> keys) { var l = keys.ToList(); return l.Count <= 3 ? string.Join(", ", l) : $"{string.Join(", ", l.Take(3))} and {l.Count - 3} more"; }
+        if (oldDue is null || newDue > oldDue)
+        {
+            var pushed = next.Where(t => t.StartDate is null || t.StartDate <= newDue).Select(t => $"{t.ProjectKey}-{t.Number}").ToList();
+            return pushed.Count == 0 ? $"{Keys(next.Select(t => $"{t.ProjectKey}-{t.Number}"))} unchanged" : $"{Keys(pushed)} start{(pushed.Count == 1 ? "s" : "")} later";
+        }
+        return $"{Keys(next.Select(t => $"{t.ProjectKey}-{t.Number}"))} can start sooner";
+    }
+
+    // ---------------------------------------------------------------- undo a change from its notice
+
+    /// <summary>How long a change can be undone from its notice or e-mail.</summary>
+    public const int UndoDays = 7;
+
+    /// <summary>The change a notice is about (its dedupe key names it), or null for any other notice.</summary>
+    public static Guid? ChangeIdOf(string? dedupeKey) =>
+        dedupeKey is not null && dedupeKey.StartsWith(ChangeDedupePrefix, StringComparison.Ordinal) && Guid.TryParseExact(dedupeKey[ChangeDedupePrefix.Length..], "N", out var id) ? id : null;
+
+    /// <summary>
+    /// Puts back what one change set (due, start, owner, status), as an ordinary sheet edit by the person undoing it: their edit rights, the archive
+    /// rule and the task's version apply, and the people on the task are told. Only while the change still holds: a field edited again since is a conflict.
+    /// </summary>
+    public async Task<PlanSheetBulkResultDto> UndoAsync(PlanSheetUndoRequest req, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        Guid changeId;
+        if (!string.IsNullOrWhiteSpace(req.Token))
+        {
+            if (!links.TryReadUndo(req.Token.Trim(), clock.Now, out changeId, out var forUser) || forUser != uid)
+                throw new NotFoundException("This undo link has expired or was sent to someone else.");
+        }
+        else if (req.NotificationId is { } nid)
+        {
+            var key = await db.Notifications.AsNoTracking().Where(n => n.Id == nid && n.UserId == uid).Select(n => n.DedupeKey).FirstOrDefaultAsync(ct);
+            changeId = ChangeIdOf(key) ?? throw new NotFoundException("That notice is not about a change that can be undone.");
+        }
+        else throw new ValidationException("token", "Say which change to undo.");
+
+        var change = await db.TaskChanges.FirstOrDefaultAsync(c => c.Id == changeId, ct) ?? throw new NotFoundException("That change was not found.");
+        if (change.UndoneAt is not null) throw new ConflictException("This change was already undone.", "ALREADY_UNDONE");
+        if (change.CreatedAt < clock.Now.AddDays(-UndoDays)) throw new ConflictException($"Changes can be undone here for {UndoDays} days. Change the task instead.", "UNDO_EXPIRED");
+        if (change.FromProjectId is not null) throw new ConflictException("A move to another project is undone by dragging the task back.", "UNDO_UNSUPPORTED");
+        var task = await access.VisibleTasks().AsNoTracking().FirstOrDefaultAsync(t => t.Id == change.TaskId, ct) ?? throw new NotFoundException("Task not found.");
+        bool dueSet = change.BeforeDue != change.AfterDue, startSet = change.BeforeStart != change.AfterStart, ownerSet = change.BeforeAssigneeId != change.AfterAssigneeId,
+            statusSet = change.BeforeStatusId != change.AfterStatusId;
+        if ((dueSet && task.DueDate != change.AfterDue) || (startSet && task.StartDate != change.AfterStart) || (ownerSet && task.AssigneeId != change.AfterAssigneeId)
+            || (statusSet && task.StatusId != change.AfterStatusId))
+            throw new ConflictException("The task was changed again since. Open it and change it by hand.", "CHANGED_SINCE");
+        if (dueSet && change.BeforeDue is null) dueSet = false;   // the sheet does not clear a due date
+        if (!dueSet && !startSet && !ownerSet && !statusSet) throw new ConflictException("There is nothing left to undo.", "NOTHING_TO_UNDO");
+        var revert = new PlanSheetChange(task.Id, task.Version,
+            AssigneeId: ownerSet ? change.BeforeAssigneeId : null, Unassign: ownerSet && change.BeforeAssigneeId is null,
+            StartDate: startSet ? change.BeforeStart : null, ClearStart: startSet && change.BeforeStart is null,
+            DueDate: dueSet ? change.BeforeDue : null, StatusId: statusSet ? change.BeforeStatusId : null);
+        var res = await BulkAsync(new PlanSheetBulkRequest([revert], "Undone from a change notice"), ct);
+        if (res.Changed == 1)
+        {
+            var row = await db.TaskChanges.FirstAsync(c => c.Id == changeId, ct);
+            row.UndoneAt = clock.Now;
+            recorder.Audit("plansheet.change_undone", "WorkItem", task.Id, newValue: new { ChangeId = changeId });
+            await db.SaveChangesAsync(ct);
+        }
+        return res;
+    }
+
+    // ---------------------------------------------------------------- watchers
+
+    public async Task<TaskWatchersDto> WatchersAsync(Guid taskId, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        if (!await access.VisibleTasks().AnyAsync(t => t.Id == taskId, ct)) throw new NotFoundException("Task not found.");
+        var rows = await db.TaskWatchers.AsNoTracking().Where(w => w.TaskId == taskId).OrderBy(w => w.CreatedAt)
+            .Join(db.Users.AsNoTracking(), w => w.UserId, u => u.Id, (w, u) => new TaskWatcherDto(u.Id, u.DisplayName)).Take(200).ToListAsync(ct);
+        return new TaskWatchersDto(taskId, rows.Any(r => r.UserId == uid), rows);
+    }
+
+    /// <summary>Watch (or stop watching) a task the person can see: they are told when its dates, owner, status or project change on the sheet.</summary>
+    public async Task<TaskWatchersDto> WatchAsync(Guid taskId, bool watch, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var task = await access.VisibleTasks().AsNoTracking().Where(t => t.Id == taskId).Select(t => new { t.Id, t.TenantId }).FirstOrDefaultAsync(ct) ?? throw new NotFoundException("Task not found.");
+        var row = await db.TaskWatchers.FirstOrDefaultAsync(w => w.TaskId == taskId && w.UserId == uid, ct);
+        if (watch && row is null)
+        {
+            db.TaskWatchers.Add(new TaskWatcher { TenantId = task.TenantId, TaskId = taskId, UserId = uid, CreatedAt = clock.Now, CreatedBy = uid });
+            recorder.Audit("task.watched", "WorkItem", taskId);
+            await db.SaveChangesAsync(ct);
+        }
+        else if (!watch && row is not null)
+        {
+            db.TaskWatchers.Remove(row);
+            recorder.Audit("task.unwatched", "WorkItem", taskId);
+            await db.SaveChangesAsync(ct);
+        }
+        return await WatchersAsync(taskId, ct);
     }
 
     /// <summary>Marks a sheet change notice: its email lists the before → after lines as a table.</summary>

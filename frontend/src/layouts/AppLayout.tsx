@@ -39,6 +39,7 @@ import { AskBar, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
+import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -177,6 +178,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <ComposerSlot />
       {!admin && <AttendanceHost />}
       {!admin && <AuraWatcher />}
+      {!admin && <ChangeUndoPrompt />}
       {chatOn && <ChatRealtime />}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}

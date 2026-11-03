@@ -132,11 +132,15 @@ public class PlanSheetTests(ApiFactory factory)
         });
         Assert.True(res.Data!["rows"]![0]!["ok"]!.GetValue<bool>(), res.ToString());
         var items = (await ravi.Get("/api/v1/notifications")).Data!["items"]!.AsArray();
-        var note = items.Single(n => n!["title"]!.GetValue<string>().Contains($"moved {key} due"))!;
-        Assert.Contains("Asha Rao", S(note["title"]));
-        Assert.EndsWith("· Card Vault", S(note["title"]));
+        // The new owner hears it once, as theirs: no separate "You were assigned".
+        var mine = items.Where(n => n!["link"]?.GetValue<string>()?.Contains(s.B.ToString()) == true).ToList();
+        var note = Assert.Single(mine)!;
+        Assert.Equal($"Asha Rao assigned {key} to you · due {Today.AddDays(2).ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture)}", S(note["title"]));
+        Assert.DoesNotContain(items, n => n!["title"]!.GetValue<string>().StartsWith("You were assigned"));
         Assert.Contains("Assignee: ", S(note["body"]));
+        Assert.Contains("Due: ", S(note["body"]));
         Assert.Contains(" → ", S(note["body"]));
+        Assert.True(res.Data!["rows"]![0]!["told"]!.GetValue<int>() >= 1, res.ToString());
 
         // Notify settings: who is told is the actor's choice (saved like any other layout).
         Assert.True((await s.C.Put("/api/v1/me/ui/plansheetnotify", new { value = new { owner = false, watchers = false, lead = false, team = false, inApp = true, email = "digest" } })).Ok);

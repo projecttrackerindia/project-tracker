@@ -100,6 +100,15 @@ html .ncx-bell.ncx-bell { padding: 0; margin: 0; }
 .ncx-row1 b { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; letter-spacing: -.01em; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .ncx-row1 time { flex: none; font-size: 12px; color: var(--ds-text-3); font-variant-numeric: tabular-nums; }
 .ncx-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; font-size: 13px; line-height: 1.38; color: var(--ds-text-2); overflow-wrap: anywhere; }
+/* A Plan sheet change (design plansheet8/05): before struck through → after, the slip in amber, "emailed", View / Undo. */
+.ncx-diff { display: flex; flex-direction: column; gap: 1px; margin-top: 3px; font-size: 13px; line-height: 1.4; color: var(--ds-text-2); }
+.ncx-diff-row em { font-style: normal; color: var(--ds-text-3, var(--ds-text-2)); margin-right: 2px; }
+.ncx-diff-row s { color: var(--ds-text-3, var(--ds-text-2)); text-decoration-thickness: 1px; }
+.ncx-diff-row b { color: var(--ds-text); font-weight: 600; }
+.ncx-diff-row .ncx-delta { color: #c77700; }
+.ncx-diff-note { color: var(--ds-text-2); }
+.ncx-mailed { display: inline-flex; align-items: center; gap: 4px; margin-top: 3px; font-size: 11.5px; color: var(--ds-text-3, var(--ds-text-2)); }
+html[data-theme='dark'] .ncx-diff-row .ncx-delta { color: #ffb340; }
 .ncx-card:not(.unread) .ncx-row1 b { font-weight: 500; }
 .ncx-dot { position: absolute; top: 15px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: #0a84ff; }
 .ncx-card.unread .ncx-row1 time { margin-right: 12px; }

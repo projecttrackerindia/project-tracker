@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import { checklistApi } from '../../api/endpoints';
 import { historyApi } from '../../api/platformApi';
 import { useWsQuery } from '../../lib/hooks';
+import { portfolioApi } from './portfolioApi';
+import { useState } from 'react';
 import { toast } from '../../stores/ui';
 import type { SheetRow } from './portfolioApi';
 import { ago, dm } from './planSheet';
@@ -26,6 +28,17 @@ export function Inspector({ h, r, rows, project, today, meeting, onEdit, onClose
   const work = r.kind === 'task' || r.kind === 'subtask';
   const list = useWsQuery(['checklist', r.id], () => checklistApi.get(r.id), { enabled: work, staleTime: 20_000, retry: false });
   const hist = useWsQuery(['history', 'work-item', r.id], () => historyApi.workItem(r.id), { enabled: work, staleTime: 20_000, retry: false });
+  // Watchers (the eye): told when this task's dates, owner, status or project change.
+  const watch = useWsQuery(['plansheet', 'watchers', r.id], () => portfolioApi.watchers(r.id), { enabled: work, staleTime: 20_000, retry: false });
+  const [busy, setBusy] = useState(false);
+  const toggleWatch = async () => {
+    const on = !watch.data?.watching;
+    setBusy(true);
+    try { await portfolioApi.watch(r.id, on); await watch.refetch(); toast(on ? `Watching ${r.key}: you’ll be told when it changes.` : `Stopped watching ${r.key}.`); }
+    catch { toast('That could not be saved.', 'error'); }
+    finally { setBusy(false); }
+  };
+  const watchers = watch.data?.watchers ?? [];
   const deps = rows.filter((x) => r.dependsOn.includes(x.key));
   const blocks = rows.filter((x) => x.dependsOn.includes(r.key));
   const k = statusKey(r);
@@ -41,6 +54,9 @@ export function Inspector({ h, r, rows, project, today, meeting, onEdit, onClose
   return (
     <aside className="ps3-insp" style={{ maxHeight: h }} aria-label={`${r.key} details`}>
       <div className="ps3-insp-h"><span className="ps3-key">{r.key}</span><span className="ps3-dim" style={{ fontSize: 12 }}>{project?.title}</span><span className="ps3-sp" />
+        {work && <button type="button" className={`ps3-eye ${watch.data?.watching ? 'on' : ''}`} aria-pressed={!!watch.data?.watching} disabled={busy || !watch.data}
+          aria-label={watch.data?.watching ? 'Stop watching' : 'Watch this task'} title={watch.data?.watching ? 'Watching · click to stop' : 'Watch: be told when it changes'} onClick={() => void toggleWatch()}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />{!watch.data?.watching && <line x1="3" y1="21" x2="21" y2="3" />}</svg></button>}
         <button type="button" aria-label="Open the task" title="Open the task" onClick={() => nav(`/work?item=${encodeURIComponent(r.id)}`)}>⤢</button>
         <button type="button" aria-label="Close details" onClick={onClose}>✕</button></div>
       <div className="ps3-insp-t">{r.title}</div>
@@ -51,6 +67,9 @@ export function Inspector({ h, r, rows, project, today, meeting, onEdit, onClose
         {field('progress', 'Progress', <Progress value={r.progress} k={k} />)}
         <span className="k">Depends on</span><span>{deps.length ? deps.map((d, i) => <span key={d.id}>{i > 0 && ', '}{d.key} <span className="ps3-dim">· {statusKey(d) === 'done' ? 'done' : d.status.toLowerCase()}</span></span>) : <span className="ps3-dim">—</span>}</span>
         <span className="k">Blocks</span><span>{blocks.length ? blocks.map((d, i) => <span key={d.id}>{i > 0 && ', '}{d.key} <span className="ps3-dim">· {d.title.split(/\s+/).slice(0, 2).join(' ').toLowerCase()}</span></span>) : <span className="ps3-dim">—</span>}</span>
+        {work && <><span className="k">Watchers</span><span className="ps3-watchers" data-testid="ps-watchers">{watchers.length === 0 ? <span className="ps3-dim">Nobody yet</span>
+          : <>{watchers.slice(0, 6).map((w) => <span key={w.userId} title={w.name}><Av id={w.userId} name={w.name} /></span>)}{watchers.length > 6 && <span className="ps3-dim">+{watchers.length - 6}</span>}
+            <span className="ps3-dim" style={{ fontSize: 12 }}>{watchers.length === 1 ? watchers[0].name : `${watchers.length} watching`}</span></>}</span></>}
       </div>
       <div className="ps3-sec"><h4>Notes</h4>
         <button type="button" className="ps3-note" style={{ display: 'block', border: 0, background: 'none', padding: 0, textAlign: 'left', cursor: r.canEdit ? 'text' : 'default', color: 'var(--p-ink)', lineHeight: 1.5, WebkitLineClamp: 'unset', width: '100%' }}
