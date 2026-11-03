@@ -118,10 +118,11 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                                                 select new { d.TaskId, o.Number, Key = o.Project!.Key }).ToListAsync(ct);
         var depsBy = deps.GroupBy(d => d.TaskId).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(d => $"{d.Key}-{d.Number}").Distinct().OrderBy(k => k).ToList());
         // Slip: how far the due date has moved from the first one it had (the date history), shown as "+3d" next to the dates.
+        // Only the earliest change per task is needed: the database picks it, instead of every change in the portfolio being sent over.
         var firstDue = ids.Count == 0 ? [] : await db.DueDateChanges.AsNoTracking().Where(d => ids.Contains(d.ProjectId) && d.TaskId != null && d.Previous != null)
-            .OrderBy(d => d.CreatedAt).Select(d => new { TaskId = d.TaskId!.Value, d.Previous }).Take(20000).ToListAsync(ct);
+            .GroupBy(d => d.TaskId).Select(g => g.OrderBy(d => d.CreatedAt).First()).Take(MaxRows * 2).ToListAsync(ct);
         var originalDue = new Dictionary<Guid, DateOnly>();
-        foreach (var d in firstDue) originalDue.TryAdd(d.TaskId, d.Previous!.Value);
+        foreach (var d in firstDue) originalDue.TryAdd(d.TaskId!.Value, d.Previous!.Value);
         var statuses = ids.Count == 0 ? [] : await db.WorkflowStatuses.AsNoTracking().Where(s => ids.Contains(s.ProjectId)).OrderBy(s => s.ProjectId).ThenBy(s => s.Order)
             .Select(s => new PlanSheetStatusDto(s.Id, s.ProjectId, s.Name, s.Category.ToString())).ToListAsync(ct);
 

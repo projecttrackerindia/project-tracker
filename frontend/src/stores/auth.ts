@@ -10,7 +10,9 @@ import { clearOfflineData, readOfflineSnapshot } from '../features/offline/stora
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 20_000, refetchOnWindowFocus: true, refetchOnReconnect: true,
+      // Answers stay in memory for 30 minutes (the default is 5), so going back to a page paints at once from the cache and refreshes
+      // behind it instead of showing a spinner while everything is read again.
+      staleTime: 20_000, gcTime: 30 * 60_000, refetchOnWindowFocus: true, refetchOnReconnect: true,
       retry: (count, err: any) => count < 1 && !(err?.status >= 400 && err?.status < 500),
     },
   },

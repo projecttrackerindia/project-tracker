@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { mutationCommitted, mutationFamilies } from './mutationEffects';
+import { committedHereRecently, mutationCommitted, mutationFamilies } from './mutationEffects';
 afterEach(() => vi.unstubAllGlobals());
 describe('successful mutation refresh routing', () => {
   it('refreshes task lists, project details and calendars after writes', () => {
@@ -8,6 +8,12 @@ describe('successful mutation refresh routing', () => {
     expect(mutationFamilies('POST', '/tasks/id/time')).toEqual(expect.arrayContaining(['time', 'timesheet', 'portfolio']));
     expect(mutationFamilies('POST', '/work-tasks/id/time')).toContain('time');
     expect(mutationFamilies('DELETE', '/tasks/id')).toContain('timesheet');
+    expect(mutationFamilies('POST', '/tasks/id/timer/start')).toContain('timer');
+  });
+  it('does not refresh time views for an ordinary work edit', () => {
+    for (const path of ['/tasks/id', '/work-items/id', '/projects/id/tasks'])
+      for (const f of ['time', 'timesheet', 'timer']) expect(mutationFamilies('PATCH', path)).not.toContain(f);
+    expect(mutationFamilies('PATCH', '/tasks/id')).toEqual(expect.arrayContaining(['my-work', 'plan-sheet', 'dashboard', 'inbox']));
     expect(mutationFamilies('POST', '/time/grid')).toContain('portfolio');
     expect(mutationFamilies('POST', '/time/grid')).toEqual(expect.arrayContaining(['time', 'timesheet', 'timeline']));
   });
@@ -26,5 +32,11 @@ describe('successful mutation refresh routing', () => {
     expect(dispatchEvent.mock.calls[0][0].detail.workspaceId).toBe('old-workspace');
     mutationCommitted('DELETE', '/tasks/id', null);
     expect(dispatchEvent).toHaveBeenCalledTimes(1);
+  });
+  it('remembers a local work save so the live echo of it can be skipped', () => {
+    vi.stubGlobal('window', { dispatchEvent: vi.fn() });
+    mutationCommitted('PATCH', '/tasks/id', 'workspace');
+    expect(committedHereRecently()).toBe(true);
+    expect(committedHereRecently(Date.now() + 10_000)).toBe(false);
   });
 });

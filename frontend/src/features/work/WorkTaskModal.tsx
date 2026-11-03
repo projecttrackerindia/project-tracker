@@ -1,6 +1,7 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { Suspense, lazy, useRef, useState, type FormEvent } from 'react';
 import { hm, toApiTime } from './dueTime';
-import { SmartTriage } from './Ops';
+// Ops also holds the operations charts; the suggestions panel loads with it only when a ticket form shows it.
+const SmartTriage = lazy(() => import('./Ops').then((m) => ({ default: m.SmartTriage })));
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { projectApi, workApi, workspaceApi } from '../../api/endpoints';
@@ -113,11 +114,11 @@ function WorkTaskForm({ task, defaults, onClose }: { task?: WorkTask; defaults?:
               if (t.priority) setPriority(t.priority);
               if (t.assigneeId) setAssigneeId(t.assigneeId);
             }} />
-            <SmartTriage title={title} description={description} workTypeId={workTypeId} onApply={(t) => {
+            <Suspense fallback={null}><SmartTriage title={title} description={description} workTypeId={workTypeId} onApply={(t) => {
               if (t.workTypeId) setWorkTypeId(t.workTypeId);
               if (t.priority) setPriority(t.priority);
               if (t.assigneeId) setAssigneeId(t.assigneeId);
-            }} onOpen={(id) => window.open(`${window.location.pathname}?task=${id}`, '_blank', 'noopener')} />
+            }} onOpen={(id) => window.open(`${window.location.pathname}?task=${id}`, '_blank', 'noopener')} /></Suspense>
           </div>
         )}
         <Field label="Work type" required error={errors.workTypeId} hint="What kind of work this is. The list is managed in Workspace settings.">
