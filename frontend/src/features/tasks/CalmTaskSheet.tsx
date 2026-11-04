@@ -11,6 +11,7 @@ import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { refreshWork } from '../work/workUi';
 import { shortDay } from '../calm/createSheets';
+import { WorkItemPanel } from '../work/WorkItemPanel';
 import '../calm/calm-pages.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -111,6 +112,19 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
           </div>
         </div>
       )}
+    </CalmSheet>
+  );
+}
+
+/**
+ * Any piece of work (a Plan sheet task, an action item, an issue) opened beside the page you are on, so you stay in Portfolio: the full
+ * Work panel (status, owner, dates, priority, comments, history), every field edited in place and saved optimistically. A save refreshes
+ * the shared work, plan sheet and action item queries, so the change shows everywhere at once.
+ */
+export function CalmWorkSheet({ id, title, onClose }: { id: string | null; title?: string; onClose: () => void }) {
+  return (
+    <CalmSheet open={!!id} onClose={onClose} width={720} label="Work item" title={title ?? 'Details'}>
+      {id && <div className="cws-body" data-testid="calm-work-sheet"><WorkItemPanel id={id} onClose={onClose} /></div>}
     </CalmSheet>
   );
 }

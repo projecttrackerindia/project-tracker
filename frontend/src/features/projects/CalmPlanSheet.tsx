@@ -1,7 +1,10 @@
 import { Fragment, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { ErrorState } from '../../components/ui';
+import { workspaceApi } from '../../api/endpoints';
+import { CalmPicker } from '../../components/calm';
+import { useWsQuery } from '../../lib/hooks';
+import { CalmWorkSheet } from '../tasks/CalmTaskSheet';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { DateEditor, StatusPicker } from './planSheetEditors';
@@ -47,7 +50,9 @@ function phasesOf(projectId: string, work: SheetRow[]): Phase[] {
 export function CalmPlanSheet() {
   const { sheet, projects, work, url, colourOf, today, tabPrefs, phone } = usePortfolio();
   const wid = useWorkspaceId();
-  const nav = useNavigate();
+  const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000, retry: false });
+  const people = useMemo(() => (members.data ?? []).filter((m) => m.isActive !== false).map((m) => ({ id: m.userId, label: m.displayName, sub: m.email })), [members.data]);
+  const [sheetRow, setSheetRow] = useState<SheetRow | null>(null);
   const [edit, setEdit] = useState<{ id: string; col: 'due' | 'status'; anchor: HTMLElement } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [ask, setAsk] = useState<{ changes: SheetChange[]; label: string; moves: { key: string; from: string; to: string; days: number | null }[] } | null>(null);
@@ -89,10 +94,15 @@ export function CalmPlanSheet() {
       <tr key={r.id} className="cps-r">
         <td className={`cps-tn ${nested ? 'nest' : ''} ${last ? 'last' : ''}`}>
           {nested && <i className="cps-curve" aria-hidden="true" />}
-          <button type="button" className="cps-t" title={r.title} onClick={() => nav(`/work/projects/${r.projectId}?tab=work&task=${r.id}`)}>{r.title}</button>
+          <button type="button" className="cps-t" title={r.title} onClick={() => setSheetRow(r)}>{r.title}</button>
         </td>
-        <td className="cps-dim">{r.owner ? short(r.owner) : '—'}</td>
-        <td className="cps-dim">{md(r.start)}</td>
+        <td className="cps-own">{r.canEdit
+          ? <CalmPicker label={`Owner of ${r.title}`} placeholder="—" className="cps-pick" recentKey="people" items={people} value={r.ownerId}
+              selected={r.ownerId && r.owner ? { id: r.ownerId, label: r.owner } : null} allowClear
+              onChange={(v) => { if (v !== r.ownerId) void save([v ? { id: r.id, assigneeId: v } : { id: r.id, unassign: true }], 'Owner'); }} />
+          : <span className="cps-dim">{r.owner ? short(r.owner) : '—'}</span>}</td>
+        <td><button type="button" className="cps-dc" disabled={!r.canEdit} aria-label={`Start date of ${r.title}: ${md(r.start)}`}
+          onClick={(e) => setEdit({ id: r.id, col: 'due', anchor: e.currentTarget })}>{md(r.start)}</button></td>
         <td>
           <button type="button" className={`cps-dc ${late(r, today) || blocked(r) ? 'late' : ''}`} disabled={!r.canEdit} aria-label={`Due date of ${r.title}: ${md(r.due)}`}
             onClick={(e) => setEdit({ id: r.id, col: 'due', anchor: e.currentTarget })}>{md(r.due)}</button>
@@ -142,6 +152,7 @@ export function CalmPlanSheet() {
       {edit && editRow && edit.col === 'due' && <DateEditor r={editRow} rows={work} today={today} anchor={edit.anchor} onClose={() => setEdit(null)} onSave={(c, label) => { setEdit(null); void save(c, label); }} />}
       {edit && editRow && edit.col === 'status' && <StatusPicker r={editRow} statuses={statusesBy.get(editRow.projectId) ?? []} anchor={edit.anchor} onClose={() => setEdit(null)}
         onPick={(id) => { setEdit(null); if (id !== editRow.statusId) void save([{ id: editRow.id, statusId: id }], 'Status'); }} />}
+      <CalmWorkSheet id={sheetRow?.id ?? null} title={sheetRow?.title} onClose={() => setSheetRow(null)} />
       {ask && <ReasonModal moves={ask.moves} onClose={() => setAsk(null)} onSave={(reason, dependency) => { const a = ask; setAsk(null); void save(a.changes, a.label, { reason, dependency }); }} />}
     </div>
   );
