@@ -48,7 +48,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'   # not code-signed (no paid certificate): the Downloads page explains the first-open warning
         run: npm run dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.os }}
           path: |
@@ -105,7 +105,7 @@ jobs:
           # The website links to ProjectTracker.apk: the release-signed one when there is a key, else the debug-signed one.
           [ -f ProjectTracker.apk ] || cp ProjectTracker-debug.apk ProjectTracker.apk
           echo "built=true" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.sign.outputs.built == 'true'
         with:
           name: android
