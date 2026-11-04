@@ -43,7 +43,7 @@ function Moved({ to, prefix, rename, keep }: { to: string; prefix?: string; /** 
  */
 function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
   // Signed-in destinations may warm on navigation intent; sign-in pages are excluded.
-  if (load !== loadAuthPages) registerPage(load, ({ WorkPage: ['/work'], ProjectsHome: ['/work/projects'], TalkPage: ['/messages'], LibraryPage: ['/library'], InsightsPage: ['/insights'], PeoplePage: ['/people'], SettingsPage: ['/settings'], DeskPage: ['/desk'], QualityPage: ['/quality'] } as Record<string, string[]>)[name] ?? []);
+  if (load !== loadAuthPages) registerPage(load, ({ WorkPage: ['/work'], ProjectsHome: ['/work/projects'], TalkPage: ['/messages'], LibraryPage: ['/library'], InsightsPage: ['/insights'], PeoplePage: ['/people'], SettingsPage: ['/settings'], DeskPage: ['/desk'], QualityPage: ['/quality'], ApprovalsPage: ['/approvals'], DeskIntegrations: ['/desk/integrations'], MailPage: ['/mail'], MeetingsPage: ['/meetings'], NotesPage: ['/notes'], TimePage: ['/time'], RemindersPlace: ['/reminders'], ActivityPage: ['/activity'] } as Record<string, string[]>)[name] ?? []);
   return lazy(() => load().then((m) => ({ default: m[name] })));
 }
 // The sign-in pages (and the form and validation libraries only they use) are not needed by someone already signed in. They are fetched
@@ -511,7 +511,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="documents" element={<LegacyDocuments />} />
         <Route path="documents/*" element={<Moved to="/library/docs" prefix="/documents" />} />
         <Route path="vault/*" element={<Moved to="/library/vault" prefix="/vault" />} />
-        <Route path="timesheet" element={<Moved to="/insights?tab=time" />} />
+        <Route path="timesheet" element={<Moved to="/time" />} />
         <Route path="timesheet/:s" element={<SectionMoved to="/insights?tab=time" />} />
         <Route path="workload" element={<Moved to="/insights" />} />
         <Route path="workload/capacity" element={<Moved to="/work?tab=team&s=capacity" />} />

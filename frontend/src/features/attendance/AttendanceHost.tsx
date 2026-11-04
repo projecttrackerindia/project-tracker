@@ -192,7 +192,7 @@ function CheckInCard({ today, prompted, onDone, onSnooze }: { today: AttendanceT
             <button type="submit" className="att-btn primary" disabled={!mode || needPlace || busy}>{busy ? 'Checking in…' : 'Check in'}</button>
             <button type="button" className="att-btn" onClick={onSnooze}>Not now</button>
           </div>
-          <button type="button" className="att-link faint" onClick={() => { onDone(); nav('/insights?tab=time'); }}>I’m on leave today</button>
+          <button type="button" className="att-link faint" onClick={() => { onDone(); nav('/time'); }}>I’m on leave today</button>
         </form>
       )}
     </AttFrame>

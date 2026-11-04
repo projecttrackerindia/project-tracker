@@ -203,3 +203,13 @@ button.calm-rr:focus-visible { outline: 2px solid var(--calm-accent); outline-of
   .calm-apr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; min-height: 44px; }
   .calm-apr .k, .calm-apr .po, .calm-apr .chev { display: none; }
 }
+
+/* CalmSkeleton: soft placeholders that breathe (opacity only). */
+.calm-skel { display: flex; flex-direction: column; gap: 12px; padding: 8px 0; }
+.calm-skel i { display: block; border-radius: 12px; background: var(--calm-fill-2); animation: calm-skel 1.4s ease-in-out infinite both; }
+.calm-skel-t { width: min(420px, 70%); height: 44px; }
+.calm-skel-t2 { width: min(320px, 55%); height: 36px; opacity: .6; }
+.calm-skel-card { margin-top: 12px; padding: 14px; border-radius: var(--calm-r-card); background: var(--calm-card); box-shadow: var(--calm-sh); display: flex; flex-direction: column; gap: 10px; }
+.calm-skel-row { height: 44px; }
+@keyframes calm-skel { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .calm-skel i { animation: none; } }

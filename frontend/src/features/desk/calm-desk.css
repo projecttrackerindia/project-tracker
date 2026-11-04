@@ -40,3 +40,63 @@
 .co-face, .cd-face, .calm-act-face { border-radius: 50%; display: inline-grid !important; place-items: center; background: var(--calm-accent); color: #fff; font-weight: 600; overflow: hidden; }
 .co-face .face-img, .cd-face .face-img, .calm-act-face .face-img { width: 100%; height: 100%; object-fit: cover; }
 .dq-tb-work { margin: 18px 0 4px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+/* Calm Desk queue (demo shot 07): three calm panes that fill the window; the old header lines and SLA legend go, the tabs are calm pills. */
+.cdq-open { display: flex; justify-content: flex-end; margin-top: 4px; }
+.cdq-crumb { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--calm-ink2); margin: 0 0 14px; }
+.cdq-work .dq-hd, .cdq-work .dq-legend, .cdq-work .dq-eyebrow { display: none; }
+.cdq-work .mw-tbslot.dq-tb { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; flex-wrap: wrap; }
+.cdq-work .dq-seg { background: var(--calm-fill); border-radius: var(--calm-r-pill); padding: 3px; gap: 4px; }
+.cdq-work .dq-seg button { height: 32px; padding: 0 16px; border-radius: var(--calm-r-pill); font-size: 13px; color: var(--calm-ink2); }
+.cdq-work .dq-seg button.on { background: var(--calm-solid); color: var(--calm-accent-text); box-shadow: var(--calm-sh-sm); }
+.cdq-work .dq-cols { grid-template-columns: 330px minmax(0, 1fr) 320px; gap: 20px; height: calc(100vh - 210px); min-height: 520px; }
+.cdq-work .dq-card, .cdq-work .dq-conv, .cdq-work .dq-ctx > * { background: var(--calm-card); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); border: 0; }
+.cdq-work .dq-ctx { background: none; box-shadow: none; }
+.cdq-work .dq-t { border-radius: var(--calm-r-row); min-height: 56px; }
+.cdq-work .dq-t:hover { background: var(--calm-fill); }
+.cdq-work .dq-t.on { background: var(--calm-accent-soft); }
+.cdq-work .dq-btn.pri { background: var(--calm-go-bg); color: var(--calm-go-fg); }
+.cdq-work .dq-h3 { font-size: 15px; font-weight: 600; color: var(--calm-ink); }
+.cdq-work .pv-chip.dq-fchip.on { background: var(--calm-accent-soft); color: var(--calm-accent-text); }
+@media (max-width: 1180px) { .cdq-work .dq-cols { grid-template-columns: 280px minmax(0, 1fr); height: auto; } .cdq-work .dq-conv { height: 70vh; } }
+@media (max-width: 760px) {
+  .cdq-work .dq-cols { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .cdq-work .dq-q { max-height: none; }
+  .cdq-work .dq-conv { height: auto; min-height: 60vh; }
+  .cdq-work .dq-t { min-height: 56px; }
+  .cdq-work .dq-seg button { min-height: 40px; }
+}
+
+/* Desk › Integrations, calm: the calm title, calm cards, icon tiles in the one accent. */
+.cdix .cdix-crumb { font-size: 13px; color: var(--calm-ink2); margin-bottom: 6px; }
+.cdix .cdix-title { margin: 0; font-size: clamp(34px, 4.4vw, var(--calm-display)); font-weight: var(--calm-display-w); letter-spacing: var(--calm-display-ls); line-height: var(--calm-display-lh); color: var(--calm-ink); }
+.cdix .cdix-title em { display: block; font-style: normal; color: var(--calm-ink3); }
+.cdix .cdix-hide { display: none; }
+.cdix .dq-card { background: var(--calm-card); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); border: 0; }
+.cdix .dix-ic { background: var(--calm-tint) !important; color: var(--calm-tint-ink); }
+.cdix .dq-btn.pri { background: var(--calm-go-bg); color: var(--calm-go-fg); }
+@media (max-width: 760px) { .cdix .dix-grid { grid-template-columns: minmax(0, 1fr); } }
+/* The ticket's field list, macros and history (demo shot 07). */
+.cdq-fields { display: flex; flex-direction: column; gap: 10px; }
+.cdq-who { display: flex; gap: 10px; align-items: center; }
+.cdq-dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); margin: 4px 0 6px; }
+.cdq-dl dt, .cdq-dl dd { margin: 0; padding: 10px 0; border-bottom: .5px solid var(--calm-fill-2); font-size: 14px; }
+.cdq-dl dt { color: var(--calm-ink3-text); font-size: 13px; }
+.cdq-dl dd { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--calm-ink); }
+.cdq-dl dd > span:not(.cdq-status):not(.cdq-prio) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdq-status { padding: 2px 10px; border-radius: 99px; background: var(--calm-accent-soft); color: var(--calm-accent-text); font-size: 12.5px; font-weight: 600; }
+.cdq-prio { font-weight: 600; } .cdq-prio.p-critical, .cdq-prio.p-high { color: var(--calm-red-text); }
+.cdq-macros { display: flex; flex-wrap: wrap; gap: 6px; }
+.cdq-macros .calm-chip { border: 0; cursor: pointer; font: inherit; font-size: 12.5px; min-height: 32px; padding: 4px 12px; border-radius: 99px; background: var(--calm-fill); color: var(--calm-ink2); }
+.cdq-macros .calm-chip:hover { background: var(--calm-accent-soft); color: var(--calm-accent-text); }
+.cdq-hist { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13.5px; padding: 6px 0; }
+.cdq-hist i { width: 10px; height: 10px; border-radius: 50%; background: var(--calm-ink3); } .cdq-hist i.ok { background: var(--calm-green); }
+.cdq-hist span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .cdq-hist small { color: var(--calm-ink3-text); font-size: 12px; }
+.cdq-dl .dq-own-av { flex: none; width: 22px !important; height: 22px !important; margin: 0; border-radius: 50%; }
+/* The critical incident, calm: one card with a red live dot (no red banner). */
+.cdq-work .dq-inc { background: var(--calm-card); color: var(--calm-ink); box-shadow: var(--calm-sh); border-radius: var(--calm-r-card); margin-bottom: 14px; }
+.cdq-work .dq-inc .dq-inc-sub, .cdq-work .dq-inc .dq-tm-left { color: var(--calm-ink2); }
+.cdq-work .dq-inc .dq-tm { background: var(--calm-fill); color: var(--calm-ink); }
+.cdq-work .dq-inc .dq-war { background: var(--calm-red); color: #fff; }
+.cdq-work .dq-inc .dq-live { background: var(--calm-red); }
+.cdq-dl dd > .dq-own-av { flex: 0 0 22px; max-width: 22px; min-width: 22px; padding: 0; overflow: hidden; font-size: 9px; }

@@ -3,7 +3,7 @@ import { MeetTimeRows } from '../meet/MeetTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgentWorkflowsPage } from '../ai/AgentWorkflowsPage';
 import { TimesheetPage, type TimesheetSection } from '../time/TimesheetPage';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, Navigate } from 'react-router-dom';
 import { ApiError, del, get, post } from '../../api/client';
 import { opsApi, projectApi, timeApi, workItemApi } from '../../api/endpoints';
 import type { GridKind, GridRow, ParsedTime, ReportKind, TimesheetGrid } from '../../api/types';
@@ -46,9 +46,11 @@ export function InsightsPage() {
   // Time's "Full timesheet ›" as ?tab=time&s=…, and old /timesheet links arrive here too.
   const ts = params.get('s');
   if (raw === 'time' && (TS_SECTIONS.includes(ts ?? '') || params.has('user'))) return <TimesheetPage section={(TS_SECTIONS.includes(ts ?? '') ? ts : 'week') as TimesheetSection} />;
+  // Time has its own place in the sidebar, so Insights no longer repeats it: ?tab=time opens Time (quick logging from + New keeps its page).
+  if (raw === 'time' && !params.has('log')) return <Navigate to="/time" replace />;
   const tab: Tab = raw === 'time' || raw === 'reports' ? raw : 'overview';
   const setTab = (t: Tab) => setParams((p) => { const n = new URLSearchParams(p); if (t === 'overview') n.delete('tab'); else n.set('tab', t); n.delete('job'); return n; }, { replace: true });
-  const tabs = <Segmented label="Insights" value={tab} onChange={setTab} options={[{ id: 'overview', label: 'Overview' }, { id: 'time', label: 'Time' }, { id: 'reports', label: 'Reports' }]} />;
+  const tabs = <Segmented label="Insights" value={tab} onChange={setTab} options={[{ id: 'overview', label: 'Overview' }, { id: 'reports', label: 'Reports' }]} />;
   return (
     <div className="ins">
       {tab === 'overview' && <Overview tabs={tabs} onReports={(job) => setParams({ tab: 'reports', job }, { replace: true })} />}

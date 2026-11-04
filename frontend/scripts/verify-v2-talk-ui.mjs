@@ -301,6 +301,15 @@ try {
     assert.ok(await page.locator('.talk-head .chat-back').isVisible(), 'a way back to the list');
     assert.equal(await page.locator('.msg-actions').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height > 0).length), 0, 'no hover actions on a phone');
     await fitsPhone(page, `talk thread ${theme}`, assert);
+    // The composer has room under it: 12px+ to the screen edge or the tab bar, and nothing (tabs, the + button) overlaps it.
+    { const g = await page.evaluate(() => {
+        const c = document.querySelector('.talk-thread .composer-row, .talk-thread .composer-pill') ?? document.querySelector('.talk-thread .composer'); const r = c.getBoundingClientRect();
+        const vis = (e) => { if (!e) return null; const b = e.getBoundingClientRect(); return b.height > 0 && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden' ? b : null; };
+        const tabs = vis(document.querySelector('.v2-phone-bar')), fab = vis(document.querySelector('.shell-fab-btn'));
+        const hit = (b) => !!b && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top;
+        return { gap: (tabs ? tabs.top : innerHeight) - r.bottom, tabsHit: hit(tabs), fabHit: hit(fab) };
+      });
+      assert.ok(g.gap >= 12, `composer has 12px+ under it (${g.gap})`); assert.equal(g.tabsHit, false, 'tabs never overlap the composer'); assert.equal(g.fabHit, false, '+ never overlaps the composer'); }
     await shot(page, `thread-390-${theme}.png`);
     await page.locator('.talk-head .chat-back').click();
     await page.locator('.talk-list').waitFor();

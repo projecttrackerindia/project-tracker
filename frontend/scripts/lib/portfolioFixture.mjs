@@ -101,11 +101,11 @@ const plan = (scope = 'Everyone') => withTotals({ from: mon, weeks: 6, scope, av
   people: people.map((p, k) => [p, k]).filter(([p]) => scope !== 'Reports' || [S.LP[0], S.JW[0]].includes(p.id)).map(([p, k]) => ({ userId: p.id, name: p.name, weeklyCapacityMinutes: 2400, weeks: [0, 1, 2, 3, 4, 5].map((i) => { const b = [2600, 2100, 1700, 2300, 1500, 2000, 900][k] - i * 120; return { weekStart: wk(i), capacityMinutes: 2400, bookedMinutes: b, leaveDays: 0, workingDays: 5, onLeave: false, over: b > 2400, holidayDays: 0 }; }) })) });
 
 /** A browser context that serves dist and answers the API from `state`. `delay` (ms) holds every portfolio read back, to see the loading state. */
-export async function portfolioContext(browser, { theme = 'light', width = 1440, state, delay = 0 }) {
+export async function portfolioContext(browser, { theme = 'light', width = 1440, state, delay = 0, classic = false }) {
   const dist = path.resolve('dist'), csp = await appCsp();
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', acceptDownloads: true, viewport: { width, height: width < 500 ? 844 : 900 }, ...(width < 500 ? { hasTouch: true, isMobile: true } : {}) });
   await ctx.clock.setFixedTime(NOW);
-  await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); localStorage.setItem('pm_home_mode', 'classic'); }, theme);
+  await ctx.addInitScript(({ t, c }) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); localStorage.setItem('pm_home_mode', 'classic'); if (c) localStorage.setItem('pt_classic_pages', '1'); }, { t: theme, c: classic });
   const reads = [];
   await ctx.route('**/*', async (route) => {
     const req = route.request(), url = new URL(req.url()), ep = url.pathname, method = req.method();

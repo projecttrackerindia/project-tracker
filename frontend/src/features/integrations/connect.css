@@ -52,3 +52,14 @@ html .cn-scopes button.on svg { color: var(--ds-accent); }
 html .cn-foot { color: var(--ds-text-3); font-size: 12.5px; }
 html .cn-url { border: 0; border-radius: 14px; background: var(--ds-fill); }
 html .cn-list li { border-top-color: var(--ds-line); padding: 14px 24px; }
+
+/* Calm: one frosted card on the page tone, the light display title, the accent on the chosen scope and the primary action. */
+html body .cn-page { background: transparent; }
+html body .cn-card { background: var(--calm-card); border: 0; box-shadow: var(--calm-sh); border-radius: var(--calm-r-hero); }
+html body .cn-card h1 { font-size: 28px; font-weight: 300; letter-spacing: -.025em; line-height: 1.15; color: var(--calm-ink); }
+html body .cn-card h1 b { font-weight: 600; }
+html body .cn-us, html body .cn-app { background: var(--calm-tint); color: var(--calm-tint-ink); }
+html body .cn-scopes button { border: 0; background: var(--calm-fill); border-radius: var(--calm-r-row); }
+html body .cn-scopes button.on { background: var(--calm-accent-soft); color: var(--calm-ink); box-shadow: inset 0 0 0 1.5px var(--calm-accent); }
+html body .cn-scopes button.on svg { color: var(--calm-accent-text); }
+html body .cn-actions .btn { border-radius: var(--calm-r-pill); min-height: 44px; }

@@ -39,7 +39,7 @@ const shell = (page) => page.evaluate(() => {
 try {
   // ---------------------------------------------------------------- one shell, one filter, kept across tabs (1440, light)
   {
-    const { ctx, page, errors } = await portfolioContext(browser, { width: 1440, state: makeState() });
+    const { ctx, page, errors } = await portfolioContext(browser, { classic: true, width: 1440, state: makeState() });
     await page.goto(url('&mode=sheet&classic=1')); await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
     // A sentence in the one field becomes tokens; a colour joins them; both go into the address.
     const field = page.getByRole('textbox', { name: 'Filter, search or ask' });
@@ -107,7 +107,7 @@ try {
 
   // ---------------------------------------------------------------- the same skeleton on every tab while it loads
   for (const [mode] of TABS.filter(([m]) => m !== 'present' && m !== 'overview' && m !== 'actions')) {
-    const { ctx, page, errors } = await portfolioContext(browser, { width: 1440, state: makeState(), delay: 2500 });
+    const { ctx, page, errors } = await portfolioContext(browser, { classic: true, width: 1440, state: makeState(), delay: 2500 });
     await page.goto(url(`&mode=${mode}`));
     await page.locator('.pfx-skel').first().waitFor({ timeout: 2400 });
     assert.equal(await page.locator('.spinner, .page-loader').count(), 0, `${mode}: no spinner, the skeleton`);
@@ -119,7 +119,7 @@ try {
   // ---------------------------------------------------------------- live sync: a Plan sheet edit shows on the Board and the Timeline, no reload
   {
     const state = makeState();
-    const { ctx, page, errors } = await portfolioContext(browser, { width: 1440, state });
+    const { ctx, page, errors } = await portfolioContext(browser, { classic: true, width: 1440, state });
     await page.goto(url()); await page.locator('.pf-board .pf-card').first().waitFor();
     assert.equal(await page.locator('.pf-colwrap.late .pf-card[data-project="UP"]').count(), 1, 'UP starts late');
     await goTab(page, 'Timeline');
@@ -148,13 +148,13 @@ try {
 
   // ---------------------------------------------------------------- dark and phone
   {
-    const { ctx, page, errors } = await portfolioContext(browser, { width: 1440, theme: 'dark', state: makeState() });
+    const { ctx, page, errors } = await portfolioContext(browser, { classic: true, width: 1440, theme: 'dark', state: makeState() });
     await page.goto(url()); await page.locator('.pf-board .pf-card').first().waitFor(); await shot(page, 'board-1440-dark.png');
     await goTab(page, 'Timeline'); await shot(page, 'timeline-1440-dark.png');
     allErrors.push(...errors); await ctx.close();
   }
   {
-    const { ctx, page, errors } = await portfolioContext(browser, { width: 390, state: makeState() });
+    const { ctx, page, errors } = await portfolioContext(browser, { classic: true, width: 390, state: makeState() });
     await page.goto(url()); await page.locator('.pf-board .pf-card').first().waitFor();
     for (const [mode, label] of TABS.filter(([m]) => m !== 'present')) {
       await goTab(page, label);

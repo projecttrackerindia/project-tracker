@@ -31,3 +31,9 @@
 .auth-calm-wrap .auth-remember { font-size: 13px; color: var(--calm-ink2, #6e6e73); }
 .auth-calm-wrap .auth-foot { margin-top: 22px; text-align: left; font-size: 14px; color: var(--calm-ink3-text, #8e8e93); }
 @media (max-width: 600px) { .auth-calm-alts { grid-template-columns: 1fr; } .auth-calm-wrap .auth-card { padding: 22px 18px; } }
+/* Phone: the calm card holds only the form, so it sizes to it (the older full-screen card rule left a blank band above the e-mail field). */
+@media (max-width: 760px) {
+  html body .auth-calm-wrap .auth-card { min-height: 0; justify-content: flex-start; border-radius: 24px; padding: 22px 18px; }
+  html body .auth-calm-wrap { padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 20px); }
+  html body .auth-calm-wrap .acp-mark.lg { margin-bottom: 16px; }
+}

@@ -226,11 +226,16 @@ try {
     // ---------------------------------------------------------------- Desk
     await page.goto(`${origin}/preview-org/desk`);
     await page.locator('.calm-hero-title').first().waitFor();
+    // Calm Desk: the overview alone (demo shot 06); "Open queue ›" opens the three-pane queue (shot 07).
+    assert.equal(await page.locator('.dq-cols').count(), 0, 'the overview shows no queue panes');
+    await shot(page, `desk-overview-${tag}.png`);
+    await page.getByRole('button', { name: /^Open queue/ }).click();
+    await page.locator('.cdq-work .dq-cols').waitFor();
     for (const w of [1920, 1440, 1366]) {
       await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(150);
       if (w < 1680) await assertFills(page, '#main-content .dq-cols', `Desk ${w}`);
       await assertFillsMain(page, '#main-content .dq-cols', `Desk ${w}`);
-      assert.ok(await page.locator('.dq-tb-work [role="tablist"][aria-label="Desk views"]').isVisible(), `Desk ${w}: views sit with the queue, under the front (shot 06)`);
+      assert.ok(await page.locator('.dq-tb-work [role="tablist"][aria-label="Desk views"]').isVisible(), `Desk ${w}: views sit with the queue (shot 07)`);
       if (w === 1366 && theme === 'light' && process.env.PM_SHOT_DIR) { await page.locator('.dq-q-row, .dq-row').first().waitFor().catch(() => undefined); await page.waitForTimeout(300); await page.screenshot({ path: path.join(process.env.PM_SHOT_DIR, 'fix-desk-1366.png') }); }
     }
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -239,7 +244,7 @@ try {
     await strip.getByText(/Payouts to 1,284 borrowers paused · Siva and Shiva on it/).waitFor();
     assert.match(await strip.locator('.dq-tm').innerText(), /^1:3\d:\d\d$/);
     assert.equal(await strip.getByRole('button', { name: 'War room' }).count(), 1);
-    assert.equal(await page.locator('.dq-eyebrow').innerText(), '8 open · 3 breaching within 1h');
+    assert.equal(await page.locator('.dq-eyebrow').evaluate((e) => e.textContent), '8 open · 3 breaching within 1h');
     const queue = page.getByRole('listbox', { name: 'Tickets' });
     const opts = queue.getByRole('option');
     await opts.first().waitFor();

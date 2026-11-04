@@ -1,6 +1,6 @@
 import { openNew } from '../../components/v2/state';
 import { Face } from '../../components/Face';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -22,6 +22,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AvailabilitySwitch, RoutingCard, VoiceCard, WhatsAppBubbles } from './DeskIntelligence';
 import { useDeskSettings, useWhatsAppThread } from './deskAiHooks';
 import { CalmDeskFront } from './CalmDeskFront';
+import { CalmSkeleton } from '../../components/calm';
 
 type Tab = 'queue' | 'mine' | 'solved';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -94,7 +95,11 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2
 
 export function DeskPage() {
   const [tab, setTab] = useState<Tab>('queue');
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  // Calm Desk (demo shots 06/07): the overview first; a ticket (or "Queue ›") opens the three-pane queue. ?classic=1 shows both stacked, as before.
+  const classic = params.get('classic') === '1';
+  const queueView = params.get('view') === 'queue' || params.has('ticket');
+  const showView = (v: 'queue' | null) => setParams((cur) => { const n = new URLSearchParams(cur); if (v) n.set('view', v); else { n.delete('view'); n.delete('ticket'); } return n; });
   // A Desk notice links to its ticket (/desk?ticket=…).
   const [selected, setSelected] = useState<string | null>(() => params.get('ticket'));
   const deskSettings = useDeskSettings();
@@ -145,9 +150,10 @@ export function DeskPage() {
   const [snoozed, setSnoozed] = useState<Set<string>>(new Set());
   const workRef = useRef<HTMLDivElement>(null);
   const openTicket = (id: string) => {
+    if (!classic) showView('queue');
     if (tab !== 'queue') { setTab('queue'); setPicked(new Set()); }
     setSelected(id);
-    requestAnimationFrame(() => workRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
+    if (classic) requestAnimationFrame(() => workRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
   };
   const openRows = open.data?.items ?? [];
   const critical = openRows.filter((r) => r.priority === 'Critical').sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))[0] ?? null;
@@ -172,12 +178,16 @@ export function DeskPage() {
   }, [rows, current?.id]);
 
   return (
-    <div className="dq-page dq-desk">
-
-
-      <CalmDeskFront rows={openRows.filter((r) => !snoozed.has(r.id))} detailOf={detailOf} now={now} meId={me?.id ?? null} busy={!!busyRow}
+    <div className={`dq-page dq-desk${classic ? '' : ' cdq'}${!classic && queueView ? ' cdq-work' : ''}`}>
+      {!classic && queueView && (
+        <div className="cdq-crumb"><span>Desk › Queue</span><span className="dq-sp" />
+          <button type="button" className="calm-link accent" onClick={() => showView(null)}>‹ Overview</button></div>
+      )}
+      {(classic || !queueView) && <CalmDeskFront rows={openRows.filter((r) => !snoozed.has(r.id))} detailOf={detailOf} now={now} meId={me?.id ?? null} busy={!!busyRow}
         onOpen={openTicket} onAssign={(r) => me && void quick(r, { assigneeId: me.id }, 'Assigned to you.')}
-        onSnooze={(r) => { setSnoozed((s) => new Set(s).add(r.id)); toast('Snoozed until you reload the desk.'); }} />
+        onSnooze={(r) => { setSnoozed((s) => new Set(s).add(r.id)); toast('Snoozed until you reload the desk.'); }} />}
+      {!classic && !queueView && <div className="cdq-open"><button type="button" className="calm-link accent" onClick={() => showView('queue')}>Open queue · {openRows.length} ›</button></div>}
+      {(classic || queueView) && <>
 
       {critical && <Incident row={critical} now={now} />}
       <div className="mw-tbslot inline dq-tb dq-tb-work">
@@ -214,7 +224,7 @@ export function DeskPage() {
           <SavedViewsBar scope="desk" current={viewConfig} onApply={applyView} />
           <div className="dq-qlist" ref={listRef} role="listbox" aria-label="Tickets" tabIndex={0}
             onKeyDown={(e: ReactKeyboardEvent) => { if (e.key === 'Enter' && current) setSelected(current.id); }}>
-            {list.isLoading && <p className="dq-empty">Loading…</p>}
+            {list.isLoading && <CalmSkeleton title={false} rows={6} label="Loading tickets" />}
             {!list.isLoading && rows.length === 0 && <p className="dq-empty">{tab === 'solved' ? 'Nothing solved yet.' : 'No open tickets. The queue is clear.'}</p>}
             {rows.map((r) => {
               const d = detailOf(r.id);
@@ -249,6 +259,7 @@ export function DeskPage() {
         {current ? <Context key={`c-${current.id}`} row={current} now={now} /> : <div className="dq-ctx" />}
       </div>
       {selecting && <BulkEditBar rows={pickedRows} onClear={() => setPicked(new Set())} onDone={() => { setSelecting(false); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }} />}
+      </>}
     </div>
   );
 }
@@ -405,7 +416,7 @@ function SavedReplies({ w, onUse, onClose }: { w: WorkItemDetail; onUse: (text: 
         <button type="button" className="dq-sr-x" aria-label="Close" onClick={onClose}>×</button>
       </div>
       <div className="dq-sr-list">
-        {list.isLoading && <p className="dq-empty">Loading…</p>}
+        {list.isLoading && <CalmSkeleton title={false} rows={6} label="Loading tickets" />}
         {!list.isLoading && items.length === 0 && <p className="dq-empty">No saved replies match.</p>}
         {items.map((t) => (
           <div key={t.id} className="dq-sr-i">
@@ -469,8 +480,15 @@ function Context({ row, now }: { row: WorkRow; now: number }) {
   const pastQ = useQueries({ queries: others.map((x) => ({ queryKey: [wid, 'desk', 'item', x.id], queryFn: () => workItemsApi.get(x.id), staleTime: 5 * 60_000, enabled: !!wid && !!w?.reporter })) });
   const past = w?.reporter ? others.filter((_, i) => (pastQ[i]?.data as WorkItemDetail | undefined)?.reporter?.id === w.reporter!.id) : [];
   const pastLoading = recent.isLoading || pastQ.some((x) => x.isLoading);
-  const pastCount = past.length;
 
+  const me = useAuth((st) => st.ctx?.user?.id) ?? null;
+  const [assigning, setAssigning] = useState(false);
+  const assignMe = async () => {
+    if (!w || !me) return;
+    setAssigning(true);
+    try { await workItemsApi.update(row.id, { version: w.version, assigneeId: me }); toast('✓ Assigned to you'); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }
+    catch (e) { toast(errText(e, 'Could not assign it.'), 'error'); } finally { setAssigning(false); }
+  };
   const send = async () => {
     if (!w) return;
     setSending(true);
@@ -481,29 +499,30 @@ function Context({ row, now }: { row: WorkRow; now: number }) {
 
   return (
     <aside className="dq-ctx" aria-label="Context">
-      <div className="dq-card dq-cc">
-        <div className="dq-row" style={{ gap: 10, marginBottom: 10 }}>
+      {/* The ticket's facts as one field list (demo shot 07): Assignee · Status · Priority · Customer · Channel · Linked, then Macros and the customer's history. */}
+      <div className="dq-card dq-cc cdq-fields" data-testid="dq-customer">
+        <div className="cdq-who">
           <Face userId={w?.reporter?.id} name={reporter} byName className="dq-av" text={initials(reporter)} />
           <div style={{ minWidth: 0 }}><b className="dq-name">{reporter}</b><div className="dq-faint dq-s12">{[type, w ? `since ${new Date(w.createdAt).getFullYear()}` : null].filter(Boolean).join(' · ')}</div></div>
         </div>
-        <div className="dq-kv"><span>Ticket</span><b>{row.key}</b></div>
-        <div className="dq-kv"><span>Owner</span><b>{row.assignee && <Face userId={row.assignee.id} name={row.assignee.name} className="dq-own-av" />}{row.assignee?.name ?? 'unassigned'}</b></div>
-        <div className="dq-kv"><span>Status</span><b>{row.status}</b></div>
+        <dl className="cdq-dl">
+          <dt>Assignee</dt><dd>{row.assignee && <Face userId={row.assignee.id} name={row.assignee.name} className="dq-own-av" />}<span>{row.assignee?.name ?? 'Unassigned'}</span>
+            {me && row.assignee?.id !== me && w && <button type="button" className="calm-link accent" disabled={assigning} onClick={() => void assignMe()}>{row.assignee ? 'Change' : 'Take it'}</button>}</dd>
+          <dt>Status</dt><dd><span className="cdq-status">{row.status}</span></dd>
+          <dt>Priority</dt><dd><span className={`cdq-prio p-${row.priority.toLowerCase()}`}>{row.priority}</span></dd>
+          <dt>Ticket</dt><dd>{row.key}</dd>
+          {w?.channel && <><dt>Channel</dt><dd>{CHANNEL[w.channel] ?? w.channel}</dd></>}
+          <dt>Linked</dt><dd>{project ? <span className="dq-linked"><i />{project.name} <span className="dq-faint">{project.key ?? ''}</span></span> : <span className="dq-faint">No linked project</span>}</dd>
+          {facts.map((f) => <Fragment key={f.label + f.value}><dt>{f.label}</dt><dd>{f.value}</dd></Fragment>)}
+        </dl>
+        <div className="dq-lbl">Macros</div>
+        <div className="cdq-macros">{MACROS.map((m) => <button key={m.id} type="button" className="calm-chip" onClick={() => window.dispatchEvent(new CustomEvent('dq-draft', { detail: fillMacro(m.text, w?.reporter?.name) }))}>{m.label}</button>)}</div>
+        <div className="dq-lbl">{w?.reporter ? `${reporter.split(" ")[0]}’s history` : 'History'}</div>
+        <div className="dq-kv"><span>Past tickets</span><b>{pastLoading ? '…' : past.length === 0 ? 'None' : `${past.length} · ${past.filter((x) => x.category === 'Done').length} solved`}</b></div>
+        {past.slice(0, 4).map((x) => <div key={x.id} className="cdq-hist"><i className={x.category === 'Done' ? 'ok' : ''} aria-hidden="true" /><span>{x.title}</span><small>{x.category === 'Done' ? 'Solved' : x.status} · {new Date(x.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div>)}
       </div>
       <RoutingCard ticketId={row.id} now={now} />
       <VoiceCard ticketId={row.id} />
-      <div className="dq-card dq-cc" data-testid="dq-customer">
-        <div className="dq-lbl">Account</div>
-        {facts.length === 0 && pastCount === 0 ? <div className="dq-faint dq-s12">No account details in the ticket.</div> : <>
-          {facts.map((f) => <div key={f.label + f.value} className="dq-kv"><span>{f.label}</span><b>{f.value}</b></div>)}
-          <div className="dq-kv"><span>Past tickets</span><b>{pastLoading ? '…' : past.length === 0 ? 'None' : `${past.length} · ${past.filter((x) => x.category === 'Done').length} solved`}</b></div>
-          {past.slice(0, 3).map((x) => <div key={x.id} className="dq-sim"><span className="dq-ok" aria-hidden="true">{x.category === 'Done' ? '✓' : '•'}</span><span>{x.title} · <span className="dq-faint">{x.key}</span></span></div>)}
-        </>}
-      </div>
-      <div className="dq-card dq-cc">
-        <div className="dq-lbl">Linked</div>
-        {project ? <div className="dq-row dq-linked"><i />{project.name}<span className="dq-faint">{project.key ?? ''}</span></div> : <div className="dq-faint dq-s12">No linked project.</div>}
-      </div>
       <div className="dq-card dq-cc">
         <div className="dq-lbl">Similar, solved</div>
         {triage.isLoading && w ? <div className="dq-faint dq-s12">Looking…</div> : similar.length === 0 ? <div className="dq-faint dq-s12">Nothing similar yet.</div> : similar.map((s) => (
