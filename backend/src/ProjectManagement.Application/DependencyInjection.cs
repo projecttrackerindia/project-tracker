@@ -105,6 +105,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalInboxService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalInboxSummaryService>();
         services.AddScoped<ProjectManagement.Application.Features.Mailbox.MailboxService>();
+        services.AddScoped<ProjectManagement.Application.Features.Mailbox.IMailHeaderSource, ProjectManagement.Application.Features.Mailbox.ImapHeaderSource>();
+        services.AddScoped<ProjectManagement.Application.Features.Mailbox.MailWatchMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.Mailbox.MailboxAgent>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.PersonalCalendarService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.MicrosoftCalendarReadService>();

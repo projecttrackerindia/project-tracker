@@ -43,6 +43,7 @@ import '../components/shell/shell.css';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
+import { OfflineSync } from '../features/offline/OfflineSync';
 import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
 
 // The calm create sheets (New task / New project from the + menu), mounted once for every page. Loaded through a glob so the shell
@@ -212,6 +213,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <AfterFirstPaint><MeetTimePrompt /></AfterFirstPaint>}
       {!admin && <WhenFirstOpened open={grootOpen}><GrootChatHost /></WhenFirstOpened>}
       {!admin && <CopilotHost />}
+      <OfflineSync phone={phone} />
       <SignInIsland />
       <Suspense fallback={null}><SessionApprovalHost /></Suspense>
       <NetworkPill />
