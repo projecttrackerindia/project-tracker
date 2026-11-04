@@ -17,6 +17,13 @@ export const people = Object.values(S).map(([id, name]) => ({ id, name }));
 export const P = { AA: g(41), CB: g(42), UP: g(43), DP: g(44), PR: g(45) };
 export const T = {};
 
+/** A work item's detail (the Work side panel and the in-place cells): an action item from the review, or a Plan sheet row. */
+function workDetail(id, state) {
+  const ai = reviewItems().find((x) => x.id === id), r = state.rows?.find((x) => x.id === id);
+  const base = ai ? { kind: 'action', key: ai.key, title: ai.title, projectId: ai.projectId, projectName: ai.projectName, assignee: ai.owner, startDate: '2026-10-27', dueDate: ai.dueDate, status: 'Open', category: 'Todo' }
+    : { kind: 'task', key: r?.key ?? 'T-1', title: r?.title ?? 'Task', projectId: r?.projectId ?? null, projectName: null, assignee: r?.ownerId ? { id: r.ownerId, name: r.owner } : null, startDate: r?.start ?? null, dueDate: r?.due ?? null, status: r?.status ?? 'To do', category: r?.category ?? 'Todo' };
+  return { id, projectKey: null, description: null, priority: 'Medium', isOverdue: false, reporter: null, version: 1, createdAt: NOW.toISOString(), updatedAt: null, completedAt: null, loggedMinutes: 0, detail: {}, activity: [], ...base };
+}
 /** Action items from two fictional meetings: some new (needs review), some already accepted. */
 function reviewItems() {
   const mk = (n, title, who, proj, pname, meet, ref, accepted, note) => ({ id: g(1300 + n), key: `AI-${n}`, title, projectId: proj, projectName: pname, owner: { id: people[who].id, name: people[who].name },
@@ -31,6 +38,7 @@ function reviewItems() {
     mk(4, 'Start the bulk enquiry backfill', 4, P.CB, 'Credit Bureau Integration', 'Schema review · Credit Bureau', 's2', false, 'v2 schema is approved; the backfill starts Wednesday.'),
     mk(5, 'Update the parsing SLOs', 1, P.CB, 'Credit Bureau Integration', 'Schema review · Credit Bureau', 's2', true, null),
     mk(6, 'Archive the v1 report tables', 2, P.CB, 'Credit Bureau Integration', 'Schema review · Credit Bureau', 's2', false, null),
+    mk(3, 'Draft the release note', 3, P.AA, 'Account Aggregator', 'Standup · Account Aggregator', 's1', false, null),
   ];
 }
 
@@ -129,6 +137,12 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       rollUp(state);
       data = { changed: b.changes.length, failed: 0, rows: b.changes.map((c) => ({ id: c.id, key: null, ok: true, error: null, field: null, code: null, version: 9, told: 0, emailed: 0 })) };
     } else if (ep === '/api/v1/me/ui/plansheet' && method === 'PUT') { data = { key: 'plansheet', value: req.postDataJSON().value, updatedAt: NOW.toISOString() }; }
+    else if (/^\/api\/v1\/work-items\/[^/]+$/.test(ep) && method === 'PATCH') {
+      const id = ep.split('/').pop(), b = req.postDataJSON(); (state.writes ??= []).push({ ep, b, method });
+      const d = (state.details ??= {})[id] ?? workDetail(id, state); Object.assign(d, b.assigneeId !== undefined ? { assignee: b.assigneeId ? { id: b.assigneeId, name: people.find((p) => p.id === b.assigneeId)?.name ?? '' } : null } : {},
+        b.startDate !== undefined ? { startDate: b.startDate } : {}, b.dueDate !== undefined ? { dueDate: b.dueDate } : {}, b.status ? { status: b.status, category: b.status === 'Completed' ? 'Done' : b.status === 'InProgress' ? 'Active' : 'Todo' } : {});
+      d.version++; state.details[id] = d; data = d;
+    }
     else if (ep === '/api/v1/meet/review' && method === 'POST') data = { sessionId: g(1100), scope: 'all', seriesRef: null, title: 'All projects', cadence: '', occurrence: null, previousSession: null, nextSession: null, attendees: 0,
       counts: { total: 6, reviewed: 2, done: 0, inProgress: 1, overdue: 0, blocked: 0, noUpdate: 0 }, items: reviewItems(), finished: false, sent: false, draft: [], projectId: null };
     else {
@@ -142,6 +156,8 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       else if (ep === '/api/v1/portfolio/timeline') data = timeline(state);
       else if (ep === '/api/v1/resources/plan') data = plan(url.searchParams.get('scope') || 'Everyone');
       else if (ep === '/api/v1/saved-views') data = [];
+      else if (/^\/api\/v1\/work-items\/[^/]+$/.test(ep)) { const id = ep.split('/').pop(); data = (state.details ??= {})[id] ?? (state.details[id] = workDetail(id, state)); }
+      else if (ep === '/api/v1/workspace/members') data = people.map((p) => ({ userId: p.id, displayName: p.name, email: `${p.name.split(' ')[0].toLowerCase()}@example.test`, role: 'Member', joinedAt: NOW.toISOString(), jobRole: null, isActive: true }));
       else if (ep === '/api/v1/activity') data = { items: [
         { id: g(1201), action: 'created', entityType: 'Task', entityId: null, summary: 'added the release checklist', actor: { id: people[1].id, name: people[1].name }, projectId: P.AA, createdAt: new Date(NOW.getTime() - 10 * 60_000).toISOString() },
         { id: g(1202), action: 'commented', entityType: 'Task', entityId: null, summary: 'commented on the onboarding spec', actor: { id: people[2].id, name: people[2].name }, projectId: P.CB, createdAt: new Date(NOW.getTime() - 60 * 60_000).toISOString() },

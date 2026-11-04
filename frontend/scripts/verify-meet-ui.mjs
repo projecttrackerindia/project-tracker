@@ -144,7 +144,7 @@ try{
   await page.getByTestId('mz-schedule').click();
   const f=page.getByRole('dialog');await f.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   assert.equal(await f.locator('.mt-notetaker').count(),0,'The notetaker comes with a project: no row without one');
-  await f.getByLabel('Project',{exact:true}).selectOption(project.id);
+  await f.getByLabel('Project',{exact:true}).locator('xpath=..').locator('select.ss-native').selectOption(project.id, { force: true });
   const voice=f.getByRole('radio',{name:/Transcription \+ voice suggestions/});await voice.waitFor();
   assert.ok(await voice.isDisabled());assert.match(await f.locator('.mt-notetaker').innerText(),/Voice needs the speech service/);
   await f.getByRole('radio',{name:/^Transcription Listens/}).check();

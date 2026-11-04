@@ -233,6 +233,11 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
         <Tile label="Due" value={<span data-testid="wkp-due">{dueValue}</span>} tone={w.isOverdue ? 'late' : undefined} disabled={!editable}>
           <input type="date" aria-label="Due date" value={w.dueDate ?? ''} disabled={!editable} onChange={(e) => setDue(e.target.value || null)} />
         </Tile>
+        {w.kind !== 'ticket' && (
+          <Tile label="Start" value={<span data-testid="wkp-start">{w.startDate ? formatDate(w.startDate).slice(0, 6) : 'No date'}</span>} disabled={!editable}>
+            <input type="date" aria-label="Start date" value={w.startDate ?? ''} disabled={!editable} onChange={(e) => void save({ startDate: e.target.value || null })} />
+          </Tile>
+        )}
       </div>
       {w.dueDate && editable && (
         <div className="wkp-duetime">

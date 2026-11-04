@@ -87,7 +87,7 @@ try{
   // Choosing a project switches the invitees and the suggested title to that project's.
   await page.getByRole('button',{name:'Schedule meeting',exact:true}).click();
   dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();
-  await dialog.getByLabel('Project',{exact:true}).selectOption(pid);
+  await dialog.getByLabel('Project',{exact:true}).locator('xpath=..').locator('select.ss-native').selectOption(pid, { force: true });
   assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Connected delivery stand-up');
   await dialog.getByLabel('Date',{exact:true}).fill('2030-01-07');await dialog.getByLabel('Start',{exact:true}).fill('09:30');
   await dialog.getByLabel('Total sessions',{exact:true}).fill('10');
