@@ -3,7 +3,7 @@
  * search-engine descriptions never disagree. Everything here must stay true of the product: change it together with the product.
  */
 export const SITE = {
-  name: 'Project Tracker',
+  name: 'ProjectTracker',
   tagline: 'Projects, operations and an AI employee for teams that deliver',
   description: 'Plan projects, run your support desk, document every API and let an AI employee answer calls and WhatsApp in your customers\' language. One secure workspace for teams that deliver.',
   alternateNames: ['ProjectTracker', 'projecttracker.in'],
@@ -118,30 +118,30 @@ export const SECURITY: Pillar[] = [
 /** Pages that exist as static files (and so are indexed with their own title and description). */
 export interface StaticPage { path: string; title: string; description: string; h1: string; lead: string }
 export const PAGES: StaticPage[] = [
-  { path: '/download/', title: 'Download the apps | Project Tracker', h1: 'Project Tracker on every screen', lead: 'Install the app for Windows, macOS, Linux and Android, or add it to your iPhone. Free to download.',
-    description: 'Download Project Tracker for Windows, macOS, Linux and Android, or install it on iPhone from your browser. Alerts, a tray icon and sign-in with your phone or a passkey.' },
-  { path: '/features/', title: 'Features | Project Tracker', h1: 'Everything a delivery team needs, in one workspace', lead: 'From the first task to the support call, without stitching tools together.',
-    description: 'Projects and timelines, an operations desk with service levels, an AI employee for calls and WhatsApp, DocTracker for APIs, a meeting notetaker and an AI assistant. See what Project Tracker does.' },
-  { path: '/pricing/', title: 'Pricing | Project Tracker', h1: 'Simple plans that grow with your teams', lead: 'Start free. Move up when you need an operations desk, an AI employee or more governance.',
-    description: 'Free, Pro, Business and Enterprise plans for Project Tracker. Per-person pricing with yearly and team discounts. Compare DocTracker, the operations desk, the AI employee, AI credits, audit log and single sign-on.' },
-  { path: '/security/', title: 'Security | Project Tracker', h1: 'Security and privacy built into the foundations', lead: 'How we keep each organization\'s work separate, controlled and recoverable.',
-    description: 'How Project Tracker protects your data: organization isolation, role-based access, two-step verification, single sign-on, audit log, encrypted traffic and nightly backups.' },
+  { path: '/download/', title: 'Download the apps | ProjectTracker', h1: 'ProjectTracker on every screen', lead: 'Install the app for Windows, macOS, Linux and Android, or add it to your iPhone. Free to download.',
+    description: 'Download ProjectTracker for Windows, macOS, Linux and Android, or install it on iPhone from your browser. Alerts, a tray icon and sign-in with your phone or a passkey.' },
+  { path: '/features/', title: 'Features | ProjectTracker', h1: 'Everything a delivery team needs, in one workspace', lead: 'From the first task to the support call, without stitching tools together.',
+    description: 'Projects and timelines, an operations desk with service levels, an AI employee for calls and WhatsApp, DocTracker for APIs, a meeting notetaker and an AI assistant. See what ProjectTracker does.' },
+  { path: '/pricing/', title: 'Pricing | ProjectTracker', h1: 'Simple plans that grow with your teams', lead: 'Start free. Move up when you need an operations desk, an AI employee or more governance.',
+    description: 'Free, Pro, Business and Enterprise plans for ProjectTracker. Per-person pricing with yearly and team discounts. Compare DocTracker, the operations desk, the AI employee, AI credits, audit log and single sign-on.' },
+  { path: '/security/', title: 'Security | ProjectTracker', h1: 'Security and privacy built into the foundations', lead: 'How we keep each organization\'s work separate, controlled and recoverable.',
+    description: 'How ProjectTracker protects your data: organization isolation, role-based access, two-step verification, single sign-on, audit log, encrypted traffic and nightly backups.' },
 ];
 
-PAGES.push({ path: '/about/', title: 'About Us | Project Tracker', h1: 'Built in India for teams that deliver', lead: 'Why we are building Project Tracker, who is behind it, and how to reach us.',
-  description: 'About Project Tracker: founded by Prasanna Krishna Daddala to give Indian teams one secure workspace for projects, support and documentation. Our principles, where your data is kept, and how to contact us.' });
+PAGES.push({ path: '/about/', title: 'About Us | ProjectTracker', h1: 'Built in India for teams that deliver', lead: 'Why we are building ProjectTracker, who is behind it, and how to reach us.',
+  description: 'About ProjectTracker: founded by Prasanna Krishna Daddala to give Indian teams one secure workspace for projects, support and documentation. Our principles, where your data is kept, and how to contact us.' });
 
 /** Required by app stores: how anyone can ask for their account and personal data to be deleted, with or without the app. */
-PAGES.push({ path: '/delete-account/', title: 'Delete Your Account | Project Tracker', h1: 'Delete your Project Tracker account', lead: 'How to ask for your account and the personal data linked to it to be deleted, what is removed and what is kept.',
-  description: 'How to delete your Project Tracker account and personal data: from Account, Profile in the app or the website, or by e-mail to support. Completed within 30 days.' });
+PAGES.push({ path: '/delete-account/', title: 'Delete Your Account | ProjectTracker', h1: 'Delete your ProjectTracker account', lead: 'How to ask for your account and the personal data linked to it to be deleted, what is removed and what is kept.',
+  description: 'How to delete your ProjectTracker account and personal data: from Account, Profile in the app or the website, or by e-mail to support. Completed within 30 days.' });
 
 /** Pages payment providers and card networks check for: how to reach us, how cancellation and refunds work, and how the service is delivered. */
-PAGES.push({ path: '/contact/', title: 'Contact Us | Project Tracker', h1: 'Contact us', lead: 'Sales, billing, help and security questions: write or call, and a person replies.',
-  description: 'Contact Project Tracker: e-mail support@projecttracker.in or call +91 76750 41369. Replies within one working day, Monday to Saturday.' });
-PAGES.push({ path: '/refund-policy/', title: 'Cancellation and Refund Policy | Project Tracker', h1: 'Cancellation and refund policy', lead: 'How to cancel a paid plan, what happens to your data, and when we refund a payment.',
-  description: 'Cancel a Project Tracker plan at any time from Billing. Your plan stays until the end of the paid period. Failed, duplicate or unapplied payments are refunded in full within 5 to 7 working days.' });
-PAGES.push({ path: '/shipping-policy/', title: 'Shipping and Delivery Policy | Project Tracker', h1: 'Shipping and delivery policy', lead: 'Project Tracker is online software: nothing is shipped, and your plan is delivered to your workspace as soon as payment is confirmed.',
-  description: 'Project Tracker is delivered online. No physical goods are shipped. Paid plans are switched on in your workspace as soon as payment is confirmed, with an invoice by e-mail.' });
+PAGES.push({ path: '/contact/', title: 'Contact Us | ProjectTracker', h1: 'Contact us', lead: 'Sales, billing, help and security questions: write or call, and a person replies.',
+  description: 'Contact ProjectTracker: e-mail support@projecttracker.in or call +91 76750 41369. Replies within one working day, Monday to Saturday.' });
+PAGES.push({ path: '/refund-policy/', title: 'Cancellation and Refund Policy | ProjectTracker', h1: 'Cancellation and refund policy', lead: 'How to cancel a paid plan, what happens to your data, and when we refund a payment.',
+  description: 'Cancel a ProjectTracker plan at any time from Billing. Your plan stays until the end of the paid period. Failed, duplicate or unapplied payments are refunded in full within 5 to 7 working days.' });
+PAGES.push({ path: '/shipping-policy/', title: 'Shipping and Delivery Policy | ProjectTracker', h1: 'Shipping and delivery policy', lead: 'ProjectTracker is online software: nothing is shipped, and your plan is delivered to your workspace as soon as payment is confirmed.',
+  description: 'ProjectTracker is delivered online. No physical goods are shipped. Paid plans are switched on in your workspace as soon as payment is confirmed, with an invoice by e-mail.' });
 
 export const HOME = { path: '/', title: `${SITE.name} | Projects, Support Desk and AI Employee`, description: SITE.description, h1: 'Plan the work, see risk early, ship on time.', lead: 'Projects, an operations desk, API documentation and an AI employee that answers your customers, in one secure workspace.' };
 
@@ -149,12 +149,12 @@ export const HOME = { path: '/', title: `${SITE.name} | Projects, Support Desk a
 export interface DetailPage extends StaticPage { sections: { title: string; text: string; points: string[] }[]; related: string[] }
 export const DETAILS: DetailPage[] = [
   {
-    path: '/features/connect-ai/', title: 'Connect Claude and ChatGPT to Your Projects | Project Tracker', h1: 'Your workspace, inside the AI assistant you already use',
+    path: '/features/connect-ai/', title: 'Connect Claude and ChatGPT to Your Projects | ProjectTracker', h1: 'Your workspace, inside the AI assistant you already use',
     lead: 'Connect Claude or ChatGPT in a minute. Ask about projects, tasks and support work in plain words, and let it make changes only when you allow it.',
-    description: 'Connect Project Tracker to Claude or ChatGPT: a secure sign-in, read-only or read-and-change access, your own permissions, and a list of connected apps you can switch off at any time. Setup steps and example prompts.',
+    description: 'Connect ProjectTracker to Claude or ChatGPT: a secure sign-in, read-only or read-and-change access, your own permissions, and a list of connected apps you can switch off at any time. Setup steps and example prompts.',
     sections: [
-      { title: 'Connect in a minute', text: 'Add Project Tracker as a connector, sign in when asked, choose the workspace and what it may do.',
-        points: ['In Claude: Settings, Connectors, then add Project Tracker with the address https://projecttracker.in/api/v1/mcp', 'In ChatGPT: Settings, Apps and connectors, then add the same address with sign-in', 'Pick read only, or read and make changes'] },
+      { title: 'Connect in a minute', text: 'Add ProjectTracker as a connector, sign in when asked, choose the workspace and what it may do.',
+        points: ['In Claude: Settings, Connectors, then add ProjectTracker with the address https://projecttracker.in/api/v1/mcp', 'In ChatGPT: Settings, Apps and connectors, then add the same address with sign-in', 'Pick read only, or read and make changes'] },
       { title: 'Safe by design', text: 'It works as you, never as more than you.',
         points: ['Your own role and permissions decide what it can see and change', 'It never sees your password; access renews itself and can be switched off at once', 'Every connected app is listed in Settings, Connected apps'] },
       { title: 'What it can do', text: 'Find and summarise your work, and keep it moving.',
@@ -165,9 +165,9 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/ai-assistant/', '/security/'],
   },
   {
-    path: '/features/ai-employee/', title: 'AI Employee for Calls and WhatsApp | Project Tracker', h1: 'An AI employee that answers your customers',
+    path: '/features/ai-employee/', title: 'AI Employee for Calls and WhatsApp | ProjectTracker', h1: 'An AI employee that answers your customers',
     lead: 'It answers calls and WhatsApp messages in your customers\' own language, follows your rules, and hands over to your team the moment a person is needed.',
-    description: 'An AI voice and WhatsApp agent for support teams: answers in Telugu, Hindi, Tamil, Kannada and English, checks the caller, raises tickets with the full record and hands over to people. Part of Project Tracker Business.',
+    description: 'An AI voice and WhatsApp agent for support teams: answers in Telugu, Hindi, Tamil, Kannada and English, checks the caller, raises tickets with the full record and hands over to people. Part of ProjectTracker Business.',
     sections: [
       { title: 'Speaks like your best agent', text: 'Natural, short answers in the caller\'s language, with a pause to think that sounds like a person checking, not a machine.',
         points: ['Telugu, Hindi, Tamil, Kannada and English, switching when the caller does', 'Greets with your company name and the agent name you choose', 'Taught by your team in plain words: products, policies, branch hours, common answers'] },
@@ -181,9 +181,9 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/operations/', '/pricing/'],
   },
   {
-    path: '/features/operations/', title: 'Operations Desk with Service Levels | Project Tracker', h1: 'A support desk that warns you before a promise is broken',
+    path: '/features/operations/', title: 'Operations Desk with Service Levels | ProjectTracker', h1: 'A support desk that warns you before a promise is broken',
     lead: 'Tickets, bugs and requests in one queue, with targets that count working hours, a board for the day\'s work and insights on what keeps coming back.',
-    description: 'Run support and operational work in Project Tracker: a queue and board, response and resolution targets in working hours, triage suggestions, insights, CSV and PDF exports, and tickets from calls and WhatsApp.',
+    description: 'Run support and operational work in ProjectTracker: a queue and board, response and resolution targets in working hours, triage suggestions, insights, CSV and PDF exports, and tickets from calls and WhatsApp.',
     sections: [
       { title: 'One queue, one board', text: 'Everything that needs doing, whichever door it came through.',
         points: ['A queue with quick views, filters and bulk changes', 'A board you drag work across as it moves', 'Tickets from people, from calls and from WhatsApp in the same place'] },
@@ -195,9 +195,9 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/ai-employee/', '/features/timesheets-and-workload/'],
   },
   {
-    path: '/features/doctracker/', title: 'DocTracker: API Documentation and Architecture | Project Tracker', h1: 'API documentation your team will actually keep up to date',
+    path: '/features/doctracker/', title: 'DocTracker: API Documentation and Architecture | ProjectTracker', h1: 'API documentation your team will actually keep up to date',
     lead: 'Every project\'s APIs, architecture and documents in one place, scored for completeness, drawn on a canvas and protected by default.',
-    description: 'DocTracker in Project Tracker: API documentation with a completeness score, OpenAPI and Postman import and export, a read-only Swagger view, architecture diagrams, masked sensitive values with audited reveal, approvals and PDF.',
+    description: 'DocTracker in ProjectTracker: API documentation with a completeness score, OpenAPI and Postman import and export, a read-only Swagger view, architecture diagrams, masked sensitive values with audited reveal, approvals and PDF.',
     sections: [
       { title: 'A score that shows what is missing', text: 'Each endpoint is checked for the things a caller needs, and the gaps are listed so fixing them is quick.',
         points: ['A Control Center across every project', 'The weakest endpoints first', 'Import from OpenAPI, Postman or cURL; export the same'] },
@@ -211,9 +211,9 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/operations/', '/security/'],
   },
   {
-    path: '/features/meeting-notetaker/', title: 'AI Meeting Notetaker and Minutes | Project Tracker', h1: 'Minutes you do not have to write',
+    path: '/features/meeting-notetaker/', title: 'AI Meeting Notetaker and Minutes | ProjectTracker', h1: 'Minutes you do not have to write',
     lead: 'Send the notetaker to your call. Afterwards you get the summary, the decisions and the action items with owners and dates.',
-    description: 'An AI meeting notetaker in Project Tracker: joins the call, writes minutes with decisions and action items, so nothing agreed is forgotten.',
+    description: 'An AI meeting notetaker in ProjectTracker: joins the call, writes minutes with decisions and action items, so nothing agreed is forgotten.',
     sections: [
       { title: 'Joins when you ask', text: 'Send it to the meeting link; it asks to be let in like any guest.',
         points: ['Works with the online meetings your team already holds', 'Shows who it is, so nobody is surprised', 'Leaves when the meeting ends'] },
@@ -223,7 +223,7 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/ai-assistant/', '/pricing/'],
   },
   {
-    path: '/features/portfolio/', title: 'Project Portfolio Management and Risk Forecasting | Project Tracker', h1: 'See which projects will miss their dates, and why',
+    path: '/features/portfolio/', title: 'Project Portfolio Management and Risk Forecasting | ProjectTracker', h1: 'See which projects will miss their dates, and why',
     lead: 'A portfolio view that works out risk, forecasts the real finish date and remembers every date that moved, so leaders can act before a deadline is missed.',
     description: 'Rank every project by risk with the reasons, forecast the real finish date from the pace of the last four weeks, track date changes and try what-if scenarios.',
     sections: [
@@ -239,7 +239,7 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/ai-assistant/', '/features/teams-and-access/'],
   },
   {
-    path: '/features/ai-assistant/', title: 'AI Assistant for Project Management | Project Tracker', h1: 'An assistant that answers from your own projects',
+    path: '/features/ai-assistant/', title: 'AI Assistant for Project Management | ProjectTracker', h1: 'An assistant that answers from your own projects',
     lead: 'Ask in plain words. It reads only what you are allowed to see, and prepares changes for you to review before anything happens.',
     description: 'Ask about your projects, workload and risks in plain language. The assistant answers from your own data and proposes changes that you confirm first. Every plan includes a taste; Pro and Business bring credits per person each month.',
     sections: [
@@ -253,7 +253,7 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/portfolio/', '/pricing/'],
   },
   {
-    path: '/features/teams-and-access/', title: 'Teams, Roles and Access Control | Project Tracker', h1: 'Everyone sees what they should, and nothing more',
+    path: '/features/teams-and-access/', title: 'Teams, Roles and Access Control | ProjectTracker', h1: 'Everyone sees what they should, and nothing more',
     lead: 'Five access levels, job-role profiles and teams, with the choice between an open organization and team-only visibility.',
     description: 'Owner, admin, manager, member and guest roles, job-role profiles, teams and team-only project visibility, enforced in the data layer so each person sees only their own work.',
     sections: [
@@ -269,7 +269,7 @@ export const DETAILS: DetailPage[] = [
     related: ['/security/', '/features/portfolio/'],
   },
   {
-    path: '/features/timesheets-and-workload/', title: 'Timesheets, Workload and Capacity Planning | Project Tracker', h1: 'Share the work out before people are overloaded',
+    path: '/features/timesheets-and-workload/', title: 'Timesheets, Workload and Capacity Planning | ProjectTracker', h1: 'Share the work out before people are overloaded',
     lead: 'Timesheets with approvals, workload by person and weekly capacity, in the same workspace as the tasks.',
     description: 'Track time on tasks, approve timesheets, see workload by person and plan weekly capacity so work is shared out before anyone is overloaded.',
     sections: [
@@ -283,9 +283,9 @@ export const DETAILS: DetailPage[] = [
     related: ['/features/portfolio/', '/pricing/'],
   },
   {
-    path: '/features/mobile-and-sign-in/', title: 'Mobile App, Passkeys and Phone Sign-in | Project Tracker', h1: 'Sign in with your phone. Work from anywhere.',
+    path: '/features/mobile-and-sign-in/', title: 'Mobile App, Passkeys and Phone Sign-in | ProjectTracker', h1: 'Sign in with your phone. Work from anywhere.',
     lead: 'An installable mobile app built for one hand, passkeys instead of passwords, and sign-in on a computer by tapping a number on your phone.',
-    description: 'Install Project Tracker on Android or iPhone, sign in with passkeys or by approving on your phone, and get alerts when the app is closed. Mobile app and phone sign-in from the Pro plan.',
+    description: 'Install ProjectTracker on Android or iPhone, sign in with passkeys or by approving on your phone, and get alerts when the app is closed. Mobile app and phone sign-in from the Pro plan.',
     sections: [
       { title: 'An app, not a shrunken website', text: 'On a phone the product becomes an app: a floating tab bar, bottom sheets, a Home built around your day and pull to refresh.',
         points: ['Install it from your browser on Android or iPhone, with its own icon and full screen', 'Works in portrait and landscape, with tables turned into cards and no sideways scrolling', 'Alerts reach you at the top of the screen, even when the app is closed'] },
@@ -303,9 +303,9 @@ export const DETAILS: DetailPage[] = [
 /** Pages written for what people search for ("project tracker", "project management software India"). Statements stay true of the product. */
 DETAILS.push(
   {
-    path: '/solutions/free-project-tracker/', title: 'Free Online Project Tracker for Teams | Project Tracker', h1: 'A free online project tracker that grows with your team',
+    path: '/solutions/free-project-tracker/', title: 'Free Online ProjectTracker for Teams | ProjectTracker', h1: 'A free online project tracker that grows with your team',
     lead: 'Track projects, tasks, deadlines and time in one place. Start free in a minute, with no card, and move up only when your team needs more.',
-    description: 'Project Tracker is a free online project tracker: projects, tasks, boards, timelines, reminders, a calendar and timesheets. Free for one person forever; Pro and Business for teams, priced per person in rupees.',
+    description: 'ProjectTracker is a free online project tracker: projects, tasks, boards, timelines, reminders, a calendar and timesheets. Free for one person forever; Pro and Business for teams, priced per person in rupees.',
     sections: [
       { title: 'Everything you need to track a project', text: 'From the first task to the final hand-over, without spreadsheets.',
         points: ['Projects with tasks, owners, priorities and due dates', 'Boards, lists, timelines and a portfolio view across projects', 'Reminders and a calendar, so nothing is forgotten', 'Timesheets to log time against the work'] },
@@ -319,7 +319,7 @@ DETAILS.push(
     related: ['/pricing/', '/features/'],
   },
   {
-    path: '/solutions/project-management-software-india/', title: 'Project Management Software for Indian Teams | Project Tracker', h1: 'Project management software built for teams in India',
+    path: '/solutions/project-management-software-india/', title: 'Project Management Software for Indian Teams | ProjectTracker', h1: 'Project management software built for teams in India',
     lead: 'Plans in rupees, data kept in India, and an AI employee that speaks your customers\u2019 languages. Projects, support and documentation in one workspace.',
     description: 'Project management software for Indian businesses: priced in rupees with invoices that carry your GSTIN, hosted in Mumbai on Google Cloud, an AI employee that answers in Telugu, Hindi, Tamil, Kannada and English, and an operations desk with service levels.',
     sections: [
@@ -408,7 +408,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'How does per-person pricing work?', a: 'Pro and Business are priced per person per month, and you pay for the people in your workspace. Storage and AI credits grow with each person and are shared by the whole team. Add people any time; the owner chooses the number of seats under Settings, Billing.' },
   { q: 'What discounts are there?', a: 'Paying for a year at once takes 20% off. Teams of 10 or more get 10% off, 25 or more 15%, and 100 or more 20%, automatically. The two add up, to at most 30% off. Prices are in Indian rupees and exclude GST.' },
   { q: 'What is an AI credit?', a: 'A unit of AI use. A quick answer costs 1 credit, a standard answer 4 and a deep analysis 20; a spoken reply from the AI employee costs 2, and the notetaker a little for each hour it sits in a call. Each person on Pro brings 80 credits a month and each person on Business 300, pooled across the team and renewed on the 1st. When the pool runs out the AI waits until the next month; nothing else is affected.' },
-  { q: 'Can I use Project Tracker from Claude or ChatGPT?', a: 'Yes, on every plan. Add Project Tracker as a connector in Claude or ChatGPT, sign in, choose the workspace and whether it may make changes. It works with your own permissions, and you can disconnect it at any time from Settings, Connected apps.' },
+  { q: 'Can I use ProjectTracker from Claude or ChatGPT?', a: 'Yes, on every plan. Add ProjectTracker as a connector in Claude or ChatGPT, sign in, choose the workspace and whether it may make changes. It works with your own permissions, and you can disconnect it at any time from Settings, Connected apps.' },
   { q: 'Who pays for phone calls and WhatsApp messages?', a: 'Your phone and WhatsApp providers bill you directly for calls and conversations, at their own rates, on the accounts you connect. We charge only the AI credits the AI employee uses.' },
   { q: 'Can the AI employee speak our customers\' language?', a: 'Yes. It answers in Telugu, Hindi, Tamil, Kannada and English, and follows the caller when they switch. You choose which languages it uses and which one it greets in.' },
   { q: 'Is there a free trial of the paid plans?', a: 'Yes. Start a 14-day trial of Pro or Business from Settings, Billing: up to 5 people and 100 AI credits, no payment taken.' },
@@ -417,7 +417,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'Can teams keep their projects private from each other?', a: 'Yes. Choose team-only visibility and each person sees the projects of their teams, plus the ones they own or were added to. Owners and admins see everything; guests only the projects they are added to.' },
   { q: 'How is each organization\'s data kept separate?', a: 'In the data layer itself, not only in the screens, and automated tests check every screen for leaks between organizations, teams and roles.' },
   { q: 'What is a passkey, and do I need a paid plan?', a: 'A passkey lets you sign in with your fingerprint, face or screen lock instead of a password. It works only on this site and cannot be phished. Passkeys are on every plan, including Free.' },
-  { q: 'Is there a mobile app?', a: 'Yes, from the Pro plan: install Project Tracker on your phone from Account, Mobile app, get alerts when it is closed, and sign in on a computer by tapping a number on your phone. No password to type.' },
+  { q: 'Is there a mobile app?', a: 'Yes, from the Pro plan: install ProjectTracker on your phone from Account, Mobile app, get alerts when it is closed, and sign in on a computer by tapping a number on your phone. No password to type.' },
   { q: 'Where is our data stored?', a: 'In India. The app, its database, your files, call recordings and backups run on Google Cloud in Mumbai, and the AI assistant runs on Google Gemini in the same region. Traffic is encrypted, and backups are taken daily and kept for 14 days.' },
   { q: 'Can I take my data with me?', a: 'Yes. Owners can export everything as files in one zip at any time, and set how long history is kept.' },
   { q: 'Does it support single sign-on?', a: 'Yes, on Business and Enterprise: OpenID Connect and SAML 2.0, with SCIM provisioning to add and remove people automatically.' },
