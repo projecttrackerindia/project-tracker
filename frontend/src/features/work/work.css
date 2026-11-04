@@ -379,3 +379,9 @@ html .mw-tbslot .mw-seg .ds-seg-thumb { border-radius: 7px; top: 2px; bottom: 2p
 }
 .mw-back { flex: none; width: 26px; height: 26px; border: 0; border-radius: 13px; background: transparent; color: var(--ds-text-3, #86868b); font-size: 14px; cursor: pointer; }
 .mw-back:hover { background: var(--ds-fill-strong, rgba(118,118,128,.16)); color: var(--ds-text, #1d1d1f); }
+/* The Work panel inside the calm task sheet (embedded): its own header row, the title, then the fields as a clean list. */
+.wkp-embed { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wkp-embed-h { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.wkp-embed .wkp-title { font-size: 20px; font-weight: 600; }
+.wkp-embed .wkp-title { border: 0; background: none; padding: 2px 0; border-radius: 8px; resize: none; color: inherit; font: inherit; font-size: 20px; font-weight: 600; width: 100%; }
+.wkp-embed .wkp-title:focus { outline: 2px solid var(--calm-accent, #0071e3); outline-offset: 2px; }

@@ -196,7 +196,7 @@ try {
     await page.locator('.aura-chip[data-chip="task"]').click();
     assert.equal(await page.getByLabel('What to create').inputValue(), PARA, 'the words typed in the dock carry into the create sheet');
     await page.getByRole('radio', { name: 'Task' }).click();
-    await page.getByLabel('Change project').selectOption(project.id);
+    await page.getByLabel('Change project').locator('xpath=..').locator('select.ss-native').selectOption(project.id, { force: true });
     await page.locator('[data-testid="new-short-title"]', { hasText: 'Aura titled it' }).waitFor();
     await shot(page, 'new-long-text-1440.png');
     await page.locator('.v2-new-create').click();
@@ -224,7 +224,7 @@ try {
     await page.locator('.aura-chip[data-chip="more"]').click();
     await page.getByLabel('What to create').fill(PARA);
     await page.getByRole('radio', { name: 'Task' }).click();
-    await page.getByLabel('Change project').selectOption(project.id);
+    await page.getByLabel('Change project').locator('xpath=..').locator('select.ss-native').selectOption(project.id, { force: true });
     await page.locator('[data-testid="new-short-title"]', { hasText: 'We will carry out planned security remediation on the network firewall cluster this weekend' }).waitFor();
     const before = writes.length;
     await page.locator('.v2-new-create').click(); await page.locator('.v2-new-sheet').waitFor({ state: 'detached' });

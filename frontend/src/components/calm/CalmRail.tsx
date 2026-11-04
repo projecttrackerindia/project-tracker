@@ -5,7 +5,7 @@ import { projectColor } from '../../lib/calm';
 import './calm-kit.css';
 
 /**
- * A split calm screen: the main column (flex) and the right rail of small cards. On a phone (and below 1100px) the rail drops under the
+ * A split calm screen: the main column (flex) and the right rail of small cards. On a phone (and below 900px) the rail drops under the
  * main column as one single column, so nothing is hidden and nothing scrolls sideways.
  */
 export function CalmSplit({ children, rail, className = '', crumb, label }: { children: ReactNode; rail?: ReactNode; className?: string; crumb?: ReactNode; label?: string }) {

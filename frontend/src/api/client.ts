@@ -365,3 +365,9 @@ export async function download(path: string, filename: string, signal?: AbortSig
   const blob = await res.blob(); signal?.throwIfAborted();
   await saveFile(blob, filename);
 }
+
+// A project, task or action item was deleted: everything that showed it (Today, My work, Portfolio, the plan sheet, reminders, the bell,
+// search, Aura) reads again at once, so no trace lingers. The query cache registers the refresh (stores/auth.ts) to avoid an import cycle.
+let workDeletedHandler: (() => void) | null = null;
+export function setWorkDeletedHandler(f: (() => void) | null) { workDeletedHandler = f; }
+export function workDeleted<T>(value: T): T { workDeletedHandler?.(); return value; }
