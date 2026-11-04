@@ -1,4 +1,4 @@
-import { del, download, get, patch, post, put, create } from './client';
+import { workDeleted, del, download, get, patch, post, put, create } from './client';
 import type { TaskSuggestions,TimelineTemplate,Activity,AdminPlan,AdminStats,AdminTenant,AdminTenantDetail,AdminUser,AdminUserDetail,AppNotification,NotificationCategory,NotificationCounts,AuditLog,BillingOverview,CalendarEvent,Comment,Dashboard,Label,Paged,Project,ProjectDetail,ProjectMember,LensTeam,ReportSummary,SearchHit,Stage,Task,TaskDetail,WorkflowStatus,InvoiceBuyer,UpiPayment,AdminUpiPayment,UpiAccountHealth } from './types';
 export interface ProjectFilters { q?: string; status?: string; priority?: string; ownerId?: string; teamId?: string; projectGroupId?: string; projectType?: string; includeArchived?: boolean; sort?: string; page?: number; pageSize?: number; mineOnly?: boolean }
 export interface ProjectInput {
@@ -48,7 +48,7 @@ export const projectApi = {
   saveSchedule: (id: string, body: ProjectScheduleInput) => put<ProjectDetail>(`/projects/${id}/schedule`, body),
   create: (b: ProjectInput) => create<ProjectDetail>('/projects', b),
   update: (id: string, b: Omit<ProjectInput, 'key' | 'memberIds'> & { status: string; version: number; enforceDependencies?: boolean }) => put<ProjectDetail>(`/projects/${id}`, b),
-  remove: (id: string) => del(`/projects/${id}`),
+  remove: (id: string) => del(`/projects/${id}`).then(workDeleted),
   /** Projects board: a different status moves the card to another column; the same status only re-orders it. */
   move: (id: string, b: { status: string; position?: number }) => patch<Project>(`/projects/${id}/move`, b),
   /** The status shown, the calculated one, and the one set by hand (with why, until when, who). */
@@ -95,7 +95,7 @@ export const taskApi = {
   suggest: (projectId: string, title: string) => get<TaskSuggestions>(`/projects/${projectId}/tasks/suggest`, { title }),
   update: (id: string, b: Omit<TaskInput, 'parentTaskId' | 'statusId'> & { statusId: string; actualHours?: number | null; version: number }) => put<Task>(`/tasks/${id}`, b),
   move: (id: string, b: { statusId: string; position?: number }) => patch<Task>(`/tasks/${id}/move`, b),
-  remove: (id: string) => del(`/tasks/${id}`),
+  remove: (id: string) => del(`/tasks/${id}`).then(workDeleted),
   comments: (id: string) => get<Comment[]>(`/tasks/${id}/comments`),
   addComment: (id: string, b: { body: string; mentionUserIds?: string[] }) => post<Comment>(`/tasks/${id}/comments`, b),
   updateComment: (id: string, body: string) => put<Comment>(`/comments/${id}`, { body }),

@@ -49,8 +49,11 @@ public partial class AppDbContext
         // project, or the project a work task points at (a work task with no project is workspace work and always reachable). ScopeProjectId is
         // that project for every kind (a generated column): a filter on the root of a hierarchy cannot cast to the kinds, because the same
         // filter is applied when one kind is queried on its own.
+        // The project must also still exist: a deleted project's tasks, issues and action items vanish from every list (Today, My work, Portfolio,
+        // the meeting review, the plan sheet, the assistant) even where the cascade on delete did not reach them, and come back if it is restored.
         b.Entity<WorkItem>().HasQueryFilter(w => w.TenantId == CurrentTenantId && !w.IsDeleted
-            && (!ProjectsRestricted || w.ScopeProjectId == null || ReachableProjects.Contains(w.ScopeProjectId!.Value)));
+            && (!ProjectsRestricted || w.ScopeProjectId == null || ReachableProjects.Contains(w.ScopeProjectId!.Value))
+            && (w.ScopeProjectId == null || Projects.Any(p => p.Id == w.ScopeProjectId)));
 
         // Comments on work: a task's or an issue's comment follows its item (and so the item's project); a work task's comment is
         // workspace-wide, as before.
@@ -86,33 +89,53 @@ public partial class AppDbContext
     private Func<ParameterExpression, Expression>? ProjectScoped(Type clr)
     {
         if (NotProjectScoped.Contains(clr)) return null;
+        static bool IsGuid(System.Reflection.PropertyInfo? pi) => pi is not null && (pi.PropertyType == typeof(Guid) || pi.PropertyType == typeof(Guid?));
         string? prop = null;
         foreach (var name in new[] { "ProjectId", "RelatedProjectId" })
-            if (clr.GetProperty(name) is { } pi && (pi.PropertyType == typeof(Guid) || pi.PropertyType == typeof(Guid?))) { prop = name; break; }
-        var viaTask = prop is null && clr.GetProperty("TaskId") is { } ti && (ti.PropertyType == typeof(Guid) || ti.PropertyType == typeof(Guid?));
-        if (prop is null && !viaTask) return null;
+            if (IsGuid(clr.GetProperty(name))) { prop = name; break; }
+        var hasTask = IsGuid(clr.GetProperty("TaskId"));
+        if (prop is null && !hasTask) return null;
         return e =>
         {
-            var key = Expression.Property(e, prop ?? "TaskId");
-            var nullable = key.Type == typeof(Guid?);
-            var unrestricted = Expression.Not(Expression.Property(Expression.Constant(this), nameof(ProjectsRestricted)));
-            Expression allowed;
-            if (viaTask)
+            var self = Expression.Constant(this);
+            Expression? guard = null;
+            if (prop is not null)
             {
-                var t = Expression.Parameter(typeof(TaskItem), "t");
-                Expression id = Expression.Property(t, "Id");
-                if (nullable) id = Expression.Convert(id, typeof(Guid?));
-                allowed = Expression.Call(typeof(Queryable), nameof(Queryable.Any), [typeof(TaskItem)],
-                    Expression.Property(Expression.Constant(this), nameof(Tasks)), Expression.Lambda(Expression.Equal(id, key), t));
-            }
-            else
-            {
+                var key = Expression.Property(e, prop);
+                var nullable = key.Type == typeof(Guid?);
                 // "The project is one of the projects this request reaches": a plain list the database answers from an index.
                 Expression guid = nullable ? Expression.Property(key, "Value") : key;
-                allowed = Expression.Call(typeof(Enumerable), nameof(Enumerable.Contains), [typeof(Guid)], Expression.Property(Expression.Constant(this), nameof(ReachableProjects)), guid);
+                var reach = Expression.OrElse(Expression.Not(Expression.Property(self, nameof(ProjectsRestricted))),
+                    Expression.Call(typeof(Enumerable), nameof(Enumerable.Contains), [typeof(Guid)], Expression.Property(self, nameof(ReachableProjects)), guid));
+                // ... and the project still exists (not deleted): what belonged to a deleted project disappears with it.
+                var p = Expression.Parameter(typeof(Project), "p");
+                Expression pid = Expression.Property(p, "Id");
+                if (nullable) pid = Expression.Convert(pid, typeof(Guid?));
+                var alive = Expression.Call(typeof(Queryable), nameof(Queryable.Any), [typeof(Project)],
+                    Expression.Property(self, nameof(Projects)), Expression.Lambda(Expression.Equal(pid, key), p));
+                guard = Expression.AndAlso(reach, alive);
+                if (nullable) guard = Expression.OrElse(Expression.Equal(key, Expression.Constant(null, typeof(Guid?))), guard);
             }
-            Expression guard = Expression.OrElse(unrestricted, allowed);
-            return nullable ? Expression.OrElse(Expression.Equal(key, Expression.Constant(null, typeof(Guid?))), guard) : guard;
+            if (hasTask)
+            {
+                // The work it is about (a task, or for a few records an issue or action item) must still exist - not deleted, nor in a deleted
+                // project. When reach is narrowed, a record keyed only by its task follows that task's project (as before).
+                var key = Expression.Property(e, "TaskId");
+                var nullable = key.Type == typeof(Guid?);
+                Expression AnyOf<T>(Expression set) where T : WorkItem
+                {
+                    var w = Expression.Parameter(typeof(T), "w");
+                    Expression id = Expression.Property(w, "Id");
+                    if (nullable) id = Expression.Convert(id, typeof(Guid?));
+                    return Expression.Call(typeof(Queryable), nameof(Queryable.Any), [typeof(T)], set, Expression.Lambda(Expression.Equal(id, key), w));
+                }
+                Expression taskOk = AnyOf<WorkItem>(Expression.Property(self, nameof(WorkItems)));
+                if (prop is null)
+                    taskOk = Expression.AndAlso(taskOk, Expression.OrElse(Expression.Not(Expression.Property(self, nameof(ProjectsRestricted))), AnyOf<TaskItem>(Expression.Property(self, nameof(Tasks)))));
+                if (nullable) taskOk = Expression.OrElse(Expression.Equal(key, Expression.Constant(null, typeof(Guid?))), taskOk);
+                guard = guard is null ? taskOk : Expression.AndAlso(guard, taskOk);
+            }
+            return guard!;
         };
     }
 

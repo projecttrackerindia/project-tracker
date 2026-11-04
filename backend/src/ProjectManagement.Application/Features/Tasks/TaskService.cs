@@ -498,6 +498,8 @@ public class TaskService(
         var gone = await db.Tasks.Where(t => t.Id == id || t.ParentTaskId == id).ToListAsync(ct);
         foreach (var t in gone)
         { t.IsDeleted = true; t.DeletedAt = now; t.DeletedBy = ctx.UserId; }
+        // Notifications that open the deleted task (or its subtasks) leave the inbox (archived, never removed).
+        await ProjectManagement.Application.Features.Projects.DeletedWorkTraces.ArchiveNotificationsAsync(db, now, null, gone.Select(t => t.Id).ToList(), ct);
         recorder.Audit("task.deleted", "Task", id, new { task.Title });
         recorder.Activity("task.deleted", "Task", id, $"Deleted task \"{task.Title}\"", task.ProjectId);
         await db.SaveChangesAsync(ct);

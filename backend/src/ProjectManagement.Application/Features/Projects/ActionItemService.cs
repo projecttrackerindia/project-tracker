@@ -252,6 +252,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         if (!(manager || (item.CreatedBy == ctx.UserId && await permissions.HasAsync(Permissions.TasksCreate, ct))))
             throw new ForbiddenException("Only the person who added an action item, or a manager, can delete it.", "PERMISSION_DENIED");
         item.IsDeleted = true; item.DeletedAt = clock.Now; item.DeletedBy = ctx.UserId;
+        await DeletedWorkTraces.ArchiveNotificationsAsync(db, clock.Now, null, [id], ct);
         recorder.Activity("actionitem.deleted", "ActionItem", id, $"Deleted action item “{item.Title}”", projectId);
         await db.SaveChangesAsync(ct);
         await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
