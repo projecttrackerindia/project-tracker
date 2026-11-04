@@ -16,7 +16,6 @@ import { MobileTopBar } from './MobileChrome';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { useIsMobile } from '../lib/mobile';
 import { useConversationViewport } from '../lib/conversationViewport';
-import { NetworkPill } from '../components/AppSplash';
 import { SignInIsland } from '../components/SignInIsland';
 // "Single active session": a new device of mine asking to sign in (loaded beside the app, not in its first bundle).
 const SessionApprovalHost = lazy(() => import('../features/auth/SessionApproval').then((m) => ({ default: m.SessionApprovalHost })));
@@ -216,7 +215,6 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <OfflineSync phone={phone} />
       <SignInIsland />
       <Suspense fallback={null}><SessionApprovalHost /></Suspense>
-      <NetworkPill />
       <CallHost />
       {!admin && <IncomingCallHost />}
       <ToastRoot />

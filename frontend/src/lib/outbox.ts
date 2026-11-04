@@ -9,7 +9,9 @@
  */
 const DB = 'pm-outbox', STORE = 'q';
 
-export interface OutboxEntry { id: string; method: string; path: string; body?: unknown; at: number; workspaceId: string | null; idempotencyKey: string; needsReason?: boolean }
+export interface OutboxEntry { id: string; method: string; path: string; body?: unknown; at: number; workspaceId: string | null; idempotencyKey: string; needsReason?: boolean;
+  /** A create made offline: the temporary id the page shows until the server gives the real one (see realId). */
+  tempId?: string }
 export type OutboxEvent = { pending: number; online: boolean };
 
 /** An item id (GUIDs in the API; any plain id segment that is not a settings word). */
@@ -59,6 +61,29 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   });
 }
 
+/** Creates made offline: temporary id -> the server's id, once sent. Kept for the session (pm_ key: cleared on sign-out). */
+const IDS_KEY = 'pm_offline_ids';
+let ids: Record<string, string> = (() => { try { return JSON.parse(localStorage.getItem(IDS_KEY) ?? '{}') as Record<string, string>; } catch { return {}; } })();
+export const isTempId = (id: string | null | undefined) => !!id && id.startsWith('offline-');
+export const newTempId = () => `offline-${uid()}`;
+export const realId = (id: string) => ids[id] ?? null;
+export const ID_MAPPED = 'pm:offline-id';
+export function recordId(tempId: string, real: string) {
+  ids = { ...ids, [tempId]: real };
+  try { localStorage.setItem(IDS_KEY, JSON.stringify(ids)); } catch { /* storage full: in memory only */ }
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(ID_MAPPED, { detail: { tempId, id: real } }));
+}
+/** Replaces every known temporary id in a text (an address, a JSON body) with the server's id. */
+export function resolveIds(text: string) {
+  return text.replace(/offline-[0-9a-z-]+/gi, (t) => ids[t] ?? t);
+}
+function resolveEntry(e: OutboxEntry): OutboxEntry {
+  if (!/offline-/i.test(e.path) && !(e.body !== undefined && /offline-/i.test(JSON.stringify(e.body)))) return e;
+  return { ...e, path: resolveIds(e.path), body: e.body === undefined ? undefined : JSON.parse(resolveIds(JSON.stringify(e.body))) };
+}
+/** Is this POST a create (a new note, reminder, task, comment or checklist item)? */
+export const isCreate = (method: string, path: string) => method === 'POST' && /\/(notes|reminders|tasks|comments|checklist)$/i.test(path.split('?')[0]);
+
 export async function listOutbox(): Promise<OutboxEntry[]> {
   const all = await run<OutboxEntry[]>('readonly', (s) => s.getAll() as IDBRequest<OutboxEntry[]>);
   return (all ?? memory).slice().sort((a, b) => a.at - b.at);
@@ -107,7 +132,7 @@ export function flushOutbox(send: Sender) {
       for (const e of await listOutbox()) {
         // A date pushed later needs a reason (422 DATE_EXTENSION_REASON_REQUIRED): it waits, marked, until the person gives one.
         if (e.needsReason) { needReason.push(e); continue; }
-        const r = await send(e);
+        const r = await send(resolveEntry(e));
         if (r === 'offline') break;
         if (r === 'reason') { const m = { ...e, needsReason: true }; await run('readwrite', (st) => { st.put(m); }); needReason.push(m); continue; }
         await remove(e.id);
@@ -130,7 +155,8 @@ export async function giveReason(id: string, reason: string) {
 export const dropQueued = async (id: string) => { await remove(id); await emit(); };
 
 export async function clearOutbox() {
-  memory = [];
+  memory = []; ids = {};
+  try { localStorage.removeItem(IDS_KEY); } catch { /* ignore */ }
   await run('readwrite', (s) => { s.clear(); });
   await emit();
 }

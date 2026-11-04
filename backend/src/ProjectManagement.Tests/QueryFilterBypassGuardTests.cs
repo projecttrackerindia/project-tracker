@@ -11,6 +11,7 @@ public class QueryFilterBypassGuardTests
 {
     private static readonly string[] Reviewed =
     [
+        "ProjectManagement.Application/Features/Integrations/MicrosoftProductivityAuthService.cs", // the mail watcher's Outlook grant: one person's connection in the named workspace only (GetInboxGrantForAsync)
         "ProjectManagement.Application/Features/Mailbox/MailWatch.cs", // the background mail watcher: lists every connected IMAP mailbox with its own workspace and owner; each alert is created for that owner in that workspace only
         "ProjectManagement.Application/Features/Time/PlannedLeaveService.cs", // exact tenant/request tombstone check after person authorization; no cross-tenant read
         "ProjectManagement.Api/Middleware/Middleware.cs",

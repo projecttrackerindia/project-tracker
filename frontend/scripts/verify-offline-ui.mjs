@@ -43,7 +43,8 @@ try{
    if(!ep.startsWith('/api/')){const file=path.resolve(dist,ep.startsWith('/assets/')?ep.slice(1):'index.html');assert.ok(file.startsWith(dist+path.sep));await route.fulfill({contentType:{'.html':'text/html','.js':'application/javascript','.css':'text/css','.woff2':'font/woff2'}[path.extname(file)]||'application/octet-stream',body:await fs.readFile(file),headers:ep.startsWith('/assets/')?{}:{'content-security-policy':csp}});return;}
    let data=[];
    const m=/^\/api\/v1\/reminders\/([^/]+)\/done$/.exec(ep);
-   if(m&&method==='POST'){
+   if(ep==='/api/v1/reminders'&&method==='POST'){const b=req.postDataJSON();writes.push({ep,b});const r=R('new',b.title,'Fired',{lastFiredAt:new Date().toISOString()});state.open.unshift(r);data=r;}
+   else if(m&&method==='POST'){
     writes.push({ep,auth:req.headers()['authorization']});
     if(conflictOn===m[1]){await route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({errors:[{code:'conflict',message:'Changed elsewhere'}]})});return;}
     const r=state.open.find(x=>x.id===m[1]);state.open=state.open.filter(x=>x.id!==m[1]);if(r){r.state='Done';r.completedAt=new Date().toISOString();state.completed.unshift(r);}data=r;
@@ -108,6 +109,23 @@ try{
   await page.getByText(/changed elsewhere/).first().waitFor();
   assert.equal((await outboxSize(page)).length,0);
   checks.push(`conflict-${theme}`);
+  // A reminder created offline, then ticked done offline: after reconnect both are sent, the second with the server's real id.
+  if(w===390){
+   writes.length=0;
+   await setOffline(ctx,true);await page.locator('.offline-pill').waitFor();
+   await page.locator('#rp-quick-input').fill('Tomorrow 9am call the fictional courier');await page.locator('#rp-quick-input').press('Enter');
+   await page.locator('.offline-pill',{hasText:'1 edit will sync'}).waitFor();
+   const row=page.getByRole('button',{name:/Done: .*fictional courier/i});
+   const shown=await row.count().then(n=>n>0);
+   if(shown){await row.click();await page.locator('.offline-pill',{hasText:'2 edits will sync'}).waitFor();}
+   await setOffline(ctx,false);
+   for(let i=0;i<60&&writes.length<(shown?2:1);i++)await page.waitForTimeout(100);
+   assert.equal(writes[0].ep,'/api/v1/reminders');
+   if(shown)assert.equal(writes[1].ep,'/api/v1/reminders/new/done');
+   assert.ok(!writes.some(x=>/offline-/.test(x.ep)),'no temporary id reaches the server');
+   await page.locator('.offline-pill').waitFor({state:'detached'});
+   checks.push(`create-offline-${shown?'then-edit':'only'}`);
+  }
   await ctx.close();
  }
  assert.deepEqual(errors,[]);

@@ -20,3 +20,15 @@ describe('outbox', () => {
     expect(idOfPath(`/tasks/${id}/move`)).toBe(id);
   });
 });
+
+describe('offline creates', () => {
+  it('maps a temporary id to the real one in later edits and addresses', async () => {
+    const { recordId, resolveIds, isCreate, newTempId } = await import('./outbox');
+    const temp = newTempId();
+    expect(isCreate('POST', '/notes')).toBe(true);
+    expect(isCreate('POST', `/notes/${temp}`)).toBe(false);
+    recordId(temp, id);
+    expect(resolveIds(`/notes/${temp}`)).toBe(`/notes/${id}`);
+    expect(resolveIds(JSON.stringify({ parentId: temp }))).toBe(JSON.stringify({ parentId: id }));
+  });
+});

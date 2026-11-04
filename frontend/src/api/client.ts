@@ -3,7 +3,7 @@ import { saveFile } from '../lib/native';
 import { lensHeaders } from '../lib/lensState';
 import { mutationCommitted } from '../lib/mutationEffects';
 import { writeSucceeded } from '../lib/optimistic';
-import { enqueue, isNetworkFailure, isQueueable, type OutboxEntry } from '../lib/outbox';
+import { enqueue, isCreate, resolveIds, isNetworkFailure, isQueueable, newTempId, recordId, type OutboxEntry } from '../lib/outbox';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
@@ -187,6 +187,8 @@ export async function api<T = void>(method: string, path: string, body?: unknown
 }
 
 async function send<T>(method: string, path: string, body: unknown, opts: Options, idempotencyKey?: string): Promise<T> {
+  // Something created offline and saved since: its temporary id in an address means the server's id.
+  if (path.includes('offline-')) path = resolveIds(path);
   const { auth = true, retry = true, signal } = opts;
   // Started before the session was confirmed (a warm start shows the page at once): wait for the refresh that is running instead of
   // being refused and sent again.
@@ -208,8 +210,9 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   } catch (e) {
     // No connection: a small edit to the person's own work waits in the outbox and the page shows it at once (see lib/outbox.ts).
     if (auth && !opts.noQueue && !signal?.aborted && isQueueable(method, path) && isNetworkFailure(e)) {
-      await enqueue({ method, path, body, workspaceId: workspaceAtStart, idempotencyKey: idempotencyKey ?? newKey() });
-      return (onQueued?.(method, path, body, workspaceAtStart) ?? body) as T;
+      const tempId = isCreate(method, path) ? newTempId() : undefined;
+      await enqueue({ method, path, body, workspaceId: workspaceAtStart, idempotencyKey: idempotencyKey ?? newKey(), tempId });
+      return (onQueued?.(method, path, body, workspaceAtStart, tempId) ?? body) as T;
     }
     throw e;
   }
@@ -228,7 +231,7 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   throw error;
 }
 
-type QueuedHandler = (method: string, path: string, body: unknown, workspaceId: string | null) => unknown;
+type QueuedHandler = (method: string, path: string, body: unknown, workspaceId: string | null, tempId?: string) => unknown;
 let onQueued: QueuedHandler | null = null;
 /** Set by the app: applies a queued offline edit to the cached answers and returns the optimistic copy for the caller. */
 export const setQueuedHandler = (fn: QueuedHandler | null) => { onQueued = fn; };
@@ -237,7 +240,9 @@ export const setQueuedHandler = (fn: QueuedHandler | null) => { onQueued = fn; }
 export async function replayQueued(e: OutboxEntry): Promise<'sent' | 'conflict' | 'rejected' | 'offline' | 'reason'> {
   if (tabWorkspaceId && e.workspaceId && e.workspaceId !== tabWorkspaceId) return 'rejected';
   try {
-    await send(e.method, e.path, e.body, { retry: true, noQueue: true }, e.idempotencyKey);
+    const data = await send<{ id?: unknown } | undefined>(e.method, e.path, e.body, { retry: true, noQueue: true }, e.idempotencyKey);
+    // A create made offline: from now on its temporary id means the server's one (later queued edits, links, the address bar).
+    if (e.tempId && data && typeof data === 'object' && typeof data.id === 'string') recordId(e.tempId, data.id);
     return 'sent';
   } catch (err) {
     if (isNetworkFailure(err)) return 'offline';

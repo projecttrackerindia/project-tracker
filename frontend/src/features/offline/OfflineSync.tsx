@@ -1,16 +1,38 @@
 import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { refreshSession, replayQueued, setQueuedHandler } from '../../api/client';
-import { dropQueued, flushOutbox, giveReason, idOfPath, onOutbox, patchById as patchSync } from '../../lib/outbox';
+import { ID_MAPPED, dropQueued, flushOutbox, giveReason, idOfPath, onOutbox, patchById as patchSync } from '../../lib/outbox';
 import { queryClient, useAuth } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import './offline.css';
 
 /** Applies a queued edit to every cached answer of this workspace that holds the edited item, and returns the optimistic copy. */
-function applyQueued(method: string, path: string, body: unknown, workspaceId: string | null): unknown {
+function applyQueued(method: string, path: string, body: unknown, workspaceId: string | null, tempId?: string): unknown {
   const id = idOfPath(path);
   const fields = body && typeof body === 'object' ? { ...(body as Record<string, unknown>) } : {};
   delete fields.version;
-  if (method === 'DELETE' || !id) return method === 'POST' && !id ? { ...fields, id: `offline-${Date.now().toString(36)}`, pendingSync: true } : undefined;
+  if (tempId) {
+    const made = { ...fields, id: tempId, pendingSync: true, createdAt: new Date().toISOString() };
+    // Shown in the family's lists at once: the first list of like items (top level, items or open) gets a copy shaped like its neighbours.
+    const family = path.split('?')[0].split('/').filter(Boolean)[0];
+    let shaped: unknown = made;
+    for (const q of queryClient.getQueryCache().findAll({ predicate: (x) => (!workspaceId || x.queryKey[0] === workspaceId) && x.queryKey[1] === family && x.queryKey[2] === 'list' })) {
+      const data = q.state.data as Record<string, unknown> | unknown[] | undefined;
+      if (!data) continue;
+      const slot = Array.isArray(data) ? null : (['open', 'items'] as const).find((k) => Array.isArray((data as Record<string, unknown>)[k]));
+      const list = (Array.isArray(data) ? data : slot ? (data as Record<string, unknown>)[slot] : null) as Record<string, unknown>[] | null;
+      if (!list) continue;
+      // The neighbour gives only the shape: its own texts and links are blanked, flags and counters keep their kind.
+      const shape = Object.fromEntries(Object.entries(list[0] ?? {}).map(([k, v]) => [k, typeof v === 'boolean' ? false : typeof v === 'number' ? 0 : Array.isArray(v) ? [] : null]));
+      const item = { ...shape, ...made } as Record<string, unknown>;
+      if (list[0] && 'state' in list[0]) item.state = 'Scheduled';
+      if (list[0] && 'nextFireAt' in list[0]) item.nextFireAt = (fields.when as { at?: string } | undefined)?.at ?? null;
+      shaped = item;
+      queryClient.setQueryData(q.queryKey, Array.isArray(data) ? [item, ...list] : { ...data, [slot!]: [item, ...list] });
+    }
+    return shaped;
+  }
+  if (method === 'DELETE' || !id) return undefined;
   if (/\/done$/.test(path)) Object.assign(fields, { isDone: true, status: 'Done' });
   if (/\/reopen$/.test(path)) Object.assign(fields, { isDone: false });
   let hit: unknown = null;
@@ -32,6 +54,17 @@ function applyQueued(method: string, path: string, body: unknown, workspaceId: s
  * session is renewed and the context reloaded when it returns.
  */
 export function OfflineSync({ phone = false }: { phone?: boolean }) {
+  const navigate = useNavigate();
+  const loc = useLocation();
+  // A page opened on something created offline (its temporary id in the address) moves to the real id once it is saved.
+  useEffect(() => {
+    const onMapped = (ev: Event) => {
+      const { tempId, id } = (ev as CustomEvent<{ tempId: string; id: string }>).detail;
+      if (window.location.pathname.includes(tempId)) navigate(window.location.pathname.replace(tempId, id) + window.location.search, { replace: true });
+    };
+    window.addEventListener(ID_MAPPED, onMapped);
+    return () => window.removeEventListener(ID_MAPPED, onMapped);
+  }, [navigate, loc.pathname]);
   const [state, setState] = useState({ pending: 0, online: typeof navigator === 'undefined' ? true : navigator.onLine });
   useEffect(() => {
     setQueuedHandler(applyQueued);
