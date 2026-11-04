@@ -460,3 +460,5 @@ html .talk-filters { display: none !important; }
   /* The floating + button stays out of a conversation: the composer has its own + for attachments. */
   html body:has(.m-shell .talk-shell.is-open) .shell-fab { display: none; }
 }
+/* Desktop: the composer's send button never sits under the floating + button. */
+@media (min-width: 761px) { .talk-thread .composer { padding-right: 84px; } }

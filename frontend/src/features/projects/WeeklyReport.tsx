@@ -137,7 +137,7 @@ export function WeeklyReportPage() {
       <header className="wrp-head">
         <div>
           <div className="wrp-eyebrow">Weekly status · {range(d.from, d.to)}</div>
-          <h1 className="wrp-h1">Week {d.week ?? isoWeek(d.to)} report</h1>
+          <h1 className="wrp-h1">Week {d.week ?? isoWeek(d.to)} report.<em>{range(d.from, d.to)}</em></h1>
         </div>
         <div className="wrp-sourceline"><span className="wrp-orb" aria-hidden="true" />
           Written from {s ? `${plural(s.updates, 'update')}, ${plural(s.meetings, 'meeting')}${mail.count ? `, ${plural(mail.count, 'mail')}` : ''} and ${plural(s.commits, 'commit')}` : 'the project'} · {ago(d.writtenAt)}

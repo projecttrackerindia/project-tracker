@@ -124,6 +124,7 @@ try {
       else if (p === '/workspace') data = { ...ws, aiDisabled: false };
       else if (p === '/me/ui/sidebar') data = { key: 'sidebar', value: null, updatedAt: null };
       else if (p === '/approvals') data = (() => { const l = apList(url.searchParams.get('view') ?? 'needs'); return { items: l.items.map((a, i) => i === 0 ? { ...a, steps: a.steps.map((st, k) => k === 0 ? { ...st, approver: null } : st), links: undefined } : a), counts: l.counts }; })();
+      else if (p === '/me/device-login/dl1') data = { id: 'dl1', choices: [12, 47, 83], device: 'Chrome on Windows', ip: '49.37.12.9', createdAt: iso(-1), expiresAt: iso(4) };
       else if (p === '/approvals/counts') data = { needsMe: 3 };
       else if (p === '/approvals/chain') data = chain(url.searchParams.get('type'));
       else if (p.startsWith('/approvals/')) data = [...needs, ...history].find((x) => x.id === p.split('/')[2]) ?? deploy;
@@ -182,6 +183,16 @@ try {
     await fitsPhone(page, `approvals phone ${route} ${theme}`, assert);
     if (route === 'approvals') await shot(page, `approvals-iphone-${theme}-390.png`);
     checks.push(`iphone ${route} ${theme}`);
+    await c.close();
+  }
+  // The sign-in approval page (calm card): desktop and phone, light and dark.
+  for (const theme of ['light', 'dark']) for (const [w, h, dev] of [[1440, 900, {}], [390, 844, devices['iPhone 13']]]) {
+    const c = await make(theme, dev); const page = await c.newPage(); if (w > 500) await page.setViewportSize({ width: w, height: h });
+    page.on('pageerror', (e) => errors.push(`approve: ${e.message}`));
+    await page.goto(`${origin}/preview-org/approve/dl1`); await page.locator('.sa-title').waitFor({ timeout: 15000 });
+    assert.match(await page.locator('.sa-title').innerText(), /Approve this sign-in\?/);
+    await fitsPhone(page, `approve sign-in ${w} ${theme}`, assert);
+    await shot(page, `approve-signin-${theme}-${w}.png`); checks.push(`approve-signin ${w} ${theme}`);
     await c.close();
   }
   assert.deepEqual(errors, []);

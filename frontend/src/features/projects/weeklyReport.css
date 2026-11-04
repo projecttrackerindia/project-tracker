@@ -95,3 +95,9 @@ a.wrp-src:hover { text-decoration: underline; }
 .wrp-mail li { display: flex; align-items: baseline; gap: 6px; font-size: 13px; min-width: 0; }
 .wrp-mail-s { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ds-text); }
 .wrp-mail .wrp-src { flex: none; }
+/* Calm: the display title with a grey second line, quiet section labels (colour only in the dot), calm cards. */
+html body .wrp-h1 { font-size: clamp(34px, 4.4vw, var(--calm-display)); font-weight: var(--calm-display-w); letter-spacing: var(--calm-display-ls); line-height: var(--calm-display-lh); }
+html body .wrp-h1 em { display: block; font-style: normal; color: var(--calm-ink3); }
+html body .wrp-eyebrow { display: none; }
+html body .wrp-card { background: var(--calm-card); border: 0; box-shadow: var(--calm-sh); border-radius: var(--calm-r-card); }
+html body .wrp-sec h4 { color: var(--calm-ink2) !important; } .wrp-sec.moved h4 i { background: var(--ds-success); } .wrp-sec.slipped h4 i { background: var(--ds-danger); } .wrp-sec.risks h4 i { background: var(--ds-warning); } .wrp-sec.next h4 i { background: var(--ds-accent); }
