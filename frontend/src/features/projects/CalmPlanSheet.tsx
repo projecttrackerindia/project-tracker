@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { ErrorState } from '../../components/ui';
 import { useWorkspaceId } from '../../stores/auth';
@@ -8,7 +8,7 @@ import { DateEditor, StatusPicker } from './planSheetEditors';
 import { ReasonModal } from './planSheetReason';
 import { COLOURS, type Colour } from './planSheetTabs';
 import { portfolioApi, type SheetChange, type SheetRow, type SheetStatus } from './portfolioApi';
-import { PortfolioSkeleton, usePortfolio, useShellLine, useShellMenu } from './PortfolioShell';
+import { PortfolioSkeleton, usePortfolio, useShellLine } from './PortfolioShell';
 import { patchPortfolio, refreshPortfolio } from './portfolioShared';
 import { dayNum } from './planSheet';
 
@@ -48,7 +48,6 @@ export function CalmPlanSheet() {
   const { sheet, projects, work, url, colourOf, today, tabPrefs, phone } = usePortfolio();
   const wid = useWorkspaceId();
   const nav = useNavigate();
-  const [, setParams] = useSearchParams();
   const [edit, setEdit] = useState<{ id: string; col: 'due' | 'status'; anchor: HTMLElement } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [ask, setAsk] = useState<{ changes: SheetChange[]; label: string; moves: { key: string; from: string; to: string; days: number | null }[] } | null>(null);
@@ -62,10 +61,6 @@ export function CalmPlanSheet() {
   const scope = (tab === 'all' ? work : work.filter((r) => r.projectId === tab)).filter((r) => !parents.has(r.id) && r.kind !== 'meeting');
   const open = scope.filter((r) => !done(r)).length, nBlocked = scope.filter(blocked).length + scope.filter((r) => !blocked(r) && late(r, today)).length;
   useShellLine(projects.length ? `${tab === 'all' ? 'All projects' : short(name(tab))} · ${open} open, ${nBlocked} blocked.` : null);
-  const full = () => setParams((cur) => { const n = new URLSearchParams(cur); n.set('classic', '1'); return n; });
-  useShellMenu([
-    { label: 'Open the full sheet', icon: 'list', hint: 'Search, views, split and timeline, bulk, paste, fill, history, notify, export', onSelect: full },
-  ]);
 
   const save = async (changes: SheetChange[], label: string, reason?: { reason: string; dependency: string }) => {
     const rows = work;
