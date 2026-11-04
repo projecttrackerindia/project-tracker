@@ -78,7 +78,7 @@ export function DeskIntegrations() {
       <div className="dq-hd">
         <div>
           <div className="cdix-crumb">Desk › Integrations</div>
-          <h1 className="cdix-title">Integrations.<em>{[settings.intakeEnabled && 'WhatsApp', settings.routingEnabled && 'AI routing', settings.voiceEnabled && 'voice'].filter(Boolean).join(', ') ? `${[settings.intakeEnabled && 'WhatsApp', settings.routingEnabled && 'AI routing', settings.voiceEnabled && 'voice'].filter(Boolean).join(', ')} on.` : 'Everything is off.'}</em></h1>
+          <h1 className="cdix-title">Integrations.<em>{(() => { const n = [settings.intakeEnabled, settings.routingEnabled, settings.voiceEnabled].filter(Boolean).length; return n ? `${n} of 3 switched on.` : 'Everything is off.'; })()}</em></h1>
           <div className="dq-eyebrow cdix-hide">{[settings.intakeEnabled && 'WhatsApp intake on', settings.routingEnabled && 'AI routing on', settings.voiceEnabled && 'Voice on'].filter(Boolean).join(' · ') || 'Everything is off until you turn it on'}</div>
         </div>
         {!can && <span className="dix-badge">View only · ask an admin to change these</span>}
