@@ -11,6 +11,7 @@ import { toast } from '../../stores/ui';
 import { fromTime, toTime } from './deskAiLogic';
 import './desk-page.css';
 import './desk-ai.css';
+import './calm-desk.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const LANGS: [string, string][] = [['en', 'English'], ['hi', 'Hindi'], ['te', 'Telugu'], ['ta', 'Tamil'], ['kn', 'Kannada'], ['ml', 'Malayalam'], ['mr', 'Marathi'], ['bn', 'Bengali'], ['gu', 'Gujarati']];
@@ -65,7 +66,7 @@ export function DeskIntegrations() {
   const qd = isObj<{ pending: number; done: number; dead: number; recent: { id: string; status: string; messageType: string; attempts: number; createdAt: string; lastError: string | null }[] }>(queue.data) ? queue.data : null;
 
   return (
-    <div className="dq-page dix" data-testid="desk-integrations">
+    <div className="dq-page dix cdix" data-testid="desk-integrations">
       <ToolbarSeg className="dq-tb"><Link className="dai-link" to="/desk">‹ Desk</Link>
         {can && (
           <div className="dix-bar">
@@ -76,8 +77,9 @@ export function DeskIntegrations() {
       </ToolbarSeg>
       <div className="dq-hd">
         <div>
-          <div className="dq-eyebrow">{[settings.intakeEnabled && 'WhatsApp intake on', settings.routingEnabled && 'AI routing on', settings.voiceEnabled && 'Voice on'].filter(Boolean).join(' · ') || 'Everything is off until you turn it on'}</div>
-          <h1 className="dq-h1">Integrations</h1>
+          <div className="cdix-crumb">Desk › Integrations</div>
+          <h1 className="cdix-title">Integrations.<em>{[settings.intakeEnabled && 'WhatsApp', settings.routingEnabled && 'AI routing', settings.voiceEnabled && 'voice'].filter(Boolean).join(', ') ? `${[settings.intakeEnabled && 'WhatsApp', settings.routingEnabled && 'AI routing', settings.voiceEnabled && 'voice'].filter(Boolean).join(', ')} on.` : 'Everything is off.'}</em></h1>
+          <div className="dq-eyebrow cdix-hide">{[settings.intakeEnabled && 'WhatsApp intake on', settings.routingEnabled && 'AI routing on', settings.voiceEnabled && 'Voice on'].filter(Boolean).join(' · ') || 'Everything is off until you turn it on'}</div>
         </div>
         {!can && <span className="dix-badge">View only · ask an admin to change these</span>}
       </div>

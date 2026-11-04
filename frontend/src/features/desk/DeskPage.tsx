@@ -22,6 +22,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AvailabilitySwitch, RoutingCard, VoiceCard, WhatsAppBubbles } from './DeskIntelligence';
 import { useDeskSettings, useWhatsAppThread } from './deskAiHooks';
 import { CalmDeskFront } from './CalmDeskFront';
+import { CalmSkeleton } from '../../components/calm';
 
 type Tab = 'queue' | 'mine' | 'solved';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -94,7 +95,11 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2
 
 export function DeskPage() {
   const [tab, setTab] = useState<Tab>('queue');
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  // Calm Desk (demo shots 06/07): the overview first; a ticket (or "Queue ›") opens the three-pane queue. ?classic=1 shows both stacked, as before.
+  const classic = params.get('classic') === '1';
+  const queueView = params.get('view') === 'queue' || params.has('ticket');
+  const showView = (v: 'queue' | null) => setParams((cur) => { const n = new URLSearchParams(cur); if (v) n.set('view', v); else { n.delete('view'); n.delete('ticket'); } return n; });
   // A Desk notice links to its ticket (/desk?ticket=…).
   const [selected, setSelected] = useState<string | null>(() => params.get('ticket'));
   const deskSettings = useDeskSettings();
@@ -145,9 +150,10 @@ export function DeskPage() {
   const [snoozed, setSnoozed] = useState<Set<string>>(new Set());
   const workRef = useRef<HTMLDivElement>(null);
   const openTicket = (id: string) => {
+    if (!classic) showView('queue');
     if (tab !== 'queue') { setTab('queue'); setPicked(new Set()); }
     setSelected(id);
-    requestAnimationFrame(() => workRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
+    if (classic) requestAnimationFrame(() => workRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
   };
   const openRows = open.data?.items ?? [];
   const critical = openRows.filter((r) => r.priority === 'Critical').sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))[0] ?? null;
@@ -172,12 +178,16 @@ export function DeskPage() {
   }, [rows, current?.id]);
 
   return (
-    <div className="dq-page dq-desk">
-
-
-      <CalmDeskFront rows={openRows.filter((r) => !snoozed.has(r.id))} detailOf={detailOf} now={now} meId={me?.id ?? null} busy={!!busyRow}
+    <div className={`dq-page dq-desk${classic ? '' : ' cdq'}${!classic && queueView ? ' cdq-work' : ''}`}>
+      {!classic && queueView && (
+        <div className="cdq-crumb"><span>Desk › Queue</span><span className="dq-sp" />
+          <button type="button" className="calm-link accent" onClick={() => showView(null)}>‹ Overview</button></div>
+      )}
+      {(classic || !queueView) && <CalmDeskFront rows={openRows.filter((r) => !snoozed.has(r.id))} detailOf={detailOf} now={now} meId={me?.id ?? null} busy={!!busyRow}
         onOpen={openTicket} onAssign={(r) => me && void quick(r, { assigneeId: me.id }, 'Assigned to you.')}
-        onSnooze={(r) => { setSnoozed((s) => new Set(s).add(r.id)); toast('Snoozed until you reload the desk.'); }} />
+        onSnooze={(r) => { setSnoozed((s) => new Set(s).add(r.id)); toast('Snoozed until you reload the desk.'); }} />}
+      {!classic && !queueView && <div className="cdq-open"><button type="button" className="calm-link accent" onClick={() => showView('queue')}>Open queue · {openRows.length} ›</button></div>}
+      {(classic || queueView) && <>
 
       {critical && <Incident row={critical} now={now} />}
       <div className="mw-tbslot inline dq-tb dq-tb-work">
@@ -214,7 +224,7 @@ export function DeskPage() {
           <SavedViewsBar scope="desk" current={viewConfig} onApply={applyView} />
           <div className="dq-qlist" ref={listRef} role="listbox" aria-label="Tickets" tabIndex={0}
             onKeyDown={(e: ReactKeyboardEvent) => { if (e.key === 'Enter' && current) setSelected(current.id); }}>
-            {list.isLoading && <p className="dq-empty">Loading…</p>}
+            {list.isLoading && <CalmSkeleton title={false} rows={6} label="Loading tickets" />}
             {!list.isLoading && rows.length === 0 && <p className="dq-empty">{tab === 'solved' ? 'Nothing solved yet.' : 'No open tickets. The queue is clear.'}</p>}
             {rows.map((r) => {
               const d = detailOf(r.id);
@@ -249,6 +259,7 @@ export function DeskPage() {
         {current ? <Context key={`c-${current.id}`} row={current} now={now} /> : <div className="dq-ctx" />}
       </div>
       {selecting && <BulkEditBar rows={pickedRows} onClear={() => setPicked(new Set())} onDone={() => { setSelecting(false); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }} />}
+      </>}
     </div>
   );
 }
@@ -405,7 +416,7 @@ function SavedReplies({ w, onUse, onClose }: { w: WorkItemDetail; onUse: (text: 
         <button type="button" className="dq-sr-x" aria-label="Close" onClick={onClose}>×</button>
       </div>
       <div className="dq-sr-list">
-        {list.isLoading && <p className="dq-empty">Loading…</p>}
+        {list.isLoading && <CalmSkeleton title={false} rows={6} label="Loading tickets" />}
         {!list.isLoading && items.length === 0 && <p className="dq-empty">No saved replies match.</p>}
         {items.map((t) => (
           <div key={t.id} className="dq-sr-i">

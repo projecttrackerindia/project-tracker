@@ -40,3 +40,39 @@
 .co-face, .cd-face, .calm-act-face { border-radius: 50%; display: inline-grid !important; place-items: center; background: var(--calm-accent); color: #fff; font-weight: 600; overflow: hidden; }
 .co-face .face-img, .cd-face .face-img, .calm-act-face .face-img { width: 100%; height: 100%; object-fit: cover; }
 .dq-tb-work { margin: 18px 0 4px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+/* Calm Desk queue (demo shot 07): three calm panes that fill the window; the old header lines and SLA legend go, the tabs are calm pills. */
+.cdq-open { display: flex; justify-content: flex-end; margin-top: 4px; }
+.cdq-crumb { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--calm-ink2); margin: 0 0 14px; }
+.cdq-work .dq-hd, .cdq-work .dq-legend, .cdq-work .dq-eyebrow { display: none; }
+.cdq-work .mw-tbslot.dq-tb { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; flex-wrap: wrap; }
+.cdq-work .dq-seg { background: var(--calm-fill); border-radius: var(--calm-r-pill); padding: 3px; gap: 4px; }
+.cdq-work .dq-seg button { height: 32px; padding: 0 16px; border-radius: var(--calm-r-pill); font-size: 13px; color: var(--calm-ink2); }
+.cdq-work .dq-seg button.on { background: var(--calm-solid); color: var(--calm-accent-text); box-shadow: var(--calm-sh-sm); }
+.cdq-work .dq-cols { grid-template-columns: 330px minmax(0, 1fr) 320px; gap: 20px; height: calc(100vh - 210px); min-height: 520px; }
+.cdq-work .dq-card, .cdq-work .dq-conv, .cdq-work .dq-ctx > * { background: var(--calm-card); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); border: 0; }
+.cdq-work .dq-ctx { background: none; box-shadow: none; }
+.cdq-work .dq-t { border-radius: var(--calm-r-row); min-height: 56px; }
+.cdq-work .dq-t:hover { background: var(--calm-fill); }
+.cdq-work .dq-t.on { background: var(--calm-accent-soft); }
+.cdq-work .dq-btn.pri { background: var(--calm-go-bg); color: var(--calm-go-fg); }
+.cdq-work .dq-h3 { font-size: 15px; font-weight: 600; color: var(--calm-ink); }
+.cdq-work .pv-chip.dq-fchip.on { background: var(--calm-accent-soft); color: var(--calm-accent-text); }
+@media (max-width: 1180px) { .cdq-work .dq-cols { grid-template-columns: 280px minmax(0, 1fr); height: auto; } .cdq-work .dq-conv { height: 70vh; } }
+@media (max-width: 760px) {
+  .cdq-work .dq-cols { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .cdq-work .dq-q { max-height: none; }
+  .cdq-work .dq-conv { height: auto; min-height: 60vh; }
+  .cdq-work .dq-t { min-height: 56px; }
+  .cdq-work .dq-seg button { min-height: 40px; }
+}
+
+/* Desk › Integrations, calm: the calm title, calm cards, icon tiles in the one accent. */
+.cdix .cdix-crumb { font-size: 13px; color: var(--calm-ink2); margin-bottom: 6px; }
+.cdix .cdix-title { margin: 0; font-size: clamp(34px, 4.4vw, var(--calm-display)); font-weight: var(--calm-display-w); letter-spacing: var(--calm-display-ls); line-height: var(--calm-display-lh); color: var(--calm-ink); }
+.cdix .cdix-title em { display: block; font-style: normal; color: var(--calm-ink3); }
+.cdix .cdix-hide { display: none; }
+.cdix .dq-card { background: var(--calm-card); border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); border: 0; }
+.cdix .dix-ic { background: var(--calm-tint) !important; color: var(--calm-tint-ink); }
+.cdix .dq-btn.pri { background: var(--calm-go-bg); color: var(--calm-go-fg); }
+@media (max-width: 760px) { .cdix .dix-grid { grid-template-columns: minmax(0, 1fr); } }

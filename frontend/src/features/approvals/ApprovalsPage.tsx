@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { CalmAvatar, CalmCard, CalmGo, CalmPage, CalmPills, CalmRailCard, CalmRailRow, CalmSplit, CalmOrb } from '../../components/calm';
+import { CalmAvatar, CalmCard, CalmGo, CalmPage, CalmPills, CalmRailCard, CalmRailRow, CalmSplit, CalmOrb, CalmSkeleton } from '../../components/calm';
 import { Icon } from '../../components/Icon';
-import { ErrorState, PageLoader } from '../../components/ui';
+import { ErrorState } from '../../components/ui';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { queryClient, useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -103,7 +103,7 @@ export function ApprovalsPage() {
     } finally { setBusy(null); }
   };
 
-  if (list.isLoading && !list.data) return <PageLoader />;
+  if (list.isLoading && !list.data) return <CalmPage width="full" className="ap-page" label="Approvals"><CalmSkeleton label="Loading approvals" /></CalmPage>;
   if (list.error && !list.data) return <ErrorState error={list.error} retry={() => list.refetch()} />;
   // Every part of the answer is read defensively: an older server (or a request whose approver left) must never blank the page.
   const raw = list.data!;

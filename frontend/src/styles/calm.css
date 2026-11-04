@@ -8,7 +8,7 @@
 
 :root, html[data-theme='light'] {
   /* ---- calm palette ---- */
-  --calm-bg: #f6f5f8;
+  --calm-bg: #f3f6fb;                 /* a very faint blue tint, so white cards separate */
   --calm-card: rgba(255, 255, 255, .78);
   --calm-solid: #ffffff;
   --calm-ink: #1d1d1f;
@@ -17,9 +17,11 @@
   --calm-ink3-text: #8a8a8f;          /* ink3 where it must still read as text (AA large) */
   --calm-fill: rgba(0, 0, 0, .05);
   --calm-fill-2: rgba(0, 0, 0, .08);
-  --calm-accent: #0a84ff;
-  --calm-accent-text: #0068d6;        /* the accent as small text on the page tone (4.5:1) */
-  --calm-accent-soft: color-mix(in srgb, #0a84ff 12%, transparent);
+  --calm-accent: #2563eb;             /* the ONE accent: a calm blue */
+  --calm-accent-text: #1d4ed8;        /* the accent as small text on the page tone (4.5:1) */
+  --calm-accent-soft: color-mix(in srgb, #2563eb 11%, transparent);
+  --calm-tint: #e8f0fe;               /* icon tiles: blue icon on a light-blue tile */
+  --calm-tint-ink: #2563eb;
   --calm-green: #30b158;
   --calm-orange: #e8890c;
   --calm-red: #ff3b30;
@@ -32,7 +34,7 @@
               radial-gradient(55% 50% at 12% 95%, rgba(90, 170, 255, .16), transparent 70%),
               radial-gradient(40% 40% at 95% 90%, rgba(255, 170, 120, .12), transparent 70%);
   --calm-orb: conic-gradient(from 200deg, #ff5f9e, #a35cff, #3a8bff, #2fd0c2, #ffb340, #ff5f9e);
-  --calm-go-bg: #1d1d1f;              /* the one primary action: ink pill */
+  --calm-go-bg: #2563eb;              /* the one primary action: the accent pill */
   --calm-go-fg: #ffffff;
   --calm-blur: blur(30px);
   --calm-side-bg: color-mix(in srgb, #ffffff 40%, transparent);
@@ -71,8 +73,8 @@
   --ds-text-4: var(--calm-ink3-text);
   --ds-accent: var(--calm-accent-text);
   --ds-accent-fill: var(--calm-accent);
-  --ds-accent-hover: #2a93ff;
-  --ds-accent-press: #0a78e8;
+  --ds-accent-hover: #3b76f0;
+  --ds-accent-press: #1e4fd1;
   --ds-accent-soft: var(--calm-accent-soft);
   --ds-accent-text: var(--calm-accent-text);
   --ds-dark: var(--calm-go-bg);
@@ -127,7 +129,7 @@
 }
 
 html[data-theme='dark'] {
-  --calm-bg: #0d0d10;
+  --calm-bg: #0b0e15;
   --calm-card: rgba(30, 30, 36, .72);
   --calm-solid: #1c1c21;
   --calm-ink: #f5f5f7;
@@ -136,9 +138,11 @@ html[data-theme='dark'] {
   --calm-ink3-text: #85858e;
   --calm-fill: rgba(255, 255, 255, .07);
   --calm-fill-2: rgba(255, 255, 255, .11);
-  --calm-accent: #3a9bff;
-  --calm-accent-text: #3a9bff;
-  --calm-accent-soft: color-mix(in srgb, #3a9bff 16%, transparent);
+  --calm-accent: #3b6fe0;
+  --calm-accent-text: #7aa5ff;
+  --calm-accent-soft: color-mix(in srgb, #3b6fe0 20%, transparent);
+  --calm-tint: #16223d;
+  --calm-tint-ink: #8fb4ff;
   --calm-green: #32d74b;
   --calm-orange: #ff9f0a;
   --calm-red: #ff453a;
@@ -150,12 +154,12 @@ html[data-theme='dark'] {
   --calm-amb: radial-gradient(60% 55% at 78% 8%, rgba(130, 90, 255, .26), transparent 70%),
               radial-gradient(55% 50% at 12% 95%, rgba(40, 120, 255, .18), transparent 70%),
               radial-gradient(40% 40% at 95% 90%, rgba(255, 120, 80, .10), transparent 70%);
-  --calm-go-bg: #f5f5f7;
-  --calm-go-fg: #111111;
+  --calm-go-bg: #3b6fe0;
+  --calm-go-fg: #ffffff;
   --calm-side-bg: color-mix(in srgb, #1c1c21 40%, transparent);
 
-  --ds-accent-hover: #5aabff;
-  --ds-accent-press: #2a8eff;
+  --ds-accent-hover: #5584ea;
+  --ds-accent-press: #2f5fcc;
   --ds-hover-lift: 0 0 0 .5px rgba(255, 255, 255, .08), 0 18px 54px rgba(0, 0, 0, .55);
   --ds-success: #32d74b; --ds-warning: #ffb340; --ds-danger: #ff6961;
   --accent-rgb: 58, 155, 255;
@@ -280,3 +284,19 @@ html body #main-content h1, html body .auth-title { font-weight: 300; letter-spa
 /* sign-in: the primary action is the same ink pill */
 html body .auth-submit, html[data-theme='dark'] body .auth-submit { background: var(--calm-go-bg); color: var(--calm-go-fg); border-radius: var(--calm-r-pill); box-shadow: none; border: 0; }
 html body .auth-submit:hover:not(:disabled) { background: color-mix(in srgb, var(--calm-go-bg) 86%, var(--calm-bg)); }
+
+/* ------------------------------------------------------------------------------------------------ the one accent (calm-polish)
+   One calm blue: icon tiles (sidebar, Everything sheet) are a blue icon on a light-blue tile; the active tab, primary buttons, links and the
+   selected row are blue. Badges stay red, project colours stay dots. */
+html body .v2-side .v2-rail-item .shell-ico, html body .v2-rail .v2-rail-item .shell-ico { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; margin: -2px 0; background: var(--calm-tint); color: var(--calm-tint-ink); flex: none; }
+html body .v2-side .v2-rail-item .shell-ico svg { width: 15px; height: 15px; stroke: currentColor; }
+html body .v2-side .v2-rail-item.on, html[data-theme='dark'] body .v2-side .v2-rail-item.on, html body .v2-rail-item.on { color: var(--calm-accent-text); }
+html body .v2-side .v2-rail-item.on .shell-ico { background: var(--calm-accent-soft); color: var(--calm-accent-text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--calm-accent) 25%, transparent); }
+html body .v2-more-tile .shell-tile, html body .v2-more-tile .v2-tile.lg.shell-tile { background: var(--calm-tint); color: var(--calm-tint-ink); box-shadow: none; }
+html body .v2-more-tile.on .shell-tile { background: var(--calm-accent-soft); color: var(--calm-accent-text); }
+html body .v2-phone-tab.on, html body .v2-phone-tab[aria-current='page'] { color: var(--calm-accent-text); }
+html body .calm-pills button[aria-pressed='true'], html body .calm-pills button[aria-selected='true'] { color: var(--calm-accent-text); }
+html body .calm-row.sel, html body .calm-row[aria-selected='true'], html body .calm-rr.on, html body [role='option'][aria-selected='true'], html body tr[aria-selected='true'] > td { background: var(--calm-accent-soft); }
+html body .calm-link.accent, html body .calm-rc-aside a, html body .calm-rc-aside button, html body .calm-page a.more, html body .pfo-more { color: var(--calm-accent-text); }
+html body .v2-badge:not(.calm):not(.blue) { background: var(--calm-red); color: #fff; }
+html body .calm-go:hover { opacity: 1; background: var(--ds-accent-hover); }
