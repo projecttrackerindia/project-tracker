@@ -73,6 +73,7 @@ try {
   // 4. the phone install card (iPhone: Share → Add to Home Screen)
   const ios = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', isMobile: true, hasTouch: true,
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await ios.addInitScript(() => { try { localStorage.setItem('pt-install-test', '1'); } catch { /* ignore */ } });
   const ip = await ios.newPage();
   await ip.goto(origin + '/login'); await ip.waitForTimeout(5000);
   assert.equal(await ip.locator('.pt-install').count(), 0, 'no install card on the sign-in page');

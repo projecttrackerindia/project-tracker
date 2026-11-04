@@ -7,6 +7,10 @@ const KEY = 'pt-install-dismissed';
 const DAYS = 21;
 // Never over a sign-in form: login, sign-up and the other auth screens.
 const AUTH = /^\/(login|signup|register|auth|forgot-password|reset-password|verify-email|invite|approve-sign-in)(\/|$)/;
+// Automated browsers (UI checks) never see the card unless a check opts in, so it can't block their clicks.
+const automated = () => {
+  try { return navigator.webdriver === true && localStorage.getItem('pt-install-test') !== '1'; } catch { return false; }
+};
 const dismissedRecently = () => {
   try { const t = Number(localStorage.getItem(KEY) || 0); return Date.now() - t < DAYS * 864e5; } catch { return false; }
 };
@@ -20,7 +24,7 @@ export function InstallBanner() {
   const phone = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 760px)').matches;
   useEffect(() => { const t = setTimeout(() => setReady(true), 4000); return () => clearTimeout(t); }, []);
   const ios = inst.platform === 'ios';
-  const show = ready && !gone && !AUTH.test(location.pathname) && phone && !inst.installed && (inst.canPrompt || ios);
+  const show = ready && !gone && !automated() && !AUTH.test(location.pathname) && phone && !inst.installed && (inst.canPrompt || ios);
   if (!show) return null;
   const close = () => { try { localStorage.setItem(KEY, String(Date.now())); } catch { /* private mode */ } setGone(true); };
   return createPortal(
