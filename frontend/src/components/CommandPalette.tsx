@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { insightApi } from '../api/endpoints';
-import type { SearchHit } from '../api/types';
 import { Icon, type IconName } from './Icon';
 import { useMainNav } from '../layouts/navigation';
 import { useWorkspaceSections } from '../features/settings/sections';
@@ -13,23 +12,9 @@ import { openReminderComposer } from '../features/reminders/store';
 import { useUi } from '../stores/ui';
 import { openNew } from './v2/state';
 import { usePaletteExtras } from './paletteRegistry';
+import { searchHitLink } from './paletteLink';
+export { openPalette, searchHitLink } from './paletteLink';
 
-/** Where a search hit opens. Shared with the search box in the top bar. */
-export function searchHitLink(h: Pick<SearchHit, 'type' | 'id' | 'projectId' | 'taskId'>): string {
-  switch (h.type) {
-    case 'file': return h.taskId ? `/work?item=${h.taskId}` : `/work/projects/${h.projectId}?tab=files`;
-    case 'task': case 'comment': return `/work?item=${h.taskId}`;
-    case 'issue': return `/work?item=${h.id}`;
-    case 'action': return `/work?item=${h.id}`;
-    case 'work': return `/work?item=${h.id}`;
-    case 'project': return `/work/projects/${h.id}`;
-    case 'page': return `/library/docs/${h.id}`;
-    case 'team': return '/people/teams';
-    case 'member': return '/people';
-    case 'label': return '/settings/fields/labels';
-    default: return '/work/projects';
-  }
-}
 const HIT_ICON: Record<string, IconName> = { task: 'check', issue: 'bug', action: 'flag', work: 'bolt', project: 'folder', team: 'users', member: 'user', comment: 'message', file: 'paperclip', label: 'tag', page: 'note' };
 
 interface Command { id: string; group: string; label: string; hint?: string; icon: IconName | 'ai'; keywords?: string; run: () => void }
@@ -51,8 +36,6 @@ const RECENT_KEY = 'pm_palette_recent';
 const readRecent = (): string[] => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); } catch { return []; } };
 const remember = (id: string) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecent().filter((x) => x !== id)].slice(0, 5))); } catch { /* storage unavailable */ } };
 
-/** Opens the palette from anywhere (a top-bar button, a shortcut hint). */
-export const openPalette = () => window.dispatchEvent(new Event('pm:palette'));
 
 /**
  * Ctrl K / ⌘ K: go anywhere, create something, change a setting or search everything from the keyboard. With the AI assistant on, a

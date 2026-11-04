@@ -136,7 +136,8 @@ try{
 
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  // v2: the old address lands on Insights › Time; the full timesheet opens from its "Full timesheet ›" link, keeping the week.
- await page.goto(`${origin}/preview-org/timesheet?week=${week}`);await page.waitForURL(/\/insights\?/);await page.getByRole('link',{name:'Full timesheet ›'}).click();
+ await page.goto(`${origin}/preview-org/timesheet?week=${week}`);await page.waitForURL(/\/time\?/);   // old links open Time (its own place now)
+ await page.goto(`${origin}/preview-org/insights?tab=time&s=week&week=${week}`);
  await page.waitForURL(/[?&]s=week/);assert.ok(page.url().includes(`week=${week}`),'the week is kept');await page.locator('.tsg-table').waitFor();
  assert.equal(await page.locator('.tsg-table tbody tr').count(),2);
  assert.equal(await page.locator('.tsg-day').count(),7);

@@ -141,7 +141,7 @@ try {
     watch(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${origin}/preview-org/desk?ticket=${T1}`);
-    await page.locator('.calm-hero-title').first().waitFor();
+    await page.locator('.cdq-work .dq-cols').first().waitFor();   // a ticket link opens the calm queue (demo shot 07)
 
     // The live WhatsApp chat replaces the copy taken when the ticket was raised.
     const wa = page.getByTestId('dai-wa-thread');

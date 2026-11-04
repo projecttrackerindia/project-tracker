@@ -307,3 +307,35 @@ html body .pf-present:not(.phone) .pf-slide { padding-left: 80px; }
 .pfc .cp-grid > .cp-row:not(.cp-th) .cp-cell { flex: 1; min-height: 44px; }
 .pfc .cp-grid > .cp-row:not(.cp-th) .cp-who, .pfc .cp-grid > .cp-row:not(.cp-th) .cp-load { align-self: center; }
 @media (max-width: 760px) { .pfc .pfx-stage > .ptl { padding-bottom: 0; } }
+
+/* Calm Timeline lanes (demo shot 14). */
+.ctl { --ctl-name: 160px; display: flex; flex-direction: column; min-height: calc(100vh - 300px); }
+.ctl-pane { flex: 1; display: flex; flex-direction: column; background: var(--calm-card); border-radius: 22px; box-shadow: var(--calm-shadow, 0 1px 2px rgba(0,0,0,.04)); padding: 18px 22px; min-width: 0; }
+.ctl-scale { position: relative; height: 18px; margin-left: var(--ctl-name); font-size: 11.5px; color: var(--calm-ink3); }
+.ctl-scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.ctl-scale span:first-child { transform: none; }
+.ctl-body { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 300px; }
+.ctl-lane { display: flex; align-items: stretch; flex: 1; min-height: 64px; }
+.ctl-lane.ctl-ms { flex: .7; min-height: 56px; }
+.ctl-name { width: var(--ctl-name); flex: none; display: flex; gap: 8px; align-items: center; font: inherit; font-size: 14px; font-weight: 550; color: var(--calm-ink); background: none; border: 0; padding: 0 8px 0 0; text-align: left; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctl-name i { width: 8px; height: 8px; border-radius: 50%; background: var(--pc); flex: none; }
+.ctl-name.muted { color: var(--calm-ink3); font-size: 12.5px; font-weight: 500; cursor: default; }
+.ctl-track { position: relative; flex: 1; min-width: 0; }
+.ctl-track.ptl-rip { transition: transform 220ms cubic-bezier(.2,.8,.2,1); }
+.ctl-hit { position: absolute; top: 14px; bottom: 14px; z-index: 2; cursor: grab; border-radius: 10px; background: transparent !important; border: 0; }
+.ctl-hit.drag { cursor: grabbing; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pc) 40%, transparent); }
+.ctl-seg { position: absolute; top: 14px; bottom: 14px; display: flex; align-items: center; padding: 0 10px; border-radius: 10px; font-size: 12.5px; font-weight: 600; color: var(--calm-ink);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pc) 18%, var(--calm-card)), color-mix(in srgb, var(--pc) 30%, var(--calm-card)));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 30%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.ctl-seg.late { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--calm-red, #ff3b30) 55%, transparent); }
+.ctl-msi { position: absolute; display: flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; color: var(--calm-ink2); white-space: nowrap; }
+.ctl-msi i { width: 10px; height: 10px; border-radius: 3px; transform: rotate(45deg); background: var(--pc); }
+.ctl-now { position: absolute; top: -4px; bottom: 0; width: 2px; margin-left: -1px; background: var(--calm-red, #ff3b30); pointer-events: none; z-index: 3; }
+.ctl-now::before { content: ''; position: absolute; top: -3px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: inherit; }
+.ctl-popwrap { position: absolute; left: var(--ctl-name); right: 0; top: 0; z-index: 10; }
+.ctl-aura { display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.ctl .ptl-bar.ctl-hit { top: 14px; bottom: 14px; height: auto; border: 0; box-shadow: none; background: transparent; overflow: visible; }
+.ctl .ptl-bar.ctl-hit.drag { box-shadow: 0 0 0 2px color-mix(in srgb, var(--pc) 40%, transparent); }
+.ctl-seg.late, .ctl-seg.risk { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 30%, transparent); }
+.ctl-seg.late::after { content: ''; position: absolute; right: 6px; top: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--calm-red, #ff3b30); }
+.ctl-seg + .ctl-seg { border-left: 2px solid var(--calm-card); }

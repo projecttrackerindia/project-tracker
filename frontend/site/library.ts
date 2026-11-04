@@ -12,9 +12,9 @@ const D = '2026-10-21';
 export const GUIDES: LibraryPage[] = [
   {
     kind: 'guide', topic: 'Getting started', date: D, minutes: 4, path: '/docs/getting-started/',
-    title: 'Getting Started with Project Tracker | Help Center', h1: 'Getting started in ten minutes',
+    title: 'Getting Started with ProjectTracker | Help Center', h1: 'Getting started in ten minutes',
     lead: 'Create your workspace, invite your team and run your first project.',
-    description: 'Set up Project Tracker: create an organization workspace, invite people with the right role, create your first project and tasks, and install the app on your phone.',
+    description: 'Set up ProjectTracker: create an organization workspace, invite people with the right role, create your first project and tasks, and install the app on your phone.',
     blocks: [
       { h: '1. Create your account and workspace', steps: ['Go to projecttracker.in and choose Create your free account.', 'Confirm your e-mail address from the message we send you.', 'Create an organization workspace for your company. Your personal workspace stays separate.'] },
       { h: '2. Invite your team', steps: ['Open People and choose Invite member.', 'Enter their e-mail address and pick a role: Admin, Manager, Member or Guest.', 'If you use job roles, pick the person\'s job role and who they report to; their access applies from their first sign-in.'],
@@ -28,7 +28,7 @@ export const GUIDES: LibraryPage[] = [
     kind: 'guide', topic: 'Projects', date: D, minutes: 3, path: '/docs/import-from-spreadsheet/',
     title: 'Import Tasks from Excel or CSV | Help Center', h1: 'Import tasks from a spreadsheet',
     lead: 'Bring an existing plan from Excel or Google Sheets into a project, and see every problem before anything is saved.',
-    description: 'Import tasks into Project Tracker from a CSV file exported from Excel or Google Sheets: match columns, check every row before saving, and choose all-or-nothing or skip bad rows.',
+    description: 'Import tasks into ProjectTracker from a CSV file exported from Excel or Google Sheets: match columns, check every row before saving, and choose all-or-nothing or skip bad rows.',
     blocks: [
       { h: 'Prepare the file', list: ['Save your sheet as CSV (comma, semicolon or tab separated, UTF-8). Up to 5,000 rows or 2 MB.', 'Useful columns: Title, Description, Status, Priority, Assignee, Start date, Due date, Estimated hours, Labels and Milestone.', 'Assignees are matched by e-mail address or full name; priorities can use your own custom names.'] },
       { h: 'Import it', steps: ['Open the project and choose Import.', 'Pick the file. Columns are matched from their header names; adjust any that are wrong.', 'Choose whether dates are day-first (21/10/2026) or month-first.', 'Review the check: how many rows are ready, and exactly which rows have which problem.', 'Import all or nothing, or skip the rows with problems and import the rest.'] },
@@ -40,7 +40,7 @@ export const GUIDES: LibraryPage[] = [
     kind: 'guide', topic: 'Time', date: D, minutes: 4, path: '/docs/timesheets/',
     title: 'Track Time and Submit Timesheets | Help Center', h1: 'Track time and submit your timesheet',
     lead: 'Log time against tasks, keep billable hours separate and get your week approved.',
-    description: 'How to track time in Project Tracker: start a timer or log time by hand, mark time billable, submit a weekly timesheet and approve or return timesheets as a manager.',
+    description: 'How to track time in ProjectTracker: start a timer or log time by hand, mark time billable, submit a weekly timesheet and approve or return timesheets as a manager.',
     blocks: [
       { h: 'Log time', list: ['Start the timer on any task, or type the time by hand: "1h 30m", "45m" or "1.5h".', 'One timer runs at a time; starting another stops the first. The running timer stays visible in the top bar.', 'A task\'s actual hours always equal the time tracked on it.'] },
       { h: 'Billable time', p: 'Every entry is billable or not. It starts from the project\'s Billable to a client setting and you can change it per entry.' },
@@ -53,7 +53,7 @@ export const GUIDES: LibraryPage[] = [
     kind: 'guide', topic: 'Operations', date: D, minutes: 4, path: '/docs/service-levels/',
     title: 'Set Up Service Levels (SLA) | Help Center', h1: 'Set up service levels for support work',
     lead: 'Give every ticket a response and resolution target, and see what is at risk before it is breached.',
-    description: 'Configure SLA targets in Project Tracker: first-response and resolution targets by priority and work type, how the clocks run, on-hold time, and reports on compliance.',
+    description: 'Configure SLA targets in ProjectTracker: first-response and resolution targets by priority and work type, how the clocks run, on-hold time, and reports on compliance.',
     blocks: [
       { h: 'Set the targets', steps: ['Open Settings, Work types, Service levels.', 'Enter first-response and resolution targets for each priority, such as "30m", "4h" or "3d".', 'Optionally set different targets for a work type, such as incidents or access requests.'] },
       { h: 'How the clocks run', list: ['Targets are fixed when a ticket is raised, and again if its priority or type changes.', 'Response is met when someone moves it out of To Do, or comments when they did not raise it.', 'Resolution is met when it is completed. On Hold stops the resolution clock and the time is added back.', 'Cancelled work counts neither way.'] },
@@ -66,9 +66,9 @@ export const GUIDES: LibraryPage[] = [
     kind: 'guide', topic: 'AI', date: D, minutes: 3, path: '/docs/connect-claude-chatgpt/',
     title: 'Connect Claude or ChatGPT | Help Center', h1: 'Connect Claude or ChatGPT to your workspace',
     lead: 'Ask about your projects in the AI assistant you already use, with your own permissions.',
-    description: 'Step-by-step: add Project Tracker as a connector in Claude or ChatGPT, choose read-only or read-and-change access, and disconnect it any time from Connected apps.',
+    description: 'Step-by-step: add ProjectTracker as a connector in Claude or ChatGPT, choose read-only or read-and-change access, and disconnect it any time from Connected apps.',
     blocks: [
-      { h: 'In Claude', steps: ['Open Settings, Connectors, and add a custom connector.', 'Use the address https://projecttracker.in/api/v1/mcp', 'Sign in to Project Tracker when asked, choose the workspace and the access.'] },
+      { h: 'In Claude', steps: ['Open Settings, Connectors, and add a custom connector.', 'Use the address https://projecttracker.in/api/v1/mcp', 'Sign in to ProjectTracker when asked, choose the workspace and the access.'] },
       { h: 'In ChatGPT', steps: ['Open Settings, Apps and connectors, and add a connector with sign-in.', 'Use the same address: https://projecttracker.in/api/v1/mcp', 'Sign in, choose the workspace and the access.'] },
       { h: 'Read only, or read and change', p: 'Read only lets it find and summarise projects, tasks, your work, support tickets and API documentation. Read and change also lets it create tasks and work items, change status, comment and log time. It always acts as you, with your role and permissions.' },
       { h: 'Turn it off', p: 'Settings, Connected apps lists every app you connected. Disconnect stops it at once.' },
@@ -79,7 +79,7 @@ export const GUIDES: LibraryPage[] = [
     kind: 'guide', topic: 'Security', date: D, minutes: 4, path: '/docs/secure-your-workspace/',
     title: 'Secure Your Workspace | Help Center', h1: 'Secure your workspace',
     lead: 'Passkeys, two-step verification, roles and single sign-on: the settings worth turning on first.',
-    description: 'A security checklist for Project Tracker admins: passkeys and two-step verification, requiring them for everyone, roles and team-only visibility, single sign-on, IP allowlists and the audit log.',
+    description: 'A security checklist for ProjectTracker admins: passkeys and two-step verification, requiring them for everyone, roles and team-only visibility, single sign-on, IP allowlists and the audit log.',
     blocks: [
       { h: 'For everyone', list: ['Add a passkey (fingerprint, face or screen lock) in Account, Sign-in and security. It cannot be phished.', 'Or turn on two-step verification with an authenticator app, and keep the recovery codes safe.', 'Review the devices you are signed in on and sign out the ones you do not recognise.'] },
       { h: 'For admins', list: ['Require two-step verification for the whole organization.', 'Give people the lowest role that lets them work: Guest, Member, Manager, Admin.', 'Use team-only project visibility so teams see their own projects.', 'On Business: single sign-on (OpenID Connect or SAML), SCIM provisioning, an IP allowlist, and the audit log of sign-ins and permission changes.'] },
@@ -92,7 +92,7 @@ export const GUIDES: LibraryPage[] = [
 export const ARTICLES: LibraryPage[] = [
   {
     kind: 'article', topic: 'Project management', date: D, minutes: 6, path: '/blog/move-projects-off-spreadsheets/',
-    title: 'Moving Your Projects Off Spreadsheets: A Practical Guide | Project Tracker Blog', h1: 'Moving your projects off spreadsheets',
+    title: 'Moving Your Projects Off Spreadsheets: A Practical Guide | ProjectTracker Blog', h1: 'Moving your projects off spreadsheets',
     lead: 'Spreadsheets are a fine way to start a plan and a hard way to run one. Here is how to move without stopping the work.',
     description: 'When a project spreadsheet stops working, and how to move to a project tracker in a week: what to import, what to leave behind, and the habits that make the switch stick.',
     blocks: [
@@ -100,13 +100,13 @@ export const ARTICLES: LibraryPage[] = [
       { h: 'Signs the spreadsheet has outgrown you', list: ['People ask for status in chat instead of looking it up.', 'Nobody can tell why a due date moved, or who moved it.', 'Different teams need to see different projects, but the file is all or nothing.', 'Reminders and follow-ups live in someone\'s head.'] },
       { h: 'Move in a week, not a quarter', steps: ['Day 1: pick one live project, not the whole portfolio.', 'Day 2: import its open tasks from the sheet. Leave finished rows behind; the sheet stays as the archive.', 'Day 3: agree on statuses and priorities, and give every task one owner and a due date.', 'Day 4: move the weekly status meeting onto the project\'s board.', 'Day 5: add the next project, and stop updating the old sheet.'] },
       { h: 'Habits that make it stick', list: ['Update the task, not the chat. Comments on the task keep the reason with the work.', 'Let reminders do the chasing, in each person\'s own working hours.', 'Look at the portfolio view weekly, not every project every day.'] },
-      { p: 'Project Tracker imports a CSV straight from Excel or Google Sheets and checks every row before anything is saved. The Free plan is enough to try it on one project.' },
+      { p: 'ProjectTracker imports a CSV straight from Excel or Google Sheets and checks every row before anything is saved. The Free plan is enough to try it on one project.' },
     ],
     related: ['/docs/import-from-spreadsheet/', '/solutions/free-project-tracker/'],
   },
   {
     kind: 'article', topic: 'Support operations', date: D, minutes: 6, path: '/blog/sla-targets-for-support-teams/',
-    title: 'SLA Targets for Support Teams: How to Set Ones That Work | Project Tracker Blog', h1: 'Service level targets that support teams can keep',
+    title: 'SLA Targets for Support Teams: How to Set Ones That Work | ProjectTracker Blog', h1: 'Service level targets that support teams can keep',
     lead: 'A service level is a promise. Set it from what your team can do, measure it honestly, and see the risk before the promise is broken.',
     description: 'How to choose first-response and resolution targets by priority, what should pause the clock, and how to spot tickets at risk before an SLA breach.',
     blocks: [
@@ -115,13 +115,13 @@ export const ARTICLES: LibraryPage[] = [
       { h: 'Set targets by priority', p: 'Look at the last month of tickets. For each priority, find the time within which most were answered and solved today, then set the target slightly tighter. A target the team misses every day teaches everyone to ignore it.' },
       { h: 'Decide what pauses the clock', p: 'Waiting for the customer to reply is not time the team can use. Put such tickets on hold so the resolution clock stops, and resumes when they come back.' },
       { h: 'Act before the breach', list: ['Review at-risk tickets at the start of each shift, not breached ones at the end of the month.', 'Look at what keeps coming back; repeat tickets are where time is lost.', 'Write the resolution down so the next person solves it faster.'] },
-      { p: 'In Project Tracker, the operations desk runs both clocks, pauses resolution on hold and filters at-risk work, as part of the Business plan.' },
+      { p: 'In ProjectTracker, the operations desk runs both clocks, pauses resolution on hold and filters at-risk work, as part of the Business plan.' },
     ],
     related: ['/docs/service-levels/', '/features/operations/'],
   },
   {
     kind: 'article', topic: 'Time tracking', date: D, minutes: 5, path: '/blog/timesheets-people-actually-fill-in/',
-    title: 'Timesheets People Actually Fill In | Project Tracker Blog', h1: 'Timesheets people actually fill in',
+    title: 'Timesheets People Actually Fill In | ProjectTracker Blog', h1: 'Timesheets people actually fill in',
     lead: 'Most timesheets are filled in on Friday evening from memory. A few changes make them accurate without making them a chore.',
     description: 'Why timesheets go wrong and how to fix them: log time against the work itself, keep billable time visible, make the weekly submission short and approval quick.',
     blocks: [
@@ -129,28 +129,28 @@ export const ARTICLES: LibraryPage[] = [
       { h: 'Log time where the work is', p: 'A timer on the task, or a quick "1h 30m" typed against it, takes seconds when it happens and is accurate. The week\'s timesheet then fills itself in.' },
       { h: 'Make billable time obvious', p: 'Decide per project whether time is billable to a client, and let people change it per entry when needed. Then billing is a report, not a negotiation.' },
       { h: 'Keep the weekly step small', steps: ['People check their week and submit it with an optional note.', 'Managers approve, or return it with a reason.', 'Approved weeks are locked, so reports do not change after the fact.'] },
-      { p: 'Project Tracker\'s timesheets work this way on every plan, and a weekly reminder ("every Friday 4pm submit timesheet") takes one line to set up.' },
+      { p: 'ProjectTracker\'s timesheets work this way on every plan, and a weekly reminder ("every Friday 4pm submit timesheet") takes one line to set up.' },
     ],
     related: ['/docs/timesheets/', '/features/timesheets-and-workload/'],
   },
   {
     kind: 'article', topic: 'AI', date: D, minutes: 5, path: '/blog/use-ai-assistants-with-project-data-safely/',
-    title: 'Using AI Assistants with Your Project Data, Safely | Project Tracker Blog', h1: 'Using AI assistants with your project data, safely',
+    title: 'Using AI Assistants with Your Project Data, Safely | ProjectTracker Blog', h1: 'Using AI assistants with your project data, safely',
     lead: 'Claude and ChatGPT can answer "what is late this week?" in seconds. The question is how to let them see your work without giving away more than you mean to.',
     description: 'How to connect AI assistants like Claude and ChatGPT to project data safely: sign-in instead of shared keys, the assistant acting with your own permissions, read-only by default and a way to switch it off.',
     blocks: [
       { p: 'Copying project updates into a chat window works once. Done every day, it spreads company data across personal chats with no record of what went where. A proper connection is safer and less work.' },
       { h: 'Four things to insist on', list: ['Sign-in, not a shared key: each person connects as themselves and can be switched off alone.', 'Your permissions, never more: the assistant sees only what you could open yourself.', 'Read only by default: allow changes only when you want it to create tasks or update status.', 'A list of connected apps you can review and disconnect at any time.'] },
       { h: 'Good first questions', list: ['"What is overdue for me this week, by project?"', '"Summarise what changed in the Customer portal project since Monday."', '"Which support tickets are close to missing their target?"'] },
-      { p: 'Project Tracker connects to Claude and ChatGPT on every plan, including Free, and works this way.' },
+      { p: 'ProjectTracker connects to Claude and ChatGPT on every plan, including Free, and works this way.' },
     ],
     related: ['/docs/connect-claude-chatgpt/', '/features/connect-ai/'],
   },
   {
     kind: 'article', topic: 'Data and security', date: D, minutes: 5, path: '/blog/project-data-hosted-in-india/',
-    title: 'Why We Host Your Project Data in India | Project Tracker Blog', h1: 'Why we host your project data in India',
-    lead: 'Project Tracker now runs on Google Cloud in Mumbai. What that means for speed, for your customers\' trust and for your own questionnaires.',
-    description: 'Project Tracker is hosted in India on Google Cloud (Mumbai): the app, database, files, backups and AI assistant. What moved, what it means for latency and security reviews, and what stays the same.',
+    title: 'Why We Host Your Project Data in India | ProjectTracker Blog', h1: 'Why we host your project data in India',
+    lead: 'ProjectTracker now runs on Google Cloud in Mumbai. What that means for speed, for your customers\' trust and for your own questionnaires.',
+    description: 'ProjectTracker is hosted in India on Google Cloud (Mumbai): the app, database, files, backups and AI assistant. What moved, what it means for latency and security reviews, and what stays the same.',
     blocks: [
       { h: 'What runs in Mumbai', list: ['The application and its database, with daily backups kept for 14 days and point-in-time recovery.', 'Uploaded files and call recordings.', 'The AI assistant, which uses Google Gemini in the same region.'] },
       { h: 'Why it matters', list: ['Speed: pages and the mobile app answer from close by for teams in India.', 'Simpler security reviews: "where is our data stored?" has a one-line answer.', 'Trust: many of our customers handle their own customers\' details, and want them kept close to home.'] },
@@ -163,7 +163,7 @@ export const ARTICLES: LibraryPage[] = [
 
 export const LIBRARY = [...GUIDES, ...ARTICLES];
 
-export const DOCS_INDEX: StaticPage = { path: '/docs/', title: 'Help Center | Project Tracker', h1: 'Help Center', lead: 'Short, step-by-step guides to get the most out of Project Tracker.',
-  description: 'Project Tracker Help Center: getting started, importing tasks, timesheets, service levels, connecting Claude or ChatGPT, and securing your workspace.' };
-export const BLOG_INDEX: StaticPage = { path: '/blog/', title: 'Blog | Project Tracker', h1: 'The Project Tracker blog', lead: 'Practical writing on running projects, support and teams, from the people who build Project Tracker.',
+export const DOCS_INDEX: StaticPage = { path: '/docs/', title: 'Help Center | ProjectTracker', h1: 'Help Center', lead: 'Short, step-by-step guides to get the most out of ProjectTracker.',
+  description: 'ProjectTracker Help Center: getting started, importing tasks, timesheets, service levels, connecting Claude or ChatGPT, and securing your workspace.' };
+export const BLOG_INDEX: StaticPage = { path: '/blog/', title: 'Blog | ProjectTracker', h1: 'The ProjectTracker blog', lead: 'Practical writing on running projects, support and teams, from the people who build ProjectTracker.',
   description: 'Articles on project management, support service levels, timesheets, using AI assistants safely and hosting data in India.' };

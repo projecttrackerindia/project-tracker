@@ -7,7 +7,8 @@ import { ApiError } from '../../api/client';
 import { adminApi } from '../../api/endpoints';
 import type { AdminPlan, AdminUser, SubscriptionStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { Badge, EmptyState, ErrorState, Field, Kpi, Modal, PageHead, PageLoader, Pager, RoleBadge, SubmitButton } from '../../components/ui';
+import { CalmHero, CalmPage } from '../../components/calm';
+import { Badge, EmptyState, ErrorState, Field, Kpi, Modal, PageLoader, Pager, RoleBadge, SubmitButton } from '../../components/ui';
 import { FEATURE_LABELS, currencySymbol, formatDate, formatMoney, limitLabel, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
@@ -39,8 +40,8 @@ export function AdminPage() {
   if (!isAdmin) return <Navigate to="/" replace />;
   const t = (['overview', 'tenants', 'users', 'billing', 'payments', 'usage', 'ai', 'plans', 'health', 'settings', 'audit'].includes(tab) ? tab : 'overview') as Tab;
   return (
-    <>
-      <PageHead title={TITLES[t].title} sub={TITLES[t].sub} />
+    <CalmPage width="full" className="adm-calm" label={TITLES[t].title} crumb={<>Platform › {TITLES[t].title}</>}>
+      <CalmHero title={`${TITLES[t].title}.`} sub={TITLES[t].sub} />
       {t === 'overview' && <Overview />}
       {t === 'tenants' && <Tenants />}
       {t === 'users' && <Users />}
@@ -52,7 +53,7 @@ export function AdminPage() {
       {t === 'health' && <HealthTab />}
       {t === 'settings' && <SettingsTab />}
       {t === 'audit' && <AuditPage admin />}
-    </>
+    </CalmPage>
   );
 }
 

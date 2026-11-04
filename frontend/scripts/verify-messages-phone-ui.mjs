@@ -210,7 +210,7 @@ const swipeChecks = async () => {
   p = await at('Mira Ostrova');
   await touch(page, p.x, p.y, -110, 0, { ms: 260 }); await settle();
   assert.equal((await openRows(page)).length, 1);
-  await page.getByRole('button', { name: /^Unread/ }).tap();
+  await page.getByRole('button', { name: 'More in Messages' }).tap(); await page.getByRole('menuitem', { name: /Show unread/ }).tap();   // the filters live in ⋯ (calm list head)
   await page.waitForTimeout(40);
   assert.equal(await page.locator('.talk-list .talk-row').count(), 0, 'no outgoing rows stacked over the Unread empty state');
   const empty = page.locator('[data-testid="talk-empty"]');

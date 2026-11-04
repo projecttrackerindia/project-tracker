@@ -1,0 +1,64 @@
+name: Android app
+
+# Builds the Android app (Capacitor shell around projecttracker.in) on every change to it, and on demand.
+# Release-signed APK + AAB when the ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS secrets exist, otherwise a debug APK.
+# The result is a workflow artifact; tagged releases (release.yml) publish it to the GitHub release the /download page links to.
+on:
+  pull_request:
+    paths: ['apps/android/**', '.github/workflows/android.yml']
+  push:
+    branches: [main]
+    paths: ['apps/android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/android/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+      - name: Build
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GOOGLE_SERVICES_B64: ${{ secrets.ANDROID_GOOGLE_SERVICES_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            export ANDROID_KEYSTORE="$RUNNER_TEMP/release.keystore"
+          fi
+          export APP_VERSION_CODE="${{ github.run_number }}"
+          bash build.sh
+          ls -l *.apk *.aab 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: |
+            apps/android/ProjectTracker.apk
+            apps/android/ProjectTracker.aab
+            apps/android/ProjectTracker-debug.apk
+          if-no-files-found: error
+          retention-days: 30

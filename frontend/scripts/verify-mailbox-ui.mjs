@@ -88,7 +88,7 @@ try{
  let ctx=await make();let page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:960});
  // /mailbox (and Talk's old mail addresses) land on Mail; the sidebar has Mail under Together with the unread count.
  await page.goto(origin+'/preview-org/mailbox');await page.waitForURL(/\/mail$/);await page.locator('[data-testid="ml-row"]').first().waitFor();
- const railMail=page.locator('.v2-rail-item.on',{hasText:'Mail'});await railMail.waitFor();assert.match(await railMail.innerText(),/2/);
+ const railMail=page.locator('.v2-rail-item.on',{hasText:'Mail'});await railMail.waitFor();for(let i=0;i<40&&!/2/.test(await railMail.innerText());i++)await page.waitForTimeout(200);assert.match(await railMail.innerText(),/2/);   // the badge reads after first paint (lib/afterFirstPaint)
  await page.goto(origin+'/preview-org/talk?f=mail');await page.waitForURL(/\/mail$/);await page.locator('[data-testid="ml-row"]').first().waitFor();checks.push('routes');
 
  // Focused / Other: the no-reply payslip goes to Other; the subtitle counts unread mail, sorted by the assistant (needs-reply first).

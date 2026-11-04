@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Dashboard, WorkItem } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { openPalette } from '../../components/CommandPalette';
+import { openPalette } from '../../components/paletteLink';
 import { HealthBadge, Progress } from '../../components/ui';
 import { formatDate } from '../../lib/format';
 import { haptic } from '../../lib/mobile';

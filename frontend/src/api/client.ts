@@ -187,6 +187,9 @@ export async function api<T = void>(method: string, path: string, body?: unknown
 
 async function send<T>(method: string, path: string, body: unknown, opts: Options, idempotencyKey?: string): Promise<T> {
   const { auth = true, retry = true, signal } = opts;
+  // Started before the session was confirmed (a warm start shows the page at once): wait for the refresh that is running instead of
+  // being refused and sent again.
+  if (auth && !accessToken && refreshing && !path.startsWith('/auth/')) await refreshing.catch(() => null);
   const workspaceAtStart = tabWorkspaceId;
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';

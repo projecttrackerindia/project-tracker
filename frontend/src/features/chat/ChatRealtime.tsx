@@ -219,9 +219,14 @@ export function ChatRealtime() {
     // A WhatsApp support chat changed (a message came in or went out, someone took it): the desk refreshes at once.
     connection.on('support', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'support'] }); });
     // Or some were read (opened here, on another tab or another device): they leave the centre, the badges and the OS notifications now.
-    connection.on('notification', (e?: { read?: string[]; links?: string[] }) => {
+    // Also every new notification for me (the server announces each one once it is saved: approvals, assignments, mentions, reminders...):
+    // the bell and tab badges recount now, and the banner / sound / desktop notice run (CHECK_NOTIFICATIONS) instead of waiting for a poll.
+    connection.on('notification', (e?: { read?: string[]; links?: string[]; created?: string[]; types?: string[] }) => {
       if (e?.read?.length) readFromServer(wid, e.read, e.links ?? []);
       void queryClient.invalidateQueries({ queryKey: [wid, 'notifications'] });
+      // An approval waiting on me (or a decision on mine): the Approvals badge and list are separate counts, so they refresh too.
+      if (e?.types?.includes('Approval')) void queryClient.invalidateQueries({ queryKey: [wid, 'approvals'] });
+      if (e?.types?.some((t) => t === 'TaskAssigned' || t === 'Mention' || t === 'Comment')) void queryClient.invalidateQueries({ queryKey: [wid, 'inbox'] });
       if (!e?.read?.length) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));
     });
     connection.on('message.updated', (raw: { conversationId: string; message: ChatMessage }) => { void openMessage(raw.message).then((message) => onUpdated({ ...raw, message })); });

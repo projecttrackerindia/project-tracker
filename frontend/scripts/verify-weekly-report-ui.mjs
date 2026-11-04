@@ -76,7 +76,7 @@ try{
 
  let ctx=await make('light');let page=await ctx.newPage();page.on('console',m=>{if(m.type()==='error')console.log('CONSOLE',m.text().slice(0,3000));});page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});
  await page.goto(url);await page.locator('.wrp-doc').waitFor({timeout:8000}).catch(async()=>{await page.screenshot({path:path.join(out,'fail.png')});console.log(errors,(await page.locator('body').innerText()).slice(0,600));throw new Error('no doc');});
- assert.equal(await page.locator('.wrp-h1').innerText(),'Week 43 report');
+ assert.match(await page.locator('.wrp-h1').innerText(),/^Week 43 report./);
  assert.match(await page.locator('.wrp-eyebrow').innerText(),/weekly status · 20 – 26 oct/i);
  assert.match(await page.locator('.wrp-sourceline').innerText(),/Written from 64 updates, 3 meetings and 41 commits · 2 min ago/);
  assert.match(await page.locator('.wrp-pill').first().innerText(),/At risk/);

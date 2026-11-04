@@ -22,6 +22,7 @@ import { inRail, useMainNav, type NavDef } from '../../layouts/navigation';
 import { CreateOrganizationModal } from '../../layouts/parts';
 import { supportMailto } from '../../lib/support';
 import { Sheet } from '../Sheet';
+import { useAfterFirstPaint } from '../../lib/afterFirstPaint';
 import { useMailUnread } from '../../features/mail/useMail';
 import { get } from '../../api/client';
 import { Popover } from '../../lib/popover';
@@ -103,11 +104,14 @@ function useSideGroups(): SideGroup[] {
   const talk = useTalkUnread();
   const inbox = useInboxOpen();
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  const mailUnread = useMailUnread(!admin);
+  // Badge-only reads (mail unread, open work, project health, reminders) wait until the page itself has painted: a phone on a slow
+  // network spends its first seconds on what is on the screen.
+  const late = useAfterFirstPaint();
+  const mailUnread = useMailUnread(!admin && late);
   const canProjects = (useAuth((s) => s.ctx?.current?.modules?.projects) ?? 0) > 0;
-  const dash = useWsQuery(['dashboard', null], () => insightApi.dashboard(null), { staleTime: 60_000, retry: false, enabled: !admin });
-  const projectList = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false, enabled: !admin && canProjects });
-  const reminders = useWsQuery(['reminders', 'list'], reminderApi.list, { staleTime: 60_000, retry: false, enabled: !admin });
+  const dash = useWsQuery(['dashboard', null], () => insightApi.dashboard(null), { staleTime: 60_000, retry: false, enabled: !admin && late });
+  const projectList = useWsQuery(['projects', 'health'], () => projectApi.list({ pageSize: 100 }), { staleTime: 60_000, retry: false, enabled: !admin && canProjects && late });
+  const reminders = useWsQuery(['reminders', 'list'], reminderApi.list, { staleTime: 60_000, retry: false, enabled: !admin && late });
   const myOpen = dash.data?.counts?.myOpen ?? 0;
   const deskOpen = inbox.tickets;
   const projectCount = (projectList.data?.items ?? []).filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled' && p.status !== 'Archived').length;

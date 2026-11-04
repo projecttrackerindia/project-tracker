@@ -94,3 +94,14 @@
 .co-mini.on { background: var(--calm-fill); }
 @media (max-width: 1300px) { .co-teams { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .co-teams { grid-template-columns: 1fr; } .co-team .co-mini { min-height: 44px; } }
+
+/* The org chart (the earlier lines · teams · canvas view, restored), restyled with calm tokens only. */
+.cp-org .pr-org-head { margin: 0 0 14px; }
+.cp-org .seg, .cp-org [role='radiogroup'], .cp-org .segmented { background: var(--calm-fill); border-radius: var(--calm-r-pill); padding: 3px; border: 0; }
+.cp-org .seg button[aria-checked='true'], .cp-org .segmented button[aria-pressed='true'], .cp-org [role='radio'][aria-checked='true'] { background: var(--calm-solid); color: var(--calm-accent-text); box-shadow: var(--calm-sh-sm); border-radius: var(--calm-r-pill); }
+.cp-org .pr-tree-wrap, .cp-org .card { background: var(--calm-card); border: 0; border-radius: var(--calm-r-card); box-shadow: var(--calm-sh); }
+.cp-org .pr-node-main { border-radius: var(--calm-r-row); }
+.cp-org .pr-node-main:hover { background: var(--calm-fill); }
+.cp-org .pr-chip { background: var(--calm-fill); color: var(--calm-ink2); border: 0; border-radius: 99px; }
+.cp-org .pr-search input { border-radius: var(--calm-r-pill); background: var(--calm-fill); border: 0; }
+@media (max-width: 760px) { .cp-org .pr-tree-wrap { overflow-x: auto; } }

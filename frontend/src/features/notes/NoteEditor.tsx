@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type K
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { attachmentApi, insightApi, workspaceApi } from '../../api/endpoints';
-import { searchHitLink } from '../../components/CommandPalette';
+import { searchHitLink } from '../../components/paletteLink';
 import { Icon, type IconName } from '../../components/Icon';
 import { useWsQuery } from '../../lib/hooks';
 import { toast } from '../../stores/ui';

@@ -3,7 +3,7 @@ import { NotificationBell } from '../features/notifications/centre/NotificationC
 import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { Sheet } from '../components/Sheet';
-import { openPalette } from '../components/CommandPalette';
+import { openPalette } from '../components/paletteLink';
 import { AuraPhoneOrb, AvatarMenu } from '../components/v2';
 import { initials } from '../lib/format';
 import { haptic } from '../lib/mobile';

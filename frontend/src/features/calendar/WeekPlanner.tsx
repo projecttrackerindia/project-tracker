@@ -482,7 +482,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
         <div className="wp-ft wp-ft-row">Calendars<button type="button" className="wp-show-dots" aria-expanded={showLayers} aria-label="Show layers" title="Show: meetings, calls, logged time, done, focus, deadlines, reminders" onClick={() => setShowLayers((v) => !v)}>⋯</button></div>
         {projects.map((p) => (
           <label key={p} className={`wp-fr${hidden.has(p) ? ' off' : ''}`}><input type="checkbox" className="sr-only" checked={!hidden.has(p)} onChange={() => toggleCal(p)} />
-            <i className="wp-ck" style={{ ['--ck' as string]: DOT[tintOf(p)] }} aria-hidden="true" /><span>{p}</span><em>{calCount(p) || ''}</em></label>
+            <i className="wp-ck" style={{ ['--ck' as string]: DOT[tintOf(p)] }} aria-hidden="true" /><span title={p}>{p}</span><em>{calCount(p) || ''}</em></label>
         ))}
         <label className={`wp-fr${hidden.has(PERSONAL) ? ' off' : ''}`}><input type="checkbox" className="sr-only" checked={!hidden.has(PERSONAL)} onChange={() => toggleCal(PERSONAL)} />
           <i className="wp-ck" style={{ ['--ck' as string]: DOT.g }} aria-hidden="true" /><span>Personal</span><em>{calCount(null) || ''}</em></label>
@@ -499,7 +499,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
           return (
             <div key={m.key} className="wp-up-r" style={{ ['--ck' as string]: DOT[tintOf(m.e.projectName)] }}>
               <button type="button" className="wp-up-t" onClick={(ev) => { if (!days.includes(m.day)) setAnchor(m.day); live.current.open({ kind: 'meeting', key: `meeting:${m.day}:${m.key}`, m }, ev.currentTarget); }}>
-                <b>{m.e.title}</b><small>{m.day === today ? '' : `${DOW3[dateOf(m.day).getDay()]} `}{hm(m.start)}{cd && cd !== 'ended' ? ` · ${cd}` : m.feed?.providerName ? ` · ${m.feed.providerName}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}</small>
+                <b title={m.e.title}>{m.e.title}</b><small>{m.day === today ? '' : `${DOW3[dateOf(m.day).getDay()]} `}{hm(m.start)}{cd && cd !== 'ended' ? ` · ${cd}` : m.feed?.providerName ? ` · ${m.feed.providerName}` : m.e.projectName ? ` · ${m.e.projectName}` : ''}</small>
               </button>
               {canJoin(m) && <button type="button" className="wp-join-pill" onClick={() => join(m)}>Join</button>}
             </div>

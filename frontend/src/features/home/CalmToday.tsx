@@ -261,9 +261,9 @@ function EveningCard({ logged, planned }: { logged: number; planned: number }) {
       <h2>{gap ? 'Log the rest of your day' : 'Your day is logged'}</h2>
       <p className="td-why">{gap ? 'Add what you worked on, and the timesheet fills itself.' : 'Nothing is missing. See you tomorrow.'}</p>
       <div className="td-acts">
-        {gap > 0 && <CalmGo onClick={() => nav('/insights?tab=time')}>Log {hm(gap)}</CalmGo>}
+        {gap > 0 && <CalmGo onClick={() => nav('/time')}>Log {hm(gap)}</CalmGo>}
         {!out && <CalmLink onClick={() => sheet('checkout')}>Check out ›</CalmLink>}
-        <CalmLink onClick={() => nav('/insights?tab=time')}>Timesheet ›</CalmLink>
+        <CalmLink onClick={() => nav('/time')}>Timesheet ›</CalmLink>
       </div>
     </CalmCard>
   );
@@ -277,7 +277,7 @@ function InsightSheet({ open, onClose, logged, planned, open_, doneToday, meets,
   return (
     <CalmSheet open={open} onClose={onClose} kind="bottom" title="Your day in numbers" sub="Each one opens where it comes from.">
       <div className="td-ins-sheet">
-        <CalmCard variant="tile"><b>{hm(logged)}</b><small>of {hm(planned)} logged</small><ul><li><Link to="/insights?tab=time" onClick={onClose}>Open the timesheet ›</Link></li></ul></CalmCard>
+        <CalmCard variant="tile"><b>{hm(logged)}</b><small>of {hm(planned)} logged</small><ul><li><Link to="/time" onClick={onClose}>Open the timesheet ›</Link></li></ul></CalmCard>
         <CalmCard variant="tile"><b>{late.length}</b><small>overdue</small><ul>{late.slice(0, 4).map((w) => <li key={w.id}><Link to={`/work?item=${w.id}`} onClick={onClose}>{w.key} {w.title}</Link></li>)}</ul></CalmCard>
         <CalmCard variant="tile"><b>{doneToday.length}</b><small>done today</small><ul>{doneToday.slice(0, 4).map((d) => <li key={d.id}>{d.link ? <Link to={d.link} onClick={onClose}>{d.title}</Link> : d.title}</li>)}</ul></CalmCard>
         <CalmCard variant="tile"><b>{meets}</b><small>meetings · {hm(free)} free</small><ul><li><Link to="/?tab=calendar" onClick={onClose}>Open the calendar ›</Link></li></ul></CalmCard>

@@ -71,7 +71,22 @@ try {
       else if (ep === '/api/v1/automations') data = [];
       else if (ep === '/api/v1/approvals') data = { items: [], counts: { needsMe: 0, mine: 0, all: 0, history: 0 }, week: { approved: 0, rejected: 0, expired: 0, medianMinutes: 0 }, byType: {}, expiringToday: 0, elsewhere: [] };
       else if (ep === '/api/v1/approvals/counts') data = { needsMe: 2 };
-      else if (ep === '/api/v1/notes') data = [];
+      else if (ep === '/api/v1/timeline') { const d = new Date().toISOString().slice(0, 10); const long = 'Riverline Payments Collections Platform Modernisation Programme';
+        data = { from: url.searchParams.get('from'), to: url.searchParams.get('to'), timeZone: 'Asia/Kolkata', scope: 'me', generatedAt: new Date().toISOString(), events: [
+          { id: `meeting:m1:${d}`, type: 'meeting', title: `${long} weekly steering review`, start: `${d}T04:30:00Z`, end: `${d}T05:30:00Z`, date: d, allDay: false, link: null, projectId: project.id, projectName: long, people: [], status: null, colour: '', key: null,
+            approximated: false, overdue: false, priority: null, minutes: null, note: null, joinUrl: null, notes: false, userId: user.id, mode: null, running: false, sourceType: 'projectMeeting', sourceId: 'm1' }] }; }
+      else if (ep === '/api/v1/approvals/chain') data = { type: url.searchParams.get('type'), custom: false, rule: 'Leave needs your lead.', steps: [] };
+      else if (ep === '/api/v1/notes') data = { items: [], counts: { all: 0, pinned: 0, shared: 0, meetings: 0 }, folders: [], tags: [] };
+      // Empty, correctly shaped answers so every page renders in the shell (the pages' own checks cover them with data).
+      else if (ep === '/api/v1/activity') data = { items: [], page: 1, pageSize: 25, totalItems: 0, totalPages: 0 };
+      else if (ep === '/api/v1/time/grid') { const wk = new Date(); wk.setUTCDate(wk.getUTCDate() - ((wk.getUTCDay() + 6) % 7)); const m = wk.toISOString().slice(0, 10);
+        const days = [0, 1, 2, 3, 4, 5, 6].map((i) => { const d = new Date(`${m}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + i); return { date: d.toISOString().slice(0, 10), minutes: 0, targetMinutes: i < 5 ? 480 : 0, weekend: i >= 5, leave: false, leaveNote: null, future: false, meetings: 0, meetingMinutes: 0 }; });
+        data = { weekStart: m, weekEnd: days[6].date, user: { id: user.id, name: user.displayName }, mine: true, editable: true, locked: false, status: 'NotSubmitted', days, rows: [], suggestions: [], totalMinutes: 0, billableMinutes: 0, targetMinutes: 2400, overtimeMinutes: 0, missingDays: 0, running: null }; }
+      else if (ep === '/api/v1/time/week') data = { weekStart: null, weekEnd: null, userId: user.id, status: 'NotSubmitted', totalMinutes: 0, billableMinutes: 0, note: null, submittedAt: null, reviewer: null, reviewedAt: null, reviewNote: null, locked: false, canSubmit: true, canWithdraw: false, canReview: false, id: null, entitled: true };
+      else if (ep === '/api/v1/time/insights') data = { user: { id: user.id, name: user.displayName }, from: null, to: null, weeks: [], byProject: [], byWeekday: [], loggedMinutes: 0, billableMinutes: 0, targetMinutes: 0, overtimeMinutes: 0, utilisation: null, billableShare: 0, sameDayShare: null, streak: 0, missingDays: [] };
+      else if (ep === '/api/v1/workload') data = { scope: 'Everyone', available: ['Everyone'], members: [], totals: { people: 0, open: 0, overdue: 0 } };
+      else if (ep === '/api/v1/operations/insights') data = { days: 30, open: 0, unassigned: 0, breached: 0, atRisk: 0, compliance: 1, medianResolutionHours: null, medianResponseMinutes: null, createdInPeriod: 0, completedInPeriod: 0, weeks: [], aging: [], byTeam: [], byType: [], byPerson: [] };
+      else if (ep === '/api/v1/doctracker/catalog') data = { projects: [], canCreate: true, isAdmin: true, truncated: 0 };
       else if (ep === '/api/v1/documents/inbox') data = { toReview: [], submitted: [], accessToDecide: [], myAccessRequests: [], waiting: 0 };
       else if (ep === '/api/v1/documents/dashboard') data = { total: 0, byStatus: [], byType: [], mine: 0, waitingForMe: 0, updatedThisWeek: 0, notUpdatedIn90Days: 0, unpublished: 0, recent: [] };
       else if (ep === '/api/v1/documents') data = { items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 0 };
@@ -103,7 +118,7 @@ try {
   const screens = [['today', '/'], ['approvals', '/approvals'], ['my-work', '/work'], ['reminders', '/reminders'], ['notes', '/notes'],
     ['desk', '/desk'], ['quality', '/quality'], ['projects', '/work/projects'], ['project-detail', `/work/projects/${project.id}`], ['portfolio', '/work/projects?view=portfolio'], ['calendar', '/?tab=calendar'],
     ['meetings', '/meetings'], ['messages', '/messages'], ['mail', '/mail'],
-    ['library', '/library'], ['insights', '/insights'], ['reports', '/insights?tab=reports'], ['activity', '/activity'], ['people', '/people'], ['settings', '/settings/general'], ['time', '/insights?tab=time']];
+    ['library', '/library'], ['insights', '/insights'], ['reports', '/insights?tab=reports'], ['activity', '/activity'], ['people', '/people'], ['settings', '/settings/general'], ['time', '/time']];
   const errors = [], checks = [], shots = [], fixtureGaps = [];
   const ctxFor = async (theme, w, h) => {
     const c = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', viewport: { width: w, height: h }, isMobile: w < 500, hasTouch: w < 500 });
@@ -192,6 +207,12 @@ try {
       // A page that cannot render with these thin fixtures is noted (its own verify script covers it); the shell must still be around it.
       if (await page.getByText('An unexpected error occurred while displaying this page').count()) { fixtureGaps.push(`${name}-${w}-${theme}: ${(await page.locator('body').innerText()).split('\n').find((l) => /Error/.test(l)) ?? ''}`); continue; }
       await noSideScroll(page, `${name} ${w} ${theme}`);
+      // Side panels never spill: every text in a side card stays inside its card (long calendar names truncate).
+      if (name === 'insights') assert.equal(await page.getByRole('button', { name: /^Time$/ }).or(page.getByRole('tab', { name: /^Time$/ })).count(), 0, `insights ${w}: no Time section (Time has its own place)`);
+      if (name === 'time') assert.equal(at(page), '/time', 'Time opens its own page');
+      if (name === 'calendar') { const spill = await page.evaluate(() => [...document.querySelectorAll('.wp-side .wp-rc')].flatMap((card) => { const c = card.getBoundingClientRect();
+        return [...card.querySelectorAll('span, b, small')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.right > c.right + 1; }).map((e) => e.textContent); }));
+        assert.deepEqual(spill, [], `calendar ${w} ${theme}: side text stays in its card`); }
       if (w < 500) {
         if (!url.startsWith('/messages')) await page.getByTestId('fab').waitFor();
         await page.locator('.v2-phone-bar').waitFor();
@@ -234,6 +255,23 @@ try {
     assert.equal((await sp2.locator('.as-name').innerText()).trim(), 'ProjectTracker'); await sp2.waitForTimeout(900); await snap(sp2, 'splash-1440-light');
     checks.push('sign-in+splash');
     await so.close();
+    // Phone sign-in: no dead space above the e-mail field (an empty passkey / SSO slot must collapse).
+    for (const theme of ['light', 'dark']) {
+      const po = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+      await po.addInitScript((t) => { try { localStorage.setItem('pm_theme', t); } catch { /* private */ } }, theme);
+      await po.route('**/*', async (route) => { if (new URL(route.request().url()).pathname.startsWith('/api/')) { await route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }); return; } await handler(route); });
+      const pp = await po.newPage(); await pp.goto(`${origin}/login`); await pp.locator('input[type="email"]').first().waitFor();
+      const gap = await pp.evaluate(() => {
+        const email = document.querySelector('input[type="email"]'); const field = email.closest('label, .field, .form-group, div');
+        let prev = field; while (prev && !prev.previousElementSibling) prev = prev.parentElement;
+        const above = prev?.previousElementSibling; if (!above) return 0;
+        return Math.round(field.getBoundingClientRect().top - above.getBoundingClientRect().bottom);
+      });
+      assert.ok(gap <= 80, `sign-in 390 ${theme}: no blank band above the e-mail field (${gap}px)`);
+      assert.ok(await pp.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'sign-in 390: no sideways scroll');
+      await snap(pp, `sign-in-390-${theme}`); checks.push(`sign-in-390-${theme}`);
+      await po.close();
+    }
   }
 
   // Page errors from pages that fell over on the thin fixtures are theirs, not the shell's.
@@ -241,4 +279,5 @@ try {
   assert.deepEqual(own, []);
   await fs.writeFile(path.join(out, 'checks.json'), JSON.stringify({ checks, shots, fixtureGaps }, null, 2));
   console.log(JSON.stringify({ checks, shots: shots.length, fixtureGaps }));
+  assert.deepEqual(fixtureGaps, [], 'every page renders in the shell (no error screen)');
 } finally { await browser.close(); }

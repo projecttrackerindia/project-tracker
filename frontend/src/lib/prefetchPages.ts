@@ -12,7 +12,7 @@ export function prefetchPages() {
   started = true;
   const intent = (event: Event) => {
     const c = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
-    if (document.hidden || c?.saveData || /^(slow-)?2g$/.test(c?.effectiveType ?? '') || attempts >= 4) return;
+    if (document.hidden || c?.saveData || /^(slow-)?2g$/.test(c?.effectiveType ?? '') || attempts >= 8) return;
     const target = event.target as Element | null;
     const link = target?.closest?.('a[href]') as HTMLAnchorElement | null;
     if (!link || link.hasAttribute('download')) return;

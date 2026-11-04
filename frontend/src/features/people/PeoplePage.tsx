@@ -36,7 +36,8 @@ function PeopleBody({ section, sections }: { section: PeopleSection; sections: R
   const nav = useNavigate();
   const members = useMembers();
   const teams = useTeams();
-  const classicOrg = section === 'org' && !!params.get('view');
+  // The org chart is the earlier one (lines · teams · canvas, with all its interactions) inside the calm page; ?classic=1 keeps the old page around it.
+  const classicOrg = section === 'org' && params.get('classic') === '1';
   const manageTeams = section === 'teams' && params.get('manage') === '1';
   const people = members.data?.length ?? 0;
   const teamCount = teams.data?.length ?? 0;
@@ -51,10 +52,10 @@ function PeopleBody({ section, sections }: { section: PeopleSection; sections: R
           options={main.map((id) => ({ value: id, label: id === 'org' ? 'Org chart' : id === 'teams' ? 'Teams' : 'People' }))}
           onChange={(v) => nav(sections.find((s) => s.id === v)!.to)} />}
         <details className="cp-more"><summary aria-label="More in People">⋯</summary>
-          <div>{others.map((s) => <Link key={s.id} to={s.to}>{s.label}</Link>)}<Link to="/people/org?view=lines">Job roles &amp; lines</Link>{sections.some((s) => s.id === 'teams') && <Link to="/people/teams?manage=1">Manage teams</Link>}</div>
+          <div>{others.map((s) => <Link key={s.id} to={s.to}>{s.label}</Link>)}<Link to="/people/org?layout=canvas">Org canvas (move people)</Link>{sections.some((s) => s.id === 'teams') && <Link to="/people/teams?manage=1">Manage teams</Link>}</div>
         </details>
       </div>
-      {section === 'org' || (section === 'teams' && !manageTeams) ? <CalmOrgChart mode={section === 'teams' ? 'teams' : 'tree'} /> : (
+      {section === 'org' && params.get('layout') === 'canvas' ? <CalmOrgChart mode="tree" /> : section === 'org' ? <div className="cp-org"><OrgTreePage /></div> : section === 'teams' && !manageTeams ? <CalmOrgChart mode="teams" /> : (
         <Embedded>
           {section === 'directory' && <Directory />}
           {section === 'roles' && <RolesPage />}

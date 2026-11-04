@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { SavedView } from '../../api/platformApi';
-import { openPalette } from '../../components/CommandPalette';
+import { openPalette } from '../../components/paletteLink';
 import type { SheetRow } from './portfolioApi';
 import { addDays, dm, isOpen } from './planSheet';
 import { DUE_LABEL, STATUS_KEYS, STATUS_LABEL, statusKey, type DueKey, type StatusKey, type Tok } from './planSheetQuery';

@@ -1,0 +1,9 @@
+{
+  "_comment": "PLACEHOLDER ONLY. Push to the Android app goes through Firebase Cloud Messaging. Download the real google-services.json from the Firebase console (package in.projecttracker.app), base64 it and store it as the ANDROID_GOOGLE_SERVICES_BASE64 repository secret. Never commit the real file.",
+  "project_info": { "project_number": "000000000000", "project_id": "your-firebase-project", "storage_bucket": "your-firebase-project.appspot.com" },
+  "client": [{
+    "client_info": { "mobilesdk_app_id": "1:000000000000:android:0000000000000000", "android_client_info": { "package_name": "in.projecttracker.app" } },
+    "api_key": [{ "current_key": "REPLACE_ME" }]
+  }],
+  "configuration_version": "1"
+}

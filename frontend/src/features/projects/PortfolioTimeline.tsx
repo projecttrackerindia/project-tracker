@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { PortfolioSkeleton, usePhone, useProjectColour, useProjectFilter, useShellMenu } from './PortfolioShell';
+import { PortfolioSkeleton, usePhone, usePortfolio, useProjectColour, useProjectFilter, useShellMenu } from './PortfolioShell';
 import { AuraLine } from '../../components/calm';
+import { useClassic } from '../calm/classic';
 import { PortfolioPulse } from './PortfolioPulse';
 import { portfolioKeys, refreshPortfolio } from './portfolioShared';
-import { portfolioApi, type PortfolioFilter, type TimelineProject } from './portfolioApi';
+import { portfolioApi, type PortfolioFilter, type SheetRow, type TimelineProject } from './portfolioApi';
 import {
   dmy, dn, fitRange, iso, mergeMilestones, placeLabel, PX_PER_DAY, slipOf, startOf, statusOf, textW, ticks, TONE, type Zoom,
 } from './timelineLayout';
@@ -49,6 +50,13 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const colourOf = useProjectColour();
   const phone = usePhone();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // The calm lanes (demo shot 14) are the Timeline; ?classic=1 keeps the full Gantt with grouping, zoom tiers and hover cards.
+  const classic = useClassic();
+  void params;
+  const { work } = usePortfolio();
+  const [calmWeeks, setCalmWeeks] = useState<6 | 14>(6);
+  const lanesRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().slice(0, 10);
   const [zoom, setZoom] = useState<Zoom>('week');
   const [fit, setFit] = useState(true);
@@ -184,6 +192,11 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
 
 
   if (phone) return <div className="ptl ptl-phonewrap"><PhoneTimeline groups={groups} today={today} range={range} monthsLabel={monthsLabel} colourOf={colourOf} /><PortfolioPulse projects={projects} today={today} kinds={['coming', 'attention']} /></div>;
+
+  if (!classic) return (
+    <CalmLanes projects={projects} work={work} today={today} weeks={calmWeeks} setWeeks={setCalmWeeks} colourOf={colourOf} lanesRef={lanesRef}
+      drag={drag} setDrag={setDrag} pending={pending} setPending={setPending} ripple={ripple} dependents={dependents} save={save} navigate={navigate} />
+  );
 
   const hp = hover ? all.find((p) => p.id === hover.id) : null;
   const height = rows.length * ROW_H;
@@ -412,6 +425,125 @@ function PhoneTimeline({ groups, today, range, monthsLabel, colourOf }: { groups
           </div>
         );
       })}
+    </section>
+  );
+}
+
+interface Seg { name: string; start: string; due: string }
+/** A project's phases for its lane: the stages its tasks sit in, else its top-level tasks that have sub-tasks, else the project itself. */
+function phasesOf(p: TimelineProject, work: SheetRow[]): Seg[] {
+  const rows = work.filter((r) => r.projectId === p.id && r.kind !== 'project' && r.kind !== 'meeting');
+  const span = (xs: SheetRow[]) => {
+    const s = xs.map((r) => r.start ?? r.due).filter((x): x is string => !!x).sort()[0];
+    const e = xs.map((r) => r.due ?? r.start).filter((x): x is string => !!x).sort().pop();
+    return s && e ? { start: s.slice(0, 10), due: e.slice(0, 10) } : null;
+  };
+  const out: Seg[] = [];
+  const byStage = new Map<string, SheetRow[]>();
+  for (const r of rows) if (r.stage) byStage.set(r.stage, [...(byStage.get(r.stage) ?? []), r]);
+  if (byStage.size > 0) for (const [name, xs] of byStage) { const sp = span(xs); if (sp) out.push({ name, ...sp }); }
+  else {
+    const parents = rows.filter((r) => !r.parentId && rows.some((c) => c.parentId === r.id));
+    for (const ph of parents) { const sp = span([ph, ...rows.filter((c) => c.parentId === ph.id)]); if (sp) out.push({ name: ph.title, ...sp }); }
+  }
+  const s0 = startOf(p);
+  if (out.length === 0 && s0 && p.due) out.push({ name: p.name, start: s0, due: p.due });
+  return out.sort((a, b) => a.start.localeCompare(b.start)).slice(0, 6);
+}
+
+/**
+ * Portfolio › Timeline, calm (demo shot 14): one lane per project with its phases as soft tinted blocks, a Milestones lane, the red now line, and
+ * the Aura line with the 6 / 14 week links. Drag a lane's blocks to move the project; its dependents ripple, then the reason pop asks and saves.
+ */
+function CalmLanes({ projects, work, today, weeks, setWeeks, colourOf, lanesRef, drag, setDrag, pending, setPending, ripple, dependents, save, navigate }: {
+  projects: TimelineProject[]; work: SheetRow[]; today: string; weeks: 6 | 14; setWeeks: (w: 6 | 14) => void; colourOf: (id: string) => string;
+  lanesRef: React.RefObject<HTMLDivElement | null>; drag: { id: string; to: string; start?: string } | null; setDrag: (d: { id: string; to: string; start?: string } | null) => void;
+  pending: Pending | null; setPending: (p: Pending | null) => void; ripple: Map<string, number>; dependents: (id: string) => number;
+  save: (p: TimelineProject, to: string, reason: string | null, start?: string) => Promise<boolean>; navigate: (to: string) => void;
+}) {
+  const t = dn(today);
+  const from = t - ((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7) - 7;   // the Monday of last week
+  const days = weeks * 7, to = from + days;
+  const pct = (d: number) => `${((d - from) / days) * 100}%`;
+  const ticksAt = Array.from({ length: weeks === 6 ? 6 : 7 }, (_, i) => from + i * (weeks === 6 ? 7 : 14));
+  const [laneW, setLaneW] = useState(800);
+  useEffect(() => {
+    const el = lanesRef.current; if (!el) return;
+    const m = () => setLaneW(Math.max(200, el.clientWidth)); m();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(m); ro.observe(el); return () => ro.disconnect();
+  }, [lanesRef]);
+  const pxDay = laneW / days;
+  const moved = useRef(false);
+  const startMove = (e: ReactPointerEvent<HTMLDivElement>, p: TimelineProject) => {
+    const s0 = startOf(p);
+    if (!p.due || !s0 || e.button !== 0) return;
+    const el = e.currentTarget; const x0 = e.clientX; const due0 = dn(p.due), st0 = dn(s0);
+    let d = 0; moved.current = false;
+    const moveH = (ev: PointerEvent) => {
+      if (!moved.current && Math.abs(ev.clientX - x0) < 4) return;
+      if (!moved.current) { moved.current = true; try { el.setPointerCapture(ev.pointerId); } catch { /* the pointer already left */ } }
+      d = Math.round((ev.clientX - x0) / pxDay); setDrag({ id: p.id, to: iso(due0 + d), start: iso(st0 + d) });
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', moveH); window.removeEventListener('pointerup', up);
+      if (!moved.current) return;
+      setDrag(null);
+      if (d !== 0) setPending({ p, to: iso(due0 + d), start: iso(st0 + d), x: ((due0 + d - from) / days) * laneW, y: ev.clientY });
+    };
+    window.addEventListener('pointermove', moveH); window.addEventListener('pointerup', up);
+  };
+  const ms = projects.flatMap((p) => mergeMilestones(p.milestones).map((m) => ({ ...m, pid: p.id }))).filter((m) => dn(m.due) >= from && dn(m.due) < to);
+  const pendIdx = pending ? projects.findIndex((p) => p.id === pending.p.id) : -1;
+  return (
+    <section className="ptl ctl" aria-label="Timeline">
+      <div className="ctl-pane">
+        <div className="ctl-scale" aria-hidden="true">{ticksAt.map((d) => <span key={d} style={{ left: pct(d) }}>{dmy(iso(d)).split(' ').reverse().join(' ')}</span>)}</div>
+        <div className="ctl-body">
+          {projects.map((p) => {
+            const live = drag?.id === p.id ? drag : pending?.p.id === p.id ? { to: pending.to, start: pending.start } : null;
+            const shiftD = live && p.due ? dn(live.to) - dn(p.due) : (ripple.get(p.id) ?? 0);
+            const segs = phasesOf(p, work);
+            const st = statusOf(p, today);
+            return (
+              <div key={p.id} className="ctl-lane">
+                <button type="button" className={`ctl-name pc-${colourOf(p.id)}`} onClick={() => navigate(`/work/projects/${p.id}`)} title={p.name}><i aria-hidden="true" />{p.name}</button>
+                <div className={`ctl-track ptl-rip ${ripple.has(p.id) ? 'on' : ''}`} ref={p === projects[0] ? lanesRef : undefined}
+                  style={shiftD ? { transform: `translateX(${shiftD * pxDay}px)` } : undefined}>
+                  <div className={`ptl-bar ctl-hit pc-${colourOf(p.id)} ${live ? 'drag' : ''}`} role="button" tabIndex={0}
+                    aria-label={`${p.name}, ${st.toLowerCase()}, ${dmy(startOf(p))} to ${dmy(p.due)}, ${p.progress}% done`}
+                    onPointerDown={(e) => startMove(e, p)} onClick={() => { if (!moved.current) navigate(`/work/projects/${p.id}`); moved.current = false; }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/work/projects/${p.id}`); }}
+                    style={(() => { const s = segs[0]?.start, e = segs.at(-1)?.due; if (!s || !e) return { display: 'none' };
+                      const a = Math.max(from, dn(s)), b = Math.min(to, dn(e) + 1); return b <= a ? { display: 'none' } : { left: pct(a), width: `${((b - a) / days) * 100}%` }; })()} />
+                  {segs.map((g) => {
+                    const a = Math.max(from, dn(g.start)), b = Math.min(to, dn(g.due) + 1);
+                    if (b <= a) return null;
+                    return <span key={g.name + g.start} className={`ctl-seg pc-${colourOf(p.id)} ${st === 'Late' ? 'late' : st === 'At risk' ? 'risk' : ''}`} style={{ left: pct(a), width: `calc(${((b - a) / days) * 100}% - 4px)` }}>{g.name}</span>;
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          <div className="ctl-lane ctl-ms">
+            <span className="ctl-name muted">Milestones</span>
+            <div className="ctl-track">{ms.map((m, i) => <span key={`${m.pid}${m.due}`} className={`ctl-msi pc-${colourOf(m.pid)}`} style={{ left: pct(dn(m.due)), top: 8 + (i % 2) * 26 }} title={`${m.names.join(', ')} · ${dmy(m.due)}`}><i aria-hidden="true" />{m.names.join(', ')}</span>)}</div>
+          </div>
+          <i className="ctl-now" style={{ left: `calc(var(--ctl-name) + (100% - var(--ctl-name)) * ${(t - from) / days})` }} aria-hidden="true" />
+          {pending && <div className="ctl-popwrap" style={{ top: Math.max(0, pendIdx) * 0 }}>
+            <ReplanPop pending={pending} W={laneW} y={0} dependents={dependents(pending.p.id)} onCancel={() => setPending(null)}
+              onSave={async (reason) => { const ok = await save(pending.p, pending.to, reason, pending.start); if (ok) setPending(null); }} />
+          </div>}
+          {ripple.size > 0 && <span className="ptl-ripnote" role="status">{ripple.size} dependent{ripple.size === 1 ? '' : 's'} ripple +{[...ripple.values()][0]}d</span>}
+        </div>
+        <div className="ctl-aura">
+          <AuraLine text={<>Drag a bar to move it; dependents ripple.</>} />
+          <span className="ptl-zoom" role="group" aria-label="Zoom">
+            <button type="button" aria-pressed={weeks === 6} onClick={() => setWeeks(6)}>6 weeks</button>
+            <button type="button" aria-pressed={weeks === 14} onClick={() => setWeeks(14)}>14 weeks</button>
+          </span>
+        </div>
+      </div>
     </section>
   );
 }

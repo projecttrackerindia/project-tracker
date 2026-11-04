@@ -117,6 +117,13 @@ public sealed class RecordingChangeFeed : IChangeFeed
     public void Publish(IReadOnlyList<ChangeEvent> changes) { foreach (var c in changes) Published.Enqueue(c); }
 }
 
+/// <summary>Records which new notifications the app would announce to their recipients' open tabs.</summary>
+public sealed class RecordingNotificationFeed : INotificationFeed
+{
+    public ConcurrentQueue<NotificationAnnouncement> Announced { get; } = new();
+    public void Announce(IReadOnlyList<NotificationAnnouncement> created) { foreach (var n in created) Announced.Enqueue(n); }
+}
+
 /// <summary>
 /// A payment provider for tests that can behave like the simulated one (the default: everything succeeds at once) or like a hosted one such as Razorpay
 /// (<see cref="Hosted"/> = true): the owner "pays in a window", and signatures are the real Razorpay HMACs under known secrets.

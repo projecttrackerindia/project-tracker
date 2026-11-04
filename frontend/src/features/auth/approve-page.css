@@ -1,0 +1,10 @@
+/* Approve a sign-in (calm): one centred card that fills the space it needs. */
+.sa-page { display: grid; place-items: center; min-height: calc(100vh - 140px); }
+.sa-card { margin: 8vh auto 0; width: min(520px, 100%); padding: 36px 32px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+.sa-tile { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--calm-tint); color: var(--calm-tint-ink); }
+.sa-tile.no { background: color-mix(in srgb, var(--calm-red) 12%, transparent); color: var(--calm-red-text); }
+.sa-title { margin: 4px 0 0; font-size: 32px; font-weight: 300; letter-spacing: -.025em; line-height: 1.12; color: var(--calm-ink); }
+.sa-title em { display: block; font-style: normal; color: var(--calm-ink3); font-size: 20px; margin-top: 6px; }
+.sa-note { margin: 0; color: var(--calm-ink2); font-size: 14px; }
+.sa-back { margin-top: 6px; }
+@media (max-width: 760px) { .sa-card { margin-top: 8px; padding: 24px 20px; gap: 10px; } .sa-page { min-height: 0; } .sa-title { font-size: 26px; } }

@@ -258,10 +258,10 @@ const assist = `<div class="ast" ${reveal()}>
 <li>${tick}<span><b>Read only, or read and make changes</b>, your choice per connection.</span></li>
 <li>${tick}<span><b>On every plan</b>, including Free.</span></li></ul>
 <a class="btn btn-ghost" href="/features/connect-ai/">How to connect</a></div>
-<div class="ast-stage" role="img" aria-label="An assistant is asked what is overdue, calls Project Tracker and answers with three tasks">
+<div class="ast-stage" role="img" aria-label="An assistant is asked what is overdue, calls ProjectTracker and answers with three tasks">
 <div class="ast-win"><div class="ast-bar"><i></i><i></i><i></i><span>Your AI assistant</span></div>
 <p class="ast-q">What is overdue for me this week?</p>
-<div class="ast-tool">${icon('link', 14)}<span>Project Tracker · my_work</span><b>done</b></div>
+<div class="ast-tool">${icon('link', 14)}<span>ProjectTracker · my_work</span><b>done</b></div>
 <div class="ast-a"><p>You have 3 overdue tasks:</p><ul><li><b>Review login copy</b> · Customer portal · 2 days</li><li><b>Update release notes</b> · Mobile app v2 · 1 day</li><li><b>Share test plan</b> · Data migration · today</li></ul><span class="ast-act">Move them to Friday?</span></div>
 </div></div></div>`;
 
@@ -324,7 +324,7 @@ const apps = () => `<div class="apps" ${reveal()}><div class="center"><p class="
 ${getTile('windows', LOGO.windows, 'win', 'Windows', 'Windows 10 and 11', dlLink(DOWNLOAD_FILES.windows), '', 0)}
 ${getTile('mac', LOGO.apple, '', 'macOS', 'Apple silicon and Intel', dlLink(DOWNLOAD_FILES.macArm), `Intel Mac? <a href="${dlLink(DOWNLOAD_FILES.macIntel)}">Download</a>`, 1)}
 ${getTile('ios', LOGO.appstore, 'as', 'iPhone and iPad', 'Add to your Home Screen', '/download/#iphone', '', 2)}
-${getTile('android', LOGO.android, 'droid', 'Android', process.env.SITE_ANDROID_APK === '1' ? 'Android 7 or later' : 'Install from Chrome', process.env.SITE_ANDROID_APK === '1' ? dlLink(DOWNLOAD_FILES.android) : '/download/#android', '', 3)}
+${getTile('android', LOGO.android, 'droid', 'Android', process.env.SITE_ANDROID_APK !== '0' ? 'Android 7 or later' : 'Install from Chrome', process.env.SITE_ANDROID_APK !== '0' ? dlLink(DOWNLOAD_FILES.android) : '/download/#android', '', 3)}
 </div><p class="note2 center" style="margin-top:22px">Linux and the browser app are on the <a href="/download/"><strong>download page</strong></a>.</p></div>`;
 
 const section = (inner: string, pad = true) => `<section class="block"${pad ? '' : ' style="padding-top:0"'}><div class="wrap">${inner}</div></section>`;
@@ -390,16 +390,15 @@ const downloadBody = () => `<div class="wrap">
 ${dlCard('windows', OS_ICONS.windows, 'Windows', 'Windows 10 and 11, 64-bit', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.windows)}">Download for Windows</a>`,
   '<details class="dnote"><summary>First time you open it</summary><p>Windows may say “Windows protected your PC”. This happens with every app that has not paid for a publisher certificate. Choose <b>More info</b>, then <b>Run anyway</b>.</p></details>', 0)}
 ${dlCard('mac', OS_ICONS.mac, 'macOS', 'macOS 11 or later', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.macArm)}">Apple silicon (M1 and later)</a><a class="btn btn-ghost" href="${dlLink(DOWNLOAD_FILES.macIntel)}">Intel Macs</a>`,
-  '<details class="dnote"><summary>First time you open it</summary><p>Open the downloaded file and drag Project Tracker to Applications. If macOS says the app cannot be opened, <b>right-click it, choose Open</b>, then Open again. If it says the app is damaged, run <code>xattr -cr "/Applications/Project Tracker.app"</code> in Terminal once.</p></details>', 1)}
+  '<details class="dnote"><summary>First time you open it</summary><p>Open the downloaded file and drag ProjectTracker to Applications. If macOS says the app cannot be opened, <b>right-click it, choose Open</b>, then Open again. If it says the app is damaged, run <code>xattr -cr "/Applications/ProjectTracker.app"</code> in Terminal once.</p></details>', 1)}
 ${dlCard('linux', OS_ICONS.linux, 'Linux', 'Most 64-bit distributions', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.linuxAppImage)}">AppImage</a><a class="btn btn-ghost" href="${dlLink(DOWNLOAD_FILES.linuxDeb)}">.deb (Ubuntu, Debian)</a>`,
   '<details class="dnote"><summary>How to run it</summary><p>AppImage: make it executable (<code>chmod +x ProjectTracker.AppImage</code>) and open it. Debian and Ubuntu: <code>sudo apt install ./ProjectTracker.deb</code>.</p></details>', 2)}
-${process.env.SITE_ANDROID_APK === '1'
-  ? `${dlCard('android', OS_ICONS.android, 'Android', 'Android 7 or later', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.android)}">Download the app (APK)</a>`,
-  '<details class="dnote"><summary>How to install it</summary><p>Open the downloaded file. Android asks once to allow installs from your browser: allow it for this install only. Then sign in and turn on alerts in <b>Account, Mobile app</b>: reminders, mentions and sign-in requests reach you even when the app is closed.</p></details>', 3)}`
-  : `${dlCard('android', OS_ICONS.android, 'Android', 'Android 7 or later', '<a class="btn btn-primary" href="/login">Open in Chrome</a>',
-  '<details class="dnote" open><summary>Install it from Chrome</summary><p>Open the site in Chrome, tap the <b>menu</b> (three dots), then <b>Install app</b> (or <b>Add to Home screen</b>). It opens full-screen like an app, straight at sign-in, and can send alerts once you turn them on in <b>Account, Mobile app</b>.</p></details>', 3)}`}
+${dlCard('android', OS_ICONS.android, 'Android', 'Android 7 or later', process.env.SITE_ANDROID_APK !== '0'
+  ? `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.android)}">Download the app (APK)</a><a class="btn btn-ghost" href="/login">Or install from Chrome</a>`
+  : '<a class="btn btn-primary" href="/login">Open in Chrome</a>',
+  '<details class="dnote" open><summary>How to install it</summary><p><b>APK:</b> open the downloaded file. Android asks once to allow installs from your browser: allow it for this install only. <b>From Chrome:</b> open the site, tap the <b>menu</b> (three dots), then <b>Install app</b>. Either way, sign in and turn on alerts in <b>Account, Mobile app</b>.</p></details>', 3)}
 ${dlCard('ios', OS_ICONS.ios, 'iPhone and iPad', 'iOS 16.4 or later', '<a class="btn btn-primary" href="/login">Open in Safari</a>',
-  '<details class="dnote" open><summary>Add it to your Home Screen</summary><p>In Safari tap <b>Share</b>, then <b>Add to Home Screen</b>. Open it from there to get full-screen use and alerts. Apple does not allow apps to be installed from a website, so this is the way to get it on an iPhone.</p></details>', 4)}
+  '<details class="dnote" open><summary>Add it to your Home Screen</summary><p>In Safari tap <b>Share</b>, then <b>Add to Home Screen</b>. Open it from there for full screen and alerts.</p></details><p class="dsub" style="margin-top:10px">The native iPhone app is coming through the App Store, with TestFlight first. Until then the Home Screen app is the full product.</p>', 4)}
 ${dlCard('web', OS_ICONS.web, 'In your browser', 'Nothing to install', '<a class="btn btn-ghost" href="/login">Sign in</a>',
   '<details class="dnote"><summary>Install from Chrome or Edge</summary><p>On a computer, Chrome and Edge show an install icon in the address bar. The result looks and works like the desktop app.</p></details>', 5)}
 </div>
@@ -453,7 +452,7 @@ const bodies: Record<string, () => string> = {
   '/contact/': () => `<div class="wrap"><div class="grid">
 <article class="card" ${reveal(0)}><h3>E-mail</h3><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li>Sales, billing, help, account and security questions.</li><li>We reply within one working day.</li></ul></article>
 <article class="card" ${reveal(1)}><h3>Phone</h3><ul><li><a href="tel:${SITE.phoneHref}">${SITE.phone}</a></li><li>Monday to Saturday, 10:00 to 18:00 IST.</li><li>Outside these hours, e-mail us and we call back.</li></ul></article>
-<article class="card" ${reveal(2)}><h3>Business</h3><ul><li>Project Tracker, founded by ${SITE.founder}.</li><li>Hyderabad, Telangana, India.</li><li>Service hosted on Google Cloud, Mumbai.</li></ul></article>
+<article class="card" ${reveal(2)}><h3>Business</h3><ul><li>ProjectTracker, founded by ${SITE.founder}.</li><li>Hyderabad, Telangana, India.</li><li>Service hosted on Google Cloud, Mumbai.</li></ul></article>
 </div><div style="height:30px"></div>${band('Report a security problem', `Write to ${SITE.securityEmail}; see the Security page for details.`)}</div>`,
   '/refund-policy/': () => `<div class="wrap"><article class="prose">
 <h2>Cancelling a plan</h2>
@@ -466,7 +465,7 @@ const bodies: Record<string, () => string> = {
 </article><div style="height:50px"></div>${band('Questions about a payment?', `Write to ${SITE.supportEmail} or call ${SITE.phone}.`)}</div>`,
   '/shipping-policy/': () => `<div class="wrap"><article class="prose">
 <h2>Nothing is shipped</h2>
-<p>Project Tracker is software used online, in the browser and in our apps. We do not sell or ship physical goods, so there are no shipping charges, delivery addresses or courier tracking.</p>
+<p>ProjectTracker is software used online, in the browser and in our apps. We do not sell or ship physical goods, so there are no shipping charges, delivery addresses or courier tracking.</p>
 <h2>How your plan is delivered</h2>
 <ul><li>Free plans are available as soon as you create your account.</li><li>Paid plans are switched on in your workspace as soon as the payment is confirmed, usually within minutes. A plan paid by UPI QR is switched on once we have matched the payment, normally within a few working hours.</li><li>An invoice is sent by e-mail and is always available in <b>Billing</b>.</li></ul>
 <h2>Exchanges</h2>
@@ -477,9 +476,9 @@ const bodies: Record<string, () => string> = {
   '/about/': () => `<div class="wrap"><article class="prose">
 <h2>Why we started</h2>
 <p>Most teams we met ran their projects from spreadsheets, their support from a shared inbox and their documentation from folders nobody could find. Each tool was fine on its own; together they meant chasing people for updates and losing the reason behind every decision.</p>
-<p>Project Tracker brings that work into one workspace: projects and timesheets, an operations desk with service levels, documentation for every API, and an AI assistant that answers from your own data, priced in rupees and hosted in India.</p>
+<p>ProjectTracker brings that work into one workspace: projects and timesheets, an operations desk with service levels, documentation for every API, and an AI assistant that answers from your own data, priced in rupees and hosted in India.</p>
 <h2>The founder</h2>
-<p><b>${SITE.founder}</b>, Founder. An integration and software engineer who has spent years building and running API platforms and internal tools for business teams, Prasanna started Project Tracker to give Indian companies the kind of delivery and support tooling that is usually built only for large enterprises: secure by default, simple to adopt and fair in price.</p>
+<p><b>${SITE.founder}</b>, Founder. An integration and software engineer who has spent years building and running API platforms and internal tools for business teams, Prasanna started ProjectTracker to give Indian companies the kind of delivery and support tooling that is usually built only for large enterprises: secure by default, simple to adopt and fair in price.</p>
 <h2>What we believe</h2>
 <ul><li>Your data belongs to you: export everything at any time, and delete your account whenever you choose.</li><li>Security is not a premium feature: passkeys, two-step sign-in and workspace isolation are on every plan.</li><li>AI should help, not decide: the assistant proposes, and a person confirms.</li><li>Software should fit how Indian teams work: rupee pricing, local languages and data kept in India.</li></ul>
 <h2>Contact us</h2>
