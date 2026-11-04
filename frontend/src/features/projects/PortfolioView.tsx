@@ -41,7 +41,7 @@ const RISK_REVIEW = 'Portfolio risk review: rank the projects most likely to mis
 export function PortfolioView(_props: { switcher?: ReactNode }) {
   const ai = useAi();
   const { teamId } = useTeamLens();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const v = params.get('mode') ?? params.get('view');
   // Action items are a Portfolio tab (and the Plan sheet's first folder tab): an old link (?actions=1) opens the tab.
@@ -67,6 +67,8 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
     if (url.mode === 'sheet') return shared;
     return [
       { label: n ? `Filters · ${n}` : 'Filters', icon: 'search', hint: 'Lead, group, health and due dates', onSelect: () => setFiltersOpen((x) => !x) },
+      ...(url.mode === 'overview' || url.mode === 'timeline' ? [{ label: params.get('classic') === '1' ? 'Back to the calm view' : url.mode === 'overview' ? 'Board in detail · money and capacity' : 'Full Gantt', icon: 'list' as const,
+        onSelect: () => setParams((cur) => { const n = new URLSearchParams(cur); if (n.get('classic') === '1') n.delete('classic'); else n.set('classic', '1'); return n; }) }] : []),
       { label: 'Export to Excel', icon: 'download', onSelect: () => void exportAs(url.filter, 'xlsx') },
       { label: 'Export to PDF', icon: 'download', onSelect: () => void exportAs(url.filter, 'pdf') },
       ...shared,
@@ -81,7 +83,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
           : url.mode === 'timeline' ? <PortfolioTimeline filter={url.filter} />
           : url.mode === 'capacity' ? <CapacityPlanView />
           : url.mode === 'board' ? <PortfolioTaskBoard />
-          : <PortfolioOverview ai={ai} more={<BoardTab ai={ai} />} />}</Suspense>}
+          : <PortfolioOverview ai={ai} more={params.get('classic') === '1' ? <BoardTab ai={ai} /> : null} />}</Suspense>}
       </PortfolioShell>
     </div>
   );

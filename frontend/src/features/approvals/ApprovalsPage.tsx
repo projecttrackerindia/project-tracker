@@ -13,7 +13,13 @@ import { ChainCell } from './RequestSheet';
 import { TypeTile } from './TypeIcon';
 import './approvals.css';
 
-const first = (name: string) => name.split(' ')[0] || name;
+const first = (name: string | null | undefined) => (name ?? '').split(' ')[0] || name || 'Someone';
+const NOBODY = { id: '', name: 'Someone' };
+/** One request with every list and person filled in, so a missing approver or field shows as "Someone" instead of breaking the page. */
+function safe(a: Approval): Approval {
+  return { ...a, requester: a.requester ?? NOBODY, links: a.links ?? [], payload: a.payload ?? {}, events: a.events ?? null,
+    steps: (a.steps ?? []).map((s) => ({ ...s, approver: s.approver ?? NOBODY })) };
+}
 const hm = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 /** "35m", "2h", "Mon", "29 Oct": how long ago, the way the list says it. */
@@ -99,12 +105,15 @@ export function ApprovalsPage() {
 
   if (list.isLoading && !list.data) return <PageLoader />;
   if (list.error && !list.data) return <ErrorState error={list.error} retry={() => list.refetch()} />;
-  const data = list.data!;
+  // Every part of the answer is read defensively: an older server (or a request whose approver left) must never blank the page.
+  const raw = list.data!;
+  const data: ApprovalList = { ...raw, items: (raw.items ?? []).map(safe), counts: { needsMe: 0, mine: 0, all: 0, history: 0, ...(raw.counts as Partial<ApprovalList['counts']> | undefined) },
+    week: { approved: 0, rejected: 0, expired: 0, medianMinutes: null, ...(raw.week as Partial<ApprovalList['week']> | undefined) }, byType: raw.byType ?? {}, expiringToday: raw.expiringToday ?? 0, elsewhere: raw.elsewhere ?? [] };
   const c = data.counts;
   const items = data.items;
   const hero = view === 'needs' ? items[0] : undefined;
   const rest = hero ? items.slice(1) : items;
-  const open = openId ? detail.data ?? items.find((x) => x.id === openId) : undefined;
+  const open = openId ? (detail.data ? safe(detail.data) : undefined) ?? items.find((x) => x.id === openId) : undefined;
 
   const head = view === 'history' ? ['History.', 'Every decision, with who and why.']
     : view === 'mine' ? [c.mine ? `${c.mine} waiting on others.` : 'Nothing waiting on others.', c.mine ? 'You asked for these.' : 'Ask with Request approval.']
