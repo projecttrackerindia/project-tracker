@@ -165,9 +165,11 @@ button.calm-rr:focus-visible { outline: 2px solid var(--calm-accent); outline-of
   background: var(--calm-av, var(--calm-p1)); letter-spacing: 0; }
 .calm-av.m { width: 30px; height: 30px; font-size: 11px; }
 @media (max-width: 1599px) { .calm-rail { width: 340px; } }
-@media (max-width: 1099px) {
+/* Two columns down to 900px (the rail narrows); below that the rail's cards tile the full width under the main column, one column on a phone. */
+@media (max-width: 1279px) { .calm-rail { width: 300px; } }
+@media (max-width: 899px) {
   .calm-split { flex-direction: column; }
-  .calm-rail { width: 100%; }
+  .calm-rail { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); align-items: start; }
 }
 
 /* CalmMeter / CalmChip / calm list rows (demo .mb, .chip, .apr, .one) */
