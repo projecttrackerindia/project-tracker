@@ -22,6 +22,10 @@ public class ActionItemsController(ActionItemService items) : ApiControllerBase
     [HttpPut("{id:guid}/status")]
     public async Task<IActionResult> SetStatus(Guid projectId, Guid id, [FromBody] SetActionItemStatusRequest req, CancellationToken ct) => Ok(await items.SetStatusAsync(projectId, id, req, ct));
 
+    /// <summary>Undo of a delete (the person who deleted it, or a manager of the project).</summary>
+    [HttpPost("{id:guid}/restore")]
+    public async Task<IActionResult> Restore(Guid projectId, Guid id, CancellationToken ct) => Ok(await items.RestoreAsync(projectId, id, ct));
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid projectId, Guid id, CancellationToken ct)
     {

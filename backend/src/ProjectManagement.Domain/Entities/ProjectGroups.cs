@@ -29,4 +29,13 @@ public class DueDateChange : TenantEntity, ITenantScoped
     public string? Reason { get; set; }
     /// <summary>What the delivery was waiting on (another task, a client answer, a vendor ...), in the person's own words.</summary>
     public string? Dependency { get; set; }
+    /// <summary>
+    /// What moved, when it is not a project's or a task's due date (the rows written before these columns existed): actionitem, milestone or
+    /// stage. Null = a project (TaskId null) or a task (TaskId set), as before.
+    /// </summary>
+    public string? EntityType { get; set; }
+    /// <summary>The item whose date moved (also set for tasks and projects on new rows); a milestone or a phase is not a work item, so it is kept here, not in TaskId.</summary>
+    public Guid? EntityId { get; set; }
+    /// <summary>Which date: null = the due (end) date, as before; "start" for a start date, "end" for a phase's planned end.</summary>
+    public string? Field { get; set; }
 }

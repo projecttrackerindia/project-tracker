@@ -48,6 +48,44 @@ public static class DeletedWorkTraces
         }
     }
 
+    /// <summary>
+    /// Undo of a delete: the notifications that delete archived (the same moment, <paramref name="deletedAt"/>) come back to the inbox; the ones the
+    /// delete also marked read are unread again. Notices the person archived themselves stay archived.
+    /// </summary>
+    public static async Task<int> UnarchiveNotificationsAsync(IAppDbContext db, DateTime? deletedAt, Guid? projectId, IReadOnlyCollection<Guid> workIds, CancellationToken ct)
+    {
+        if (deletedAt is not { } at) return 0;
+        var n = 0;
+        foreach (var pattern in LinkPatterns(projectId, workIds))
+        {
+            var p = pattern;
+            var rows = await db.Notifications.Where(x => x.ArchivedAt == at && x.Link != null && x.Link.Contains(p)).ToListAsync(ct);
+            foreach (var x in rows) { x.ArchivedAt = null; if (x.ReadAt == at) x.ReadAt = null; n++; }
+        }
+        return n;
+    }
+
+    /// <summary>Undo of a project delete: its open reminders that the delete orphaned run again (the planner reschedules them).</summary>
+    public static async Task<int> ReviveRemindersAsync(IAppDbContext db, DateTime now, Guid projectId, IReadOnlyCollection<Guid> workIds, CancellationToken ct)
+    {
+        var rows = await db.Reminders.Where(r => r.TargetProjectId == projectId && r.State == ReminderState.Cancelled && r.LockToken == ReminderSync.Orphaned).ToListAsync(ct);
+        foreach (var part in workIds.Chunk(Chunk))
+        {
+            var ids = part.ToList();
+            rows.AddRange(await db.Reminders.Where(r => r.TargetId != null && ids.Contains(r.TargetId.Value) && r.State == ReminderState.Cancelled && r.LockToken == ReminderSync.Orphaned).ToListAsync(ct));
+        }
+        var n = 0;
+        foreach (var r in rows.DistinctBy(r => r.Id))
+        {
+            // Back to waiting, or "needs you" when its time passed meanwhile (the same rule as a restored task's reminders).
+            r.LockToken = null;
+            if (r.NextFireAt is { } next && next > now) r.State = ReminderState.Scheduled;
+            else { r.State = ReminderState.Fired; r.LastFiredAt ??= now; }
+            n++;
+        }
+        return n;
+    }
+
     /// <summary>Notifications that open the deleted project or item: archived (and read), never removed.</summary>
     public static async Task<int> ArchiveNotificationsAsync(IAppDbContext db, DateTime now, Guid? projectId, IReadOnlyCollection<Guid> workIds, CancellationToken ct)
     {

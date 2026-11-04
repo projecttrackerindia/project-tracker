@@ -69,6 +69,10 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
         return NoContent();
     }
 
+    /// <summary>Undo of a delete: the project with the tasks and action items deleted with it (the person who deleted it, or an owner/admin).</summary>
+    [HttpPost("{id:guid}/restore")]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken ct) => Ok(await projects.RestoreAsync(id, ct));
+
     // ---- members
     [HttpGet("{id:guid}/members")]
     public async Task<IActionResult> Members(Guid id, CancellationToken ct)

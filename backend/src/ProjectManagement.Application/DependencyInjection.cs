@@ -212,6 +212,8 @@ public static class DependencyInjection
         services.AddScoped<AccessService>();
         services.AddScoped<ProjectService>();
         services.AddScoped<DueDateHistory>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkHistory.WorkActivityService>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices>();
         services.AddScoped<ProjectGroupService>();
         services.AddScoped<ProjectStatusService>();
         services.AddScoped<WeeklyReportService>();

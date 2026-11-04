@@ -30,6 +30,8 @@ public class ReminderSync(IAppDbContext db, AppClock clock, NotificationService 
     public static readonly Guid Orphaned = new("0a0a0a0a-0000-4000-8000-00000000de1e");
     /// <summary>Stopped because the due date it was counted from was cleared; revived when the work has a due date again.</summary>
     public static readonly Guid DuePaused = new("0a0a0a0a-0000-4000-8000-0000000d0e00");
+    /// <summary>Deleted by the person (kept so Undo can bring it back; listed nowhere).</summary>
+    public static readonly Guid Deleted = new("0a0a0a0a-0000-4000-8000-0000000de1e7");
 
     private static readonly ReminderSource[] Automatic = [ReminderSource.DueDate, ReminderSource.Overdue, ReminderSource.Escalation];
 

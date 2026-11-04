@@ -454,7 +454,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     version,
                     p.Has("milestoneId") ? p.Uuid("milestoneId") : t.MilestoneId,
                     p.Has("stageId") ? p.Uuid("stageId") : t.StageId,
-                    p.Text("dueDateReason"), p.Text("dueDateDependency"), p.Time("dueTime"), ClearsTime(p)), ct);
+                    p.Text("dueDateReason"), p.Text("dueDateDependency"), p.Time("dueTime"), ClearsTime(p), p.Text("extensionReason")), ct);
                 break;
             }
             case StageIssue si:
@@ -512,7 +512,7 @@ public partial class WorkItemApiService(IAppDbContext db, ICurrentContext ctx, A
                     p.Has("assigneeId") ? p.Uuid("assigneeId") : a.Assignee?.Id,
                     p.Has("dueDate") ? p.Day("dueDate") : a.DueDate,
                     p.Has("priority") ? p.Choice<Priority>("priority") ?? a.Priority : a.Priority,
-                    status, version, p.Time("dueTime"), ClearsTime(p)), ct);
+                    status, version, p.Time("dueTime"), ClearsTime(p), DueDateHistory.ReasonOf(p.Text("extensionReason"), p.Text("dueDateReason"))), ct);
                 break;
             }
             default:

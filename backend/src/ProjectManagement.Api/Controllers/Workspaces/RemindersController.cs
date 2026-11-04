@@ -59,6 +59,10 @@ public class RemindersController(ReminderService reminders, ReminderSuggestionSe
     [HttpPost("{id:guid}/reopen")]
     public async Task<IActionResult> Reopen(Guid id, CancellationToken ct) => Ok(await reminders.ReopenAsync(id, ct));
 
+    /// <summary>Undo of a delete (the person reminded, or who set it).</summary>
+    [HttpPost("{id:guid}/restore")]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken ct) => Ok(await reminders.RestoreAsync(id, ct));
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

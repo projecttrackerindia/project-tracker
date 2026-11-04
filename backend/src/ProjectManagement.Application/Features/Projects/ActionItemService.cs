@@ -23,7 +23,7 @@ public record CreateActionItemRequest(string? Title, string? Details, Guid? Assi
 /// <param name="Version">The version the caller saw; when given, a save over someone else's newer change is refused (409).</param>
 /// <param name="DueTime">Left out keeps the current due time (cleared with the date, or with <paramref name="ClearDueTime"/>).</param>
 public record UpdateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority Priority, ActionItemStatus Status, int? Version = null,
-    TimeOnly? DueTime = null, bool ClearDueTime = false);
+    TimeOnly? DueTime = null, bool ClearDueTime = false, string? ExtensionReason = null);
 public record SetActionItemStatusRequest(ActionItemStatus Status, int? Version = null);
 
 /// <summary>
@@ -33,9 +33,19 @@ public record SetActionItemStatusRequest(ActionItemStatus Status, int? Version =
 /// may create tasks can add them; the person who added an item, the person it is assigned to and managers can change it.
 /// </summary>
 public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions, ProjectAccess access, NotificationService notifications,
-    ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync)
+    ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync, DueDateHistory dueHistory,
+    ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices notices)
 {
     private const int MaxListed = 500;
+    /// <summary>The same action item sent again this soon (a double Enter, a retried request, the same minutes read twice) is the one already saved.</summary>
+    public const int DuplicateWindowSeconds = 10;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> CreateLocks = new();
+
+    private static ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget Notice(Guid projectId, WorkTask item) =>
+        new(item.Id, $"Action item “{(item.Title.Length > 60 ? item.Title[..60] + "…" : item.Title)}”", LinkOf(projectId, item.Id), NotificationType.TaskUpdated);
+
+    /// <summary>Who hears about an action item's changes: its owner, who added it and who reported it (never the person who made the change).</summary>
+    private static Guid?[] People(WorkTask item, Guid? previousOwner = null) => [item.AssigneeId, previousOwner, item.CreatedBy, item.ReporterId];
 
     private static ActionItemStatus ToApi(WorkTaskStatus s) => s switch
     {
@@ -163,6 +173,35 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var details = CleanDetails(req.Details);
         await CheckAssigneeAsync(projectId, req.AssigneeId, ct);
 
+        // Idempotent: the same item from the same person in the same project a moment ago is returned instead of saved twice. One lock per
+        // item key keeps two requests racing on this server from both getting past the check.
+        var me = ctx.RequireUserId();
+        var lockKey = $"{project.TenantId:N}:{projectId:N}:{me:N}:{title.ToLowerInvariant()}:{req.AssigneeId:N}:{req.DueDate:yyyyMMdd}";
+        var gate = CreateLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (await DuplicateOfAsync(projectId, me, title, req.AssigneeId, req.DueDate, ct) is { } already) return await OneAsync(project, already, ct);
+            return await CreateNewAsync(project, projectId, title, details, req, ct);
+        }
+        finally
+        {
+            gate.Release();
+            if (gate.CurrentCount == 1) CreateLocks.TryRemove(new KeyValuePair<string, SemaphoreSlim>(lockKey, gate));
+        }
+    }
+
+    /// <summary>An action item saved by this person in this project in the last few seconds with the same title, owner and due date.</summary>
+    private async Task<WorkTask?> DuplicateOfAsync(Guid projectId, Guid me, string title, Guid? assigneeId, DateOnly? due, CancellationToken ct)
+    {
+        var since = clock.Now.AddSeconds(-DuplicateWindowSeconds);
+        var lower = title.ToLower();
+        return await Items(projectId).Where(w => w.CreatedBy == me && w.CreatedAt >= since && w.Title.ToLower() == lower && w.AssigneeId == assigneeId && w.DueDate == due)
+            .OrderBy(w => w.CreatedAt).FirstOrDefaultAsync(ct);
+    }
+
+    private async Task<ActionItemDto> CreateNewAsync(Project project, Guid projectId, string title, string? details, CreateActionItemRequest req, CancellationToken ct)
+    {
         var item = new WorkTask
         {
             TenantId = project.TenantId, Kind = WorkTaskKind.ActionItem, Number = await WorkTaskService.NextNumberAsync(db, project.TenantId, ct),
@@ -173,6 +212,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         db.WorkTasks.Add(item);
         recorder.Activity("actionitem.created", "ActionItem", item.Id, $"Added action item “{title}” to \"{project.Name}\"", projectId);
         await NotifyAssignedAsync(project, item, ct);
+        await notices.TellAsync(Notice(projectId, item), $"added to {project.Name}", [project.OwnerId], ct, item.AssigneeId is { } a ? new[] { a } : null);
         await WorkTaskService.SaveNewAsync(db, item, ct);   // retries on a number taken at the same moment
         return await OneAsync(project, item, ct);
     }
@@ -201,6 +241,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
         var was = ToApi(item.Status);
         var reassigned = req.AssigneeId != item.AssigneeId;
+        var dueWhy = dueHistory.Require("due date", item.DueDate, req.DueDate, req.ExtensionReason);   // a later due needs a reason
         var oldTitle = item.Title; var oldDetails = item.Description; var oldAssignee = item.AssigneeId; var oldDue = item.DueDate; var oldPriority = item.Priority; var oldDueTime = item.DueTime;
         item.Title = title; item.Description = details; item.AssigneeId = req.AssigneeId; item.Priority = req.Priority;
         item.DueTime = DueDateHistory.NextTime(req.DueDate, req.DueTime, req.ClearDueTime, item.DueTime); item.DueDate = req.DueDate;
@@ -217,6 +258,13 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         recorder.Activity("actionitem.updated", "ActionItem", id, was != now ? $"Action item “{title}”: {was} → {now}" : $"Updated action item “{title}”", projectId,
             was.ToString(), now.ToString());
         if (reassigned) await NotifyAssignedAsync(project, item, ct);
+        dueHistory.RecordDate(item.TenantId, projectId, DateKinds.ActionItem, id, null, oldDue, item.DueDate, dueWhy);
+        var notice = Notice(projectId, item);
+        if (DueDateHistory.IsLater(oldDue, item.DueDate))
+            await notices.ExtendedAsync(notice, projectId, "Due date", oldDue, item.DueDate, dueWhy, People(item, oldAssignee), ct);
+        else if (oldDue != item.DueDate) await notices.TellAsync(notice, DueDateHistory.Describe(oldDue, item.DueDate, null), People(item, oldAssignee), ct);
+        if (was != now) await notices.TellAsync(notice, now == ActionItemStatus.Completed ? "completed" : $"status: {was} → {now}", People(item, oldAssignee), ct);
+        if (reassigned) await notices.TellAsync(notice, "owner changed", People(item, oldAssignee), ct, item.AssigneeId is { } na ? new[] { na } : null);
         await db.SaveChangesAsync(ct);
         await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
         return await OneAsync(project, item, ct);
@@ -238,6 +286,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         item.Version++; item.UpdatedAt = clock.Now; item.UpdatedBy = ctx.UserId;
         recorder.Activity("actionitem.status", "ActionItem", id, $"Action item “{item.Title}”: {was} → {req.Status}", projectId, was.ToString(), req.Status.ToString());
         new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", was.ToString(), req.Status.ToString()).Record(recorder, "actionitem", "ActionItem", id);
+        await notices.TellAsync(Notice(projectId, item), req.Status == ActionItemStatus.Completed ? "completed" : $"status: {was} → {req.Status}", People(item), ct);
         await db.SaveChangesAsync(ct);
         await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
         return await OneAsync(project, item, ct);
@@ -251,15 +300,17 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var manager = await IsManagerAsync(project, ct);
         if (!(manager || (item.CreatedBy == ctx.UserId && await permissions.HasAsync(Permissions.TasksCreate, ct))))
             throw new ForbiddenException("Only the person who added an action item, or a manager, can delete it.", "PERMISSION_DENIED");
-        item.IsDeleted = true; item.DeletedAt = clock.Now; item.DeletedBy = ctx.UserId;
-        await DeletedWorkTraces.ArchiveNotificationsAsync(db, clock.Now, null, [id], ct);
+        var now = clock.Now;
+        item.IsDeleted = true; item.DeletedAt = now; item.DeletedBy = ctx.UserId;
+        await DeletedWorkTraces.ArchiveNotificationsAsync(db, now, null, [id], ct);
         recorder.Activity("actionitem.deleted", "ActionItem", id, $"Deleted action item “{item.Title}”", projectId);
+        await notices.TellAsync(Notice(projectId, item) with { Link = $"/projects/{projectId}?tab=actions" }, "deleted", People(item), ct);
         await db.SaveChangesAsync(ct);
         await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
     }
 
     /// <summary>Brings a deleted action item back, for the person who deleted it or a manager of an open project. Used by Undo.</summary>
-    public async Task RestoreAsync(Guid projectId, Guid id, CancellationToken ct = default)
+    public async Task<ActionItemDto> RestoreAsync(Guid projectId, Guid id, CancellationToken ct = default)
     {
         var project = await ViewableProjectAsync(projectId, ct);
         RequireOpen(project);
@@ -267,10 +318,14 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var item = await db.WorkTasks.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == id && w.TenantId == tid && w.RelatedProjectId == projectId && w.Kind == WorkTaskKind.ActionItem && w.IsDeleted, ct)
             ?? throw new NotFoundException("Action item not found.", "ACTION_ITEM_NOT_FOUND");
         if (item.DeletedBy != ctx.UserId && !await IsManagerAsync(project, ct)) throw new NotFoundException("Action item not found.", "ACTION_ITEM_NOT_FOUND");
+        var deletedAt = item.DeletedAt;
         item.IsDeleted = false; item.DeletedAt = null; item.DeletedBy = null;
+        await DeletedWorkTraces.UnarchiveNotificationsAsync(db, deletedAt, null, [id], ct);
         recorder.Activity("actionitem.restored", "ActionItem", id, $"Restored action item “{item.Title}”", projectId);
+        await notices.TellAsync(Notice(projectId, item), "restored", People(item), ct);
         await db.SaveChangesAsync(ct);
         await reminderSync.OnWorkChangedAsync(ReminderTarget.ActionItem, id, ct);
+        return await OneAsync(project, item, ct);
     }
 
     // ------------------------------------------------------------------ meetings: capture, review decisions, owner updates
@@ -324,6 +379,9 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         if (oldDue != item.DueDate) bits.Add(DueDateHistory.Describe(oldDue, item.DueDate, null));
         if (oldAssignee != item.AssigneeId) bits.Add($"owner {ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, oldAssignee)} → {ProjectManagement.Application.Features.Platform.FieldDiff.Name(people, item.AssigneeId)}");
         var why = note?.Reason ?? reason?.Trim();
+        if (note is not null) dueHistory.RecordDate(item.TenantId, projectId, DateKinds.ActionItem, id, null, oldDue, item.DueDate, note.Reason);
+        if (DueDateHistory.IsLater(oldDue, item.DueDate))
+            await notices.ExtendedAsync(Notice(projectId, item), projectId, "Due date", oldDue, item.DueDate, why, People(item, oldAssignee), ct);
         recorder.Activity($"actionitem.{action}", "ActionItem", id, $"{what} “{item.Title}”{(bits.Count > 0 ? ": " + string.Join(", ", bits) : "")}{(string.IsNullOrEmpty(why) ? "" : $" ({why})")}", projectId);
         if (oldAssignee != item.AssigneeId) await NotifyAssignedAsync(project, item, ct);
         await db.SaveChangesAsync(ct);

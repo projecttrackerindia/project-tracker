@@ -212,6 +212,7 @@ public class ApprovalService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         void Event(string what, int? step = null) => db.ApprovalRequestEvents.Add(new ApprovalRequestEvent { TenantId = tid, RequestId = id, UserId = me, Action = what, StepOrder = step, Comment = comment, CreatedAt = clock.Now });
         var link = $"/approvals?open={id}";
         var leaveToPlan = false;
+        var (wasStatus, wasStep) = (r.Status, r.CurrentStep);
 
         switch (action)
         {
@@ -265,6 +266,9 @@ public class ApprovalService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             default:
                 throw new ValidationException("action", "Choose approve, reject, comment, withdraw or remind.");
         }
+        // History: the request's status and step, old → new (the activity API reads it).
+        new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", wasStatus, r.Status).Add("Step", wasStep.ToString(), r.CurrentStep.ToString())
+            .Record(recorder, "approval", nameof(ApprovalRequest), id);
         await db.SaveChangesAsync(ct);
         if (leaveToPlan) await PlanLeaveAsync(r, ct);
         return await DetailAsync(r, ct);

@@ -85,7 +85,8 @@ public class PlanSheetTests(ApiFactory factory)
         Assert.Equal(1, first.Data!["changed"]!.GetValue<int>());
         var refused = rows.Single(r => S(r!["id"]) == s.A.ToString())!;
         Assert.False(refused["ok"]!.GetValue<bool>());
-        Assert.Equal("dueDateReason", S(refused["field"]));
+        Assert.Equal("extensionReason", S(refused["field"]));
+        Assert.Equal("DATE_EXTENSION_REASON_REQUIRED", S(refused["code"]));
         Assert.True(rows.Single(r => S(r!["id"]) == s.Other.ToString())!["ok"]!.GetValue<bool>());
 
         // With one reason for the batch: both due dates move and the reason is recorded; a stale version and an unknown id fail on their own.

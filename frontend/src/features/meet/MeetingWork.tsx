@@ -59,6 +59,8 @@ export function MeetingCapture({ kind, id, at, projectId, projectName, title }: 
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<string | null>(projectId);
   const input = useRef<HTMLInputElement>(null);
+  // A second Enter before React re-renders still sees busy=false: the ref stops it at once (one line, one action item).
+  const sending = useRef(false);
   const items = useWsQuery(['meet', 'items', ref, at ?? 'all'], () => connectApi.items(ref, at), { staleTime: 15_000, retry: false });
   const projects = useWsQuery(['projects', 'capture-picker'], () => projectApi.list({ pageSize: 50 }), { enabled: !projectId, staleTime: 60_000 });
   const pid = projectId ?? pick;
@@ -70,9 +72,10 @@ export function MeetingCapture({ kind, id, at, projectId, projectName, title }: 
   useEffect(() => { if (projectId) setPick(projectId); }, [projectId]);
 
   const create = async () => {
-    if (!line.title || busy) return;
+    if (!line.title || busy || sending.current) return;
     if (owner?.ambiguous) { toast(`More than one person matches @${line.ownerToken}. Type more of the name.`, 'warning'); return; }
     if (!pid) { toast('Choose the project it belongs to.', 'warning'); return; }
+    sending.current = true;
     setBusy(true);
     try {
       const made = await connectApi.capture(ref, { text, projectId: projectId ? undefined : pid, occurrenceStart: at ?? undefined, assigneeId: owner?.person?.id });
@@ -81,7 +84,7 @@ export function MeetingCapture({ kind, id, at, projectId, projectName, title }: 
       void items.refetch(); refreshWork(wid);
       input.current?.focus();
     } catch (e) { toast(errText(e, 'Could not create it.'), 'error'); }
-    finally { setBusy(false); }
+    finally { sending.current = false; setBusy(false); }
   };
 
   const data = items.data && Array.isArray(items.data.createdHere) ? items.data : null;
@@ -94,7 +97,7 @@ export function MeetingCapture({ kind, id, at, projectId, projectName, title }: 
           <label className="mc-eyebrow" htmlFor={`mc-${id}`}>New task · type one line</label>
           <div className="mc-typed">
             <input id={`mc-${id}`} ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Confirm bank sandbox date @Ravi fri" aria-describedby={`mc-chips-${id}`}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (e.repeat || e.nativeEvent.isComposing) return; void create(); } }} />
             <div className="mc-echo" aria-hidden="true">{text.split(/(\s+)/).map((w, i) => {
               const t = w.replace(/^[,.;]+|[,.;]+$/g, '');
               const cls = /^@/.test(t) && t.slice(1) === line.ownerToken ? 'mc-own' : line.dateToken && line.dateToken.split(' ').includes(t) && t ? 'mc-date' : '';

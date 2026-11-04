@@ -222,8 +222,11 @@ public partial class AppDbContext
         {
             e.HasIndex(x => new { x.ProjectId, x.CreatedAt });
             e.HasIndex(x => x.TaskId);
+            e.HasIndex(x => x.EntityId);
             e.Property(x => x.Reason).HasMaxLength(500);
             e.Property(x => x.Dependency).HasMaxLength(300);
+            e.Property(x => x.EntityType).HasMaxLength(20);
+            e.Property(x => x.Field).HasMaxLength(20);
         });
         b.Entity<StageIssue>(e =>
         {
