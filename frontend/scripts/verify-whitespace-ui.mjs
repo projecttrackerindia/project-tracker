@@ -57,7 +57,7 @@ const failures = [];
 try {
   for (const width of [1440, 390]) {
     for (const [mode, label, scope] of VIEWS) {
-      const { ctx, page, errors } = await portfolioContext(browser, { width, state: makeState() });
+      const { ctx, page, errors } = await portfolioContext(browser, { classic: true, width, state: makeState() });
       const m = mode.startsWith('capacity') ? 'capacity' : mode;
       await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=${m}`);
       await page.locator('.pfx-stage').first().waitFor();
@@ -89,7 +89,7 @@ try {
   for (const width of [1440, 390]) {
     const state = makeState();
     for (const r of state.rows.filter((x) => x.projectId === state.rows.find((y) => y.key === 'DP').id)) { r.category = 'Done'; r.progress = 100; r.status = 'Done'; }
-    const { ctx, page, errors } = await portfolioContext(browser, { width, state });
+    const { ctx, page, errors } = await portfolioContext(browser, { classic: true, width, state });
     await page.goto(`${origin}/preview-org/work/projects?view=portfolio`);
     const note = page.getByRole('status', { name: 'Work complete, check sign-offs' });
     await note.waitFor();

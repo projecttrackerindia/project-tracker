@@ -6,6 +6,7 @@ import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { PortfolioSkeleton, usePhone, usePortfolio, useProjectColour, useProjectFilter, useShellMenu } from './PortfolioShell';
 import { AuraLine } from '../../components/calm';
+import { useClassic } from '../calm/classic';
 import { PortfolioPulse } from './PortfolioPulse';
 import { portfolioKeys, refreshPortfolio } from './portfolioShared';
 import { portfolioApi, type PortfolioFilter, type SheetRow, type TimelineProject } from './portfolioApi';
@@ -51,7 +52,8 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const navigate = useNavigate();
   const [params] = useSearchParams();
   // The calm lanes (demo shot 14) are the Timeline; ?classic=1 keeps the full Gantt with grouping, zoom tiers and hover cards.
-  const classic = params.get('classic') === '1';
+  const classic = useClassic();
+  void params;
   const { work } = usePortfolio();
   const [calmWeeks, setCalmWeeks] = useState<6 | 14>(6);
   const lanesRef = useRef<HTMLDivElement>(null);

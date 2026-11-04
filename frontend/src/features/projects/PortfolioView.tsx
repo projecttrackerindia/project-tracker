@@ -19,6 +19,7 @@ import { portfolioApi, type PortfolioAiSummary, type PortfolioFilter } from './p
 import { PortfolioShell, PortfolioSkeleton, usePortfolio, useShellMenu } from './PortfolioShell';
 import { portfolioKeys, type PortfolioUrlState } from './portfolioShared';
 import { errText } from './projectParts';
+import { useClassic } from '../calm/classic';
 import './portfolio.css';
 import './projectsHome.css';
 
@@ -42,6 +43,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
   const ai = useAi();
   const { teamId } = useTeamLens();
   const [params, setParams] = useSearchParams();
+  const classicView = useClassic();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const v = params.get('mode') ?? params.get('view');
   // Action items are a Portfolio tab (and the Plan sheet's first folder tab): an old link (?actions=1) opens the tab.
@@ -83,7 +85,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
           : url.mode === 'timeline' ? <PortfolioTimeline filter={url.filter} />
           : url.mode === 'capacity' ? <CapacityPlanView />
           : url.mode === 'board' ? <PortfolioTaskBoard />
-          : <PortfolioOverview ai={ai} more={params.get('classic') === '1' || url.mode === 'present' ? <BoardTab ai={ai} /> : null} />}</Suspense>}
+          : <PortfolioOverview ai={ai} more={classicView || url.mode === 'present' ? <BoardTab ai={ai} /> : null} />}</Suspense>}
       </PortfolioShell>
     </div>
   );
