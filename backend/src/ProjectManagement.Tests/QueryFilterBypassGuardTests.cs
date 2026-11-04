@@ -41,6 +41,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Billing/BillingMailer.cs", // billing e-mails are sent from webhooks and background jobs with no signed-in workspace: it reads only that workspace's name and its owner's address
         "ProjectManagement.Application/Features/Auth/AuthService.cs",
         "ProjectManagement.Application/Features/Auth/DeviceLoginService.cs",
+        "ProjectManagement.Application/Features/Approvals/ApprovalService.cs", // which linked ids are projects or work of this workspace (named explicitly), deleted or not - ids only, to leave out links to deleted ones
         "ProjectManagement.Application/Features/Auth/SessionApprovalService.cs", // "Single active session" at sign-in, before any workspace is chosen: whether an organization the person belongs to requires it (flags and names of their own memberships only)
         "ProjectManagement.Application/Features/Automation/AutomationService.cs",
         "ProjectManagement.Application/Features/Automation/AutomationConditions.cs", // scheduled Desk ticket rules: finds enabled rules of every active workspace (ids only), then runs each as that workspace

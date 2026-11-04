@@ -170,4 +170,36 @@ public class DeletedWorkTracesTests(ApiFactory factory)
         var mine = (await w.Dev.Get("/api/v1/work-items?mine=true&status=all&limit=200")).Data!["items"]!.AsArray();
         Assert.Single(mine, i => S(i!["title"]) == $"{marker} send minutes");
     }
+
+    [Fact]
+    public async Task Approval_links_to_a_deleted_task_or_project_are_left_out_and_other_links_stay()
+    {
+        var w = await Setup("Platypus Release");
+        var other = await w.Owner.CreateProjectAsync("Echidna Ops");
+        var task = Guid.Parse(S((await w.Owner.CreateTaskAsync(other, "Echidna cutover"))["id"]));
+        var created = await w.Owner.Post("/api/v1/approvals", new
+        {
+            type = "ChangeRequest", title = "Platypus config change", risk = "Low",
+            links = new object[]
+            {
+                new { kind = "task", label = "Echidna cutover", id = task.ToString(), href = $"/projects/{other}?task={task}" },
+                new { kind = "project", label = "Echidna Ops", id = other.ToString(), href = $"/projects/{other}" },
+                new { kind = "project", label = "Platypus Release", id = w.Project.ToString(), href = $"/projects/{w.Project}" },
+                new { kind = "pr", label = "PR #42", href = "/projects" },
+            },
+            chain = new object[] { new { role = "Lead", userId = w.Dev.UserId } },
+        });
+        Assert.True(created.Ok, created.ToString());
+        var id = S(created.Data!["id"]);
+        string[] Labels(JsonNode? r) => r!["links"]!.AsArray().Select(l => S(l!["label"])).ToArray();
+        Assert.Equal(4, Labels(created.Data).Length);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Owner.Delete($"/api/v1/tasks/{task}")).Status);
+        Assert.Equal(new[] { "Echidna Ops", "Platypus Release", "PR #42" }, Labels((await w.Owner.Get($"/api/v1/approvals/{id}")).Data));
+
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Owner.Delete($"/api/v1/projects/{other}")).Status);
+        Assert.Equal(new[] { "Platypus Release", "PR #42" }, Labels((await w.Owner.Get($"/api/v1/approvals/{id}")).Data));
+        var listed = (await w.Owner.Get("/api/v1/approvals?view=mine")).Data!["items"]!.AsArray().Single(r => S(r!["id"]) == id);
+        Assert.Equal(new[] { "Platypus Release", "PR #42" }, Labels(listed));
+    }
 }
