@@ -1,3 +1,4 @@
+import { PrivateBanner, usePrivateToggle } from './e2e/PrivateChat';
 import { handToVault } from '../vault/vaultHandoff';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -340,12 +341,15 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
     });
     return out;
   }, [items]);
+  const privacy = usePrivateToggle(conversation);
   const lastMineId = lastMine && items.slice(items.indexOf(lastMine) + 1).every((x) => x.senderId === me || x.kind !== 'User') ? lastMine.id : null;
   const receipt = !lastMine || conversation.type === 'Project' ? null
     : isRead(lastMine) ? `Read ${timeOf(new Date(Math.max(...others.map((o) => utcMs(o.lastReadAt)))).toISOString())}` : 'Delivered';
 
+  const lock = conversation.isPrivate ? <Icon name="lock" size={13} className="e2e-lock" aria-label="Private chat, end-to-end encrypted" /> : null;
   return (
-    <div className={`chat-thread${variant === 'talk' ? ' talk-thread' : ''}`}>
+    <div className={`chat-thread${variant === 'talk' ? ' talk-thread' : ''}${conversation.isPrivate ? ' is-private' : ''}`}>
+      {privacy.sheet}
       {variant === 'talk' ? (
         <header className="chat-head talk-head">
           <button className="btn-icon chat-back" onClick={onBack} aria-label="Back to conversations"><Icon name="chevronL" size={22} /><span className="talk-back-label" aria-hidden="true">Messages</span></button>
@@ -353,7 +357,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           <div className="talk-who">
             <span className="talk-who-av">{conversation.type === 'Direct' ? <ConversationAvatar conversation={conversation} status={otherStatus} /> : <span className="talk-head-gl" aria-hidden="true">#</span>}</span>
             <div className="chat-head-text">
-              <h2><span className="talk-to" aria-hidden="true">To: </span><span className="talk-who-name">{conversation.name}</span><Icon name="chevronR" size={11} className="talk-who-chev" /></h2>
+              <h2><span className="talk-to" aria-hidden="true">To: </span><span className="talk-who-name">{conversation.name}</span>{lock}<Icon name="chevronR" size={11} className="talk-who-chev" /></h2>
               <div className="chat-sub" aria-live="polite">{typingNames.length ? status : sub ?? status}</div>
             </div>
             {onInfo && <button type="button" className="talk-who-hit" onClick={onInfo} aria-label={`Details for ${conversation.name}`} />}
@@ -369,9 +373,10 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
           {onInfo && <button type="button" className={`talk-ib talk-details talk-info-link${infoOpen ? ' on' : ''}`} onClick={onInfo} aria-label="Details" aria-pressed={infoOpen} title="Details"><span>Info</span><Icon name="chevronR" size={12} /></button>}
           <DotsMenu label="Conversation actions" className="talk-info" items={[
             { label: 'Details', hint: 'People, pinned, files, mute', icon: 'info', onSelect: () => onInfo?.(), hidden: !onInfo },
-            { label: 'Catch me up', hint: 'Decisions, questions and actions in this chat', icon: 'sparkle', onSelect: () => setDialog('catchup') },
-            { label: 'Find in conversation', hint: 'Words in this chat', icon: 'search', onSelect: () => setFind(true) },
-            { label: 'Ask this conversation', icon: 'sparkle', onSelect: () => setDialog('ask') },
+            { label: privacy.label, hint: conversation.isPrivate ? 'Messages are end-to-end encrypted now' : 'Only the people here can read new messages', icon: 'lock', onSelect: () => void privacy.toggle(), hidden: !privacy.allowed },
+            { label: 'Catch me up', hint: 'Decisions, questions and actions in this chat', icon: 'sparkle', onSelect: () => setDialog('catchup'), hidden: !!conversation.isPrivate },
+            { label: 'Find in conversation', hint: 'Words in this chat', icon: 'search', onSelect: () => setFind(true), hidden: !!conversation.isPrivate },
+            { label: 'Ask this conversation', icon: 'sparkle', onSelect: () => setDialog('ask'), hidden: !!conversation.isPrivate },
             { label: `Pinned messages${pinCount ? ` (${pinCount})` : ''}`, icon: 'flag', onSelect: () => (onInfo ? onInfo() : setSide((v) => (v === 'pins' ? null : 'pins'))) },
             { label: 'Files', icon: 'folder', onSelect: () => onFiles?.(), hidden: !onFiles },
           ]} />
@@ -381,12 +386,13 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
         {variant === 'page' && <button className="btn-icon chat-back" onClick={onBack} aria-label="Back to conversations"><Icon name="arrowLeft" /></button>}
         <ConversationAvatar conversation={conversation} status={otherStatus} />
         <div className="chat-head-text">
-          <h2>{conversation.name}</h2>
+          <h2>{conversation.name}{lock}</h2>
           <div className="chat-sub" aria-live="polite">{status}</div>
         </div>
         <StartCallButton conversationId={conversation.id} label={conversation.type === 'Direct' ? `Call ${conversation.name}` : 'Group call with everyone in this chat'} compact className="btn-icon chat-head-action call" />
-        <button className="btn-icon chat-head-action ai" onClick={() => setDialog('catchup')} aria-label="Catch me up on this conversation" title="Catch me up"><Icon name="sparkle" size={16} /></button>
-        <button className="btn-icon chat-head-action" onClick={() => setDialog('ask')} aria-label="Ask this conversation" title="Ask this conversation"><Icon name="search" size={16} /></button>
+        {privacy.allowed && <button className={`btn-icon chat-head-action ${conversation.isPrivate ? 'on' : ''}`} onClick={() => void privacy.toggle()} aria-label={privacy.label} aria-pressed={!!conversation.isPrivate} title={privacy.label}><Icon name="lock" size={16} /></button>}
+        {!conversation.isPrivate && <button className="btn-icon chat-head-action ai" onClick={() => setDialog('catchup')} aria-label="Catch me up on this conversation" title="Catch me up"><Icon name="sparkle" size={16} /></button>}
+        {!conversation.isPrivate && <button className="btn-icon chat-head-action" onClick={() => setDialog('ask')} aria-label="Ask this conversation" title="Ask this conversation"><Icon name="search" size={16} /></button>}
         <button className={`btn-icon chat-head-action ${side === 'pins' ? 'on' : ''}`} onClick={() => setSide((v) => (v === 'pins' ? null : 'pins'))} aria-label={`Pinned messages${pinCount ? ` (${pinCount})` : ''}`} aria-pressed={side === 'pins'} title="Pinned">
           <Icon name="flag" size={16} />{pinCount > 0 && <span className="head-count">{pinCount}</span>}
         </button>
@@ -400,6 +406,7 @@ export function Thread({ conversation, onBack, onInfo, infoOpen = false, onFiles
       </header>
       )}
       {banner}
+      <PrivateBanner conversation={conversation} />
 
       <UnfurlContext.Provider value={unfurls}>
       <div className="chat-scroll">
@@ -1243,12 +1250,13 @@ function Composer({ conversation, replyTo, editing, mentionable, onCancel, onSen
   }, []);
 
   const send = useMutation({
-    mutationFn: (v: { body: string; ids: string[] }) => (editing ? chatApi.edit(editing.id, v.body) : chatApi.send(id, v.body, replyTo?.id, v.ids, threadRootId)),
+    mutationFn: (v: { body: string; ids: string[] }) => (editing ? chatApi.edit(editing.id, v.body, id) : chatApi.send(id, v.body, replyTo?.id, v.ids, threadRootId)),
+    meta: { saved: false },
     onSuccess: (m, v) => { drafts.delete(draftKey); setPending([]); onSent(m); if (!editing) offerReminderAfterSend(v.body); },
     onError: (e, v) => {
       setText(v.body);
       if (box.current) { box.current.innerHTML = markdownToHtml(v.body); setIsEmpty(!v.body); }
-      toast(e instanceof ApiError ? e.message : 'The message could not be sent.', 'error');
+      toast(e instanceof Error && e.message ? e.message : 'The message could not be sent.', 'error');
     },
   });
 

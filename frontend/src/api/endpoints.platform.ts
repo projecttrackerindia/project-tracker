@@ -1,4 +1,5 @@
 import { providerConnectionUrl } from './providerConnection';
+import { isPrivateConversation, notePrivacy, openAll, openMessage, sealFor } from '../features/chat/e2e/session';
 import { del, download, fetchBlobUrl, fetchText, get, patch, post, put, uploadFile, create, qs } from './client';
 import type { ChatAttachment,ChatThreadView,ChatSavedItem,ChatSeenBy,ChatQuestion,ChatStatus,ChatScheduled,ChatLink,ChatUnfurl,ChatCatchUp,ChatAskAnswer,ChatExtract,BillingSettings,AuthResponse,FeatureOverride,PlatformSettings,PlatformStatus,WorkloadScope,PasswordPolicy,ProjectChatUnread,Paged,ChatFilePage,ChatMessage,ChatPerson,ChatSearchHit,ChatThread,Conversation,WorkActivity,WorkAttachment,WorkComment,WorkSummary,WorkTask,WorkTaskInput,WorkType,ConsentDocument,MyConsent,SignInDevice,DeviceLoginStart,DeviceLoginPending,Rates,Utilisation,CapacityPlan,ProjectFinancials,SlaSettings,SlaTarget,CalendarFeed,InboundMailbox,GitConnection,GitProvider,DevLink,DevStatus,GitHubAppStatus,GitHubStatusRules,GitHubBranch,ReviewQueue,ReleaseNotes,DeliveryMetrics,DataPolicy,Priority,MicrosoftConnectionStatus,PersonalEmailDraft,GoogleConnectionStatus,Meeting,MeetingParticipant,MeetingProvider,WorkspaceMeetingDetail,StandupCard,PlatformBilling,AdminUsage,SystemHealth,GoLive,AdminTestEmailResult,MeetingBotOverview,OpsSettings,RoutingRuleInput,Triage,OpsInsights } from './types';
 export const platformApi = {
@@ -27,8 +28,10 @@ export const chatApi = {
   people: () => get<ChatPerson[]>('/chat/people'),
   unread: () => get<import('../features/chat/unreadBadge').ChatUnread>('/chat/unread'),
   search: (q: string) => get<ChatSearchHit[]>('/chat/search', { q }),
-  conversations: () => get<Conversation[]>('/chat/conversations'),
-  conversation: (id: string) => get<Conversation>(`/chat/conversations/${id}`),
+  conversations: () => get<Conversation[]>('/chat/conversations').then((list) => { list.forEach(notePrivacy); return list; }),
+  conversation: (id: string) => get<Conversation>(`/chat/conversations/${id}`).then((c) => { notePrivacy(c); return c; }),
+  /** Turns end-to-end encryption on or off for a direct chat or group. */
+  setPrivate: (id: string, enabled: boolean) => put<Conversation>(`/chat/conversations/${id}/private`, { enabled }).then((c) => { notePrivacy(c); return c; }),
   /** The team chat of a project (created on first use). Only the project's team, its owner and Owners, Admins and Managers get in. */
   openProject: (projectId: string) => post<Conversation>(`/chat/projects/${projectId}/open`),
   projectUnread: () => get<ProjectChatUnread[]>('/chat/projects/unread'),
@@ -37,14 +40,21 @@ export const chatApi = {
   rename: (id: string, name: string) => put<Conversation>(`/chat/conversations/${id}`, { name }),
   addMembers: (id: string, userIds: string[]) => post<Conversation>(`/chat/conversations/${id}/members`, { userIds }),
   removeMember: (id: string, userId: string) => del(`/chat/conversations/${id}/members/${userId}`),
-  messages: (id: string, before?: string) => get<ChatThread>(`/chat/conversations/${id}/messages`, { before, limit: 40 }),
+  // Encrypted messages are opened on this device as they arrive, so every screen below gets plain text without knowing about encryption.
+  messages: (id: string, before?: string) => get<ChatThread>(`/chat/conversations/${id}/messages`, { before, limit: 40 }).then(async (p) => ({ ...p, items: await openAll(p.items) })),
   /** Every file ever sent in the conversation, newest first - the Files view next to the thread. */
   files: (id: string, before?: string) => get<ChatFilePage>(`/chat/conversations/${id}/files`, { before, limit: 40 }),
-  send: (id: string, body: string, replyToId?: string | null, attachmentIds?: string[], threadRootId?: string | null) =>
-    post<ChatMessage>(`/chat/conversations/${id}/messages`, { body, replyToId: replyToId ?? null, attachmentIds: attachmentIds ?? [], threadRootId: threadRootId ?? null }),
-  thread: (rootId: string) => get<ChatThreadView>(`/chat/messages/${rootId}/thread`),
+  send: async (id: string, body: string, replyToId?: string | null, attachmentIds?: string[], threadRootId?: string | null) => {
+    // A private chat: the text is encrypted for every member's device here, and only the envelope leaves.
+    if (isPrivateConversation(id)) {
+      const cipher = await sealFor(id, body);
+      return openMessage(await post<ChatMessage>(`/chat/conversations/${id}/messages`, { body: null, cipher, replyToId: replyToId ?? null, attachmentIds: [], threadRootId: threadRootId ?? null }));
+    }
+    return post<ChatMessage>(`/chat/conversations/${id}/messages`, { body, replyToId: replyToId ?? null, attachmentIds: attachmentIds ?? [], threadRootId: threadRootId ?? null });
+  },
+  thread: (rootId: string) => get<ChatThreadView>(`/chat/messages/${rootId}/thread`).then(async (t) => ({ root: await openMessage(t.root), replies: await openAll(t.replies) })),
   pin: (messageId: string, on: boolean) => (on ? put<ChatMessage>(`/chat/messages/${messageId}/pin`, {}) : del<ChatMessage>(`/chat/messages/${messageId}/pin`)),
-  pins: (id: string) => get<ChatMessage[]>(`/chat/conversations/${id}/pins`),
+  pins: (id: string) => get<ChatMessage[]>(`/chat/conversations/${id}/pins`).then(openAll),
   save: (messageId: string, on: boolean) => (on ? put<ChatMessage>(`/chat/messages/${messageId}/save`, {}) : del<ChatMessage>(`/chat/messages/${messageId}/save`)),
   saved: () => get<ChatSavedItem[]>('/chat/saved'),
   seenBy: (messageId: string) => get<ChatSeenBy>(`/chat/messages/${messageId}/seen`),
@@ -76,7 +86,9 @@ export const chatApi = {
   fileText: (fileId: string) => fetchText(`/chat/files/${fileId}`),
   react: (messageId: string, emoji: string) => put<ChatMessage>(`/chat/messages/${messageId}/reaction`, { emoji }),
   unreact: (messageId: string, emoji: string) => del<ChatMessage>(`/chat/messages/${messageId}/reaction?emoji=${encodeURIComponent(emoji)}`),
-  edit: (messageId: string, body: string) => put<ChatMessage>(`/chat/messages/${messageId}`, { body }),
+  edit: async (messageId: string, body: string, conversationId?: string) => conversationId && isPrivateConversation(conversationId)
+    ? openMessage(await put<ChatMessage>(`/chat/messages/${messageId}`, { body: null, cipher: await sealFor(conversationId, body) }))
+    : put<ChatMessage>(`/chat/messages/${messageId}`, { body }),
   deleteMessage: (messageId: string) => del(`/chat/messages/${messageId}`),
   markRead: (id: string) => post(`/chat/conversations/${id}/read`),
   mute: (id: string, muted: boolean) => put(`/chat/conversations/${id}/mute`, { muted }),

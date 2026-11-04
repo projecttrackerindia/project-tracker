@@ -1,3 +1,4 @@
+import { openMessage } from './e2e/session';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { HubConnection } from '@microsoft/signalr';
@@ -158,7 +159,8 @@ export function ChatRealtime() {
       if (quiet()) return;
       const conversation = queryClient.getQueryData<Conversation[]>(chatKeys.conversations(wid))?.find((c) => c.id === conversationId);
       if (conversation?.isMuted && !mentioned) return;   // a muted chat stays silent - unless it @mentions me
-      const text = message.body.length > 120 ? `${message.body.slice(0, 119)}…` : message.body;
+      // A private message never shows its words outside the conversation (an in-app toast can be seen over a shoulder or on a shared screen).
+      const text = message.cipher ? '🔒 New private message' : message.body.length > 120 ? `${message.body.slice(0, 119)}…` : message.body;
       const title = conversation && conversation.type === 'Group' ? `${message.senderName} in ${conversation.name}` : (message.senderName ?? 'New message');
       const open = () => { window.focus(); navigate.current(`/messages/${conversationId}`); };
       if (!firstTime(`chat-${message.id}`)) return;
@@ -184,7 +186,10 @@ export function ChatRealtime() {
       else toast(`${title}: ${text}`, 'info', { label: 'Open', onClick: open });
     };
 
-    connection.on('message', (e: { conversationId: string; message: ChatMessage; projectId?: string | null; conversationName?: string | null; mentioned?: string[] }) => {
+    // Private chats: the envelope is opened on this device before anything (thread, list, notification) sees the message.
+    type MessageEvent = { conversationId: string; message: ChatMessage; projectId?: string | null; conversationName?: string | null; mentioned?: string[] };
+    connection.on('message', (raw: MessageEvent) => { void openMessage(raw.message).then((message) => onMessage({ ...raw, message })); });
+    const onMessage = (e: MessageEvent) => {
       // A reply inside a thread goes to that thread (its first message's count comes as an update); the conversation itself is unchanged.
       if (e.message.threadRootId) {
         putMessage(wid, e.message);
@@ -209,7 +214,7 @@ export function ChatRealtime() {
       if (e.message.kind !== 'User' || e.message.senderId === me || viewing) return;
       if (e.projectId) { if (e.mentioned?.includes(me)) notifyMention(e.projectId, e.conversationName ?? 'a project', e.message); return; }
       notify(e.conversationId, e.message, !!e.mentioned?.includes(me));
-    });
+    };
     // Somebody just created a notification for me (a mention): refresh the bell now instead of at the next poll.
     // A WhatsApp support chat changed (a message came in or went out, someone took it): the desk refreshes at once.
     connection.on('support', () => { void queryClient.invalidateQueries({ queryKey: [wid, 'support'] }); });
@@ -224,11 +229,12 @@ export function ChatRealtime() {
       if (e?.types?.some((t) => t === 'TaskAssigned' || t === 'Mention' || t === 'Comment')) void queryClient.invalidateQueries({ queryKey: [wid, 'inbox'] });
       if (!e?.read?.length) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));
     });
-    connection.on('message.updated', (e: { conversationId: string; message: ChatMessage }) => {
+    connection.on('message.updated', (raw: { conversationId: string; message: ChatMessage }) => { void openMessage(raw.message).then((message) => onUpdated({ ...raw, message })); });
+    const onUpdated = (e: { conversationId: string; message: ChatMessage }) => {
       putMessage(wid, e.message);
       putInThread(e.conversationId, e.message, true);
       refreshLists();
-    });
+    };
     connection.on('conversation', () => refreshLists());   // also my own mute / unmute from another device: the badge recounts
     connection.on('read', (e: { conversationId: string; userId: string; at: string }) => {
       if (e.userId === me) {

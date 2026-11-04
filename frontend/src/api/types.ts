@@ -740,6 +740,8 @@ export interface Conversation {
   unread: number; isMuted: boolean; canManage: boolean; otherUserId: string | null; lastActivityAt: string;
   /** Project chats: the project, and how many unread messages @mention the signed-in person. */
   projectId: string | null; unreadMentions: number;
+  /** Private chat: end-to-end encrypted on the members' devices. Aura, search and the bot cannot read it. */
+  isPrivate?: boolean;
 }
 /** A project whose team chat has news for the signed-in person. */
 export interface ProjectChatUnread { projectId: string; conversationId: string; unread: number; mentions: number }
@@ -762,6 +764,10 @@ export interface ChatMessage {
   pinnedAt?: string | null; pinnedBy?: string | null; saved?: boolean;
   /** It asks the signed-in person something they have not answered yet. */ asksMe?: boolean;
   poll?: ChatPoll | null; linked?: ChatLink[] | null;
+  /** Private chats: the encrypted envelope from the server. `body` is filled in on this device once it is opened (see chat/e2e/session.ts). */
+  cipher?: string | null;
+  /** How the encrypted message opened on this device (absent for ordinary messages). */
+  e2e?: 'ok' | 'locked' | 'unreadable';
 }
 export interface ChatThreadView { root: ChatMessage; replies: ChatMessage[] }
 export interface ChatSavedItem { message: ChatMessage; conversationName: string; savedAt: string }

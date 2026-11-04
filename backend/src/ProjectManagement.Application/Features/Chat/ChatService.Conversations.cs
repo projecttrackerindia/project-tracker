@@ -96,7 +96,7 @@ public partial class ChatService
                 others.OrderBy(m => m.Name).Select(m => new ChatMemberDto(m.UserId, m.Name, m.Role, m.LastReadAt, presence.IsOnline(tenant, m.UserId), m.HasAvatar, presence.Status(tenant, m.UserId),
                     statuses.GetValueOrDefault(m.UserId)?.Emoji, statuses.GetValueOrDefault(m.UserId)?.Text, statuses.GetValueOrDefault(m.UserId)?.Dnd == true)).ToList(),
                 last, unread.GetValueOrDefault(c.Id), mine.IsMuted,
-                CanModerate(c.Type, mine.Role), other?.UserId, c.LastMessageAt, c.ProjectId, mentionUnread.GetValueOrDefault(c.Id));
+                CanModerate(c.Type, mine.Role), other?.UserId, c.LastMessageAt, c.ProjectId, mentionUnread.GetValueOrDefault(c.Id), c.IsPrivate);
         }
         return result;
     }

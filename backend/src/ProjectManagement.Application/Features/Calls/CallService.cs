@@ -15,11 +15,15 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Calls;
 
 public record CallsStatusDto(bool Available, int MaxParticipants);
-public record StartCallRequest(string? Title, Guid? ProjectId, Guid? MeetingId, Guid? ConversationId, IReadOnlyList<Guid>? Invite, bool Agent = false, Guid? WorkspaceMeetingId = null);
+/// <param name="Private">End-to-end encrypted: media is encrypted in the browsers; no notetaker, recording or transcript. A call in a private chat is always private.</param>
+/// <param name="KeyCipher">Private calls: the room key, encrypted on the caller's device for each invited person's devices.</param>
+public record StartCallRequest(string? Title, Guid? ProjectId, Guid? MeetingId, Guid? ConversationId, IReadOnlyList<Guid>? Invite, bool Agent = false, Guid? WorkspaceMeetingId = null,
+    bool Private = false, string? KeyCipher = null);
+public record CallKeyRequest(string? KeyCipher);
 public record CallPersonDto(Guid UserId, string Name, string Role, bool InCall, DateTime? JoinedAt);
 public record CallDto(Guid Id, string Title, string Kind, Guid? ProjectId, string? ProjectKey, Guid? ConversationId, string Status, DateTime StartedAt, DateTime? EndedAt,
-    Guid StartedBy, string StartedByName, bool AgentEnabled, string? AgentStatus, bool CanEnd, IReadOnlyList<CallPersonDto> People);
-public record CallJoinDto(Guid CallId, string Url, string Token, string Room, string Identity, string Title, bool AgentEnabled, DateTime ExpiresAt);
+    Guid StartedBy, string StartedByName, bool AgentEnabled, string? AgentStatus, bool CanEnd, IReadOnlyList<CallPersonDto> People, bool IsPrivate = false);
+public record CallJoinDto(Guid CallId, string Url, string Token, string Room, string Identity, string Title, bool AgentEnabled, DateTime ExpiresAt, bool E2ee = false, string? KeyCipher = null);
 
 /// <summary>
 /// Our own video calls. Starting one opens a room on our media server and invites people (they get a notification with a Join link);
@@ -55,6 +59,7 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         if (ctx.Role == TenantRole.Guest && req.ProjectId is null && req.ConversationId is null) throw new ForbiddenException("Guests can join calls they are invited to.", "PERMISSION_DENIED");
         string kind = "adhoc"; string? title = string.IsNullOrWhiteSpace(req.Title) ? null : req.Title.Trim();
         Guid? projectId = null, meetingId = null, conversationId = null;
+        var chatPrivate = false;
         if (req.MeetingId is { } mid)
         {
             var meeting = await db.ProjectMeetings.AsNoTracking().FirstOrDefaultAsync(m => m.Id == mid, ct) ?? throw new NotFoundException("Meeting not found.");
@@ -69,7 +74,8 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         {
             if (!await db.ConversationMembers.AnyAsync(m => m.ConversationId == cid && m.UserId == me, ct)) throw new NotFoundException("Conversation not found.");
             conversationId = cid; kind = "chat";
-            var conversation = await db.Conversations.AsNoTracking().Where(c => c.Id == cid).Select(c => new { c.Type, c.Name }).FirstAsync(ct);
+            var conversation = await db.Conversations.AsNoTracking().Where(c => c.Id == cid).Select(c => new { c.Type, c.Name, c.IsPrivate }).FirstAsync(ct);
+            chatPrivate = conversation.IsPrivate;
             if (conversation.Type == ConversationType.Direct)
             {
                 // One-to-one: the call is named after the two people in it.
@@ -80,6 +86,11 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         }
         title ??= "Call";
         if (title.Length > 200) title = title[..200];
+        var isPrivate = req.Private || chatPrivate;
+        // An end-to-end encrypted call has nobody the server can let in to listen: no notetaker, no recording, no transcript.
+        if (isPrivate && (req.Agent || session is not null)) throw new ValidationException("agent", "A private call is end-to-end encrypted, so the notetaker cannot join it. Turn off private, or leave the notetaker out.");
+        string? keyCipher = isPrivate && req.KeyCipher is not null ? ProjectManagement.Application.Features.Chat.E2eEnvelope.Clean(req.KeyCipher) : null;
+        if (!isPrivate && req.KeyCipher is not null) throw new ValidationException("keyCipher", "Only a private call carries an encrypted room key.");
 
         // Who is invited: the people named (members of this workspace only), plus everyone in the chat for a chat call. A project call with
         // nobody named (the assistant's "call the team") invites the project's people; an empty list from the start screen means nobody.
@@ -96,7 +107,7 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         catch (HttpRequestException ex) { log.LogWarning(ex, "The media server did not open a room"); throw new AppException(502, "CALLS_SERVER_UNREACHABLE", "The call server could not be reached. Try again in a moment."); }
 
         var call = new CallRoom { TenantId = tenant, Title = title, RoomName = room, Kind = kind, ProjectId = projectId, MeetingId = meetingId, ConversationId = conversationId, WorkspaceMeetingId = req.WorkspaceMeetingId,
-            StartedBy = me, StartedAt = now, Status = "live", CreatedAt = now };
+            StartedBy = me, StartedAt = now, Status = "live", CreatedAt = now, IsPrivate = isPrivate, E2eeKeyCipher = keyCipher };
         db.CallRooms.Add(call);
         db.CallParticipants.Add(new CallParticipant { TenantId = tenant, CallId = call.Id, UserId = me, Role = "host", CreatedAt = now });
         foreach (var u in invite) db.CallParticipants.Add(new CallParticipant { TenantId = tenant, CallId = call.Id, UserId = u, Role = "member", InvitedAt = now, CreatedAt = now });
@@ -105,10 +116,10 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         // ordinary update ("Meetings") was - and it is pushed with high urgency to devices with no tab open (PushDispatcher).
         foreach (var u in invite)
             await notifications.AddAsync(u, NotificationType.Call, $"{starter} is calling", title, $"/calls/{call.Id}", RingKey(call.Id, u), ct: ct);
-        recorder.Audit("call.started", "CallRoom", call.Id, new { kind, invited = invite.Count, agent = req.Agent });
+        recorder.Audit("call.started", "CallRoom", call.Id, new { kind, invited = invite.Count, agent = req.Agent, e2ee = isPrivate });
         await db.SaveChangesAsync(ct);
         // Open tabs ring straight away over the live connection (the incoming-call card with Answer / Decline), on any page.
-        await TellAsync(tenant, invite, CallEvents.Incoming, new { callId = call.Id, title, kind, fromId = me, fromName = starter, projectId, conversationId, startedAt = now }, ct);
+        await TellAsync(tenant, invite, CallEvents.Incoming, new { callId = call.Id, title, kind, fromId = me, fromName = starter, projectId, conversationId, startedAt = now, isPrivate }, ct);
 
         if (req.Agent)
         {
@@ -212,7 +223,7 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             agentStatus = await db.AgentMeetingBots.AsNoTracking().Where(b => b.Id == sid).Select(b => b.WorkerStatus ?? b.Status).FirstOrDefaultAsync(ct);
         return new CallDto(call.Id, call.Title, call.Kind, call.ProjectId, key, call.ConversationId, call.Status, call.StartedAt, call.EndedAt, call.StartedBy, starter,
             call.AgentEnabled, agentStatus, await CanEndAsync(call, ct),
-            people.OrderByDescending(p => p.Role == "host").ThenBy(p => p.DisplayName).Select(p => new CallPersonDto(p.UserId, p.DisplayName, p.Role, p.JoinedAt is not null && p.LeftAt is null, p.JoinedAt)).ToList());
+            people.OrderByDescending(p => p.Role == "host").ThenBy(p => p.DisplayName).Select(p => new CallPersonDto(p.UserId, p.DisplayName, p.Role, p.JoinedAt is not null && p.LeftAt is null, p.JoinedAt)).ToList(), call.IsPrivate);
     }
 
     private async Task<bool> CanEndAsync(CallRoom call, CancellationToken ct) =>
@@ -234,7 +245,28 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var ttl = TimeSpan.FromHours(Math.Clamp(O.TokenHours, 1, 12));
         var metadata = JsonSerializer.Serialize(new { userId = me, role = row.Role });
         var token = LiveKitTokens.Mint(O.ApiKey!, O.ApiSecret!, Identity(me), person.DisplayName, new LiveKitGrant(Room: call.RoomName, RoomJoin: true), ttl, new DateTimeOffset(now, TimeSpan.Zero), metadata);
-        return new CallJoinDto(call.Id, O.Url!, token, call.RoomName, Identity(me), call.Title, call.AgentEnabled, now.Add(ttl));
+        return new CallJoinDto(call.Id, O.Url!, token, call.RoomName, Identity(me), call.Title, call.AgentEnabled, now.Add(ttl), call.IsPrivate, call.IsPrivate ? call.E2eeKeyCipher : null);
+    }
+
+    /// <summary>
+    /// A private call's room key, wrapped again (for someone added later, or a device set up after the call started). Only the host may replace
+    /// it; the server stores what it is given and cannot open it.
+    /// </summary>
+    public async Task<CallDto> SetKeyAsync(Guid id, CallKeyRequest req, CancellationToken ct = default)
+    {
+        var call = await VisibleAsync(id, ct);
+        if (!call.IsPrivate) throw new ConflictException("This call is not end-to-end encrypted.", "CALL_NOT_PRIVATE");
+        if (call.Status != "live") throw new ConflictException("This call has ended.", "CALL_ENDED");
+        var me = ctx.RequireUserId();
+        var host = call.StartedBy == me || await db.CallParticipants.AnyAsync(p => p.CallId == id && p.UserId == me && p.Role == "host", ct);
+        if (!host) throw new ForbiddenException("Only the host can share the call's key.", "PERMISSION_DENIED");
+        var tracked = await db.CallRooms.FirstAsync(c => c.Id == id, ct);
+        tracked.E2eeKeyCipher = ProjectManagement.Application.Features.Chat.E2eEnvelope.Clean(req.KeyCipher);
+        recorder.Audit("call.key_shared", "CallRoom", id, null);
+        await db.SaveChangesAsync(ct);
+        var people = await db.CallParticipants.AsNoTracking().Where(p => p.CallId == id && p.UserId != me).Select(p => p.UserId).ToListAsync(ct);
+        await TellAsync(call.TenantId, people, "call.key", new { callId = id }, ct);
+        return await GetAsync(id, ct);
     }
 
     /// <summary>

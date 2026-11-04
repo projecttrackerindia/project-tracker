@@ -1,3 +1,5 @@
+import { mergeById } from '../../lib/optimistic';
+import { usePrivateToggle } from './e2e/PrivateChat';
 import { useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
@@ -228,8 +230,11 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
   const refresh = () => { void queryClient.invalidateQueries({ queryKey: chatKeys.conversations(wid) }); void queryClient.invalidateQueries({ queryKey: chatKeys.thread(wid, conversation.id) }); };
   const rename = useMutation({ mutationFn: (n: string) => chatApi.rename(conversation.id, n), onSuccess: () => { setName(null); refresh(); }, onError: (e) => toast(errorText(e, 'Could not rename the group.'), 'error') });
   const remove = useMutation({ mutationFn: (userId: string) => chatApi.removeMember(conversation.id, userId), onSuccess: refresh, onError: (e) => toast(errorText(e, 'Could not remove that person.'), 'error') });
+  const privacy = usePrivateToggle(conversation);
   const mute = useMutation({
     mutationFn: (muted: boolean) => chatApi.mute(conversation.id, muted),
+    // The switch moves at once (shared optimistic cache); a refusal puts it back.
+    meta: { optimistic: [{ key: chatKeys.conversations(wid), apply: (old: unknown, muted: unknown) => mergeById(old, conversation.id, { isMuted: muted as boolean }) }] },
     onSuccess: () => { refresh(); void queryClient.invalidateQueries({ queryKey: chatKeys.unread(wid) }); },
     onError: (e) => toast(errorText(e, 'Could not change that.'), 'error'),
   });
@@ -317,8 +322,16 @@ export function InfoPanel({ conversation, onClose }: { conversation: Conversatio
           <button type="button" className={`switch ${conversation.isMuted ? 'on' : ''}`} role="switch" aria-checked={conversation.isMuted}
             aria-labelledby="mute-label" disabled={mute.isPending} onClick={() => mute.mutate(!conversation.isMuted)} />
         </div>
+        {privacy.allowed && (
+          <div className="switch-row">
+            <span id="private-label"><b><Icon name="lock" size={13} /> Private chat</b><small>End-to-end encrypted on your devices. Aura, search and the bot can't read it.</small></span>
+            <button type="button" className={`switch ${conversation.isPrivate ? 'on' : ''}`} role="switch" aria-checked={!!conversation.isPrivate}
+              aria-labelledby="private-label" data-testid="private-switch" onClick={() => void privacy.toggle()} />
+          </div>
+        )}
+        {privacy.sheet}
 
-        <button type="button" className="info-ai" onClick={() => setSummary(true)}><span aria-hidden="true">✦</span> Summarize this conversation</button>
+        {!conversation.isPrivate && <button type="button" className="info-ai" onClick={() => setSummary(true)}><span aria-hidden="true">✦</span> Summarize this conversation</button>}
 
         <div className="info-section" data-testid="info-pinned">
           <div className="info-title">Pinned{pins.data ? ` · ${pins.data.length}` : ''}</div>

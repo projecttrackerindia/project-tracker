@@ -1205,3 +1205,26 @@ tr.row-deleted .td-title { font-style: italic; }
 .mss-table .td-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 .mss-row-act { text-align: right; white-space: nowrap; }
 @media (max-width: 640px) { .sih-row { flex-wrap: wrap; } .sih-notme { margin-left: 18px; } }
+
+/* The app-wide "✓ Saved" tick (SavedTick, lib/optimistic.ts): top centre, clear of the floating + button and the Aura panel. */
+.saved-tick-root { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); left: 50%; transform: translateX(-50%); z-index: 310; pointer-events: none; }
+.saved-tick { display: inline-flex; align-items: center; min-height: 30px; padding: 5px 14px; border-radius: 999px; font: 600 13px/1.2 var(--font, system-ui);
+  background: var(--ds-surface, #fff); color: var(--ds-success, #1f8a4c); box-shadow: 0 6px 24px rgba(0, 0, 0, .12); border: 1px solid var(--ds-border, rgba(0,0,0,.08));
+  animation: saved-tick-in .22s cubic-bezier(.2, .9, .3, 1.2) both; }
+.saved-tick.failed { color: var(--ds-danger, #c4352b); max-width: min(92vw, 420px); }
+@keyframes saved-tick-in { from { opacity: 0; transform: translateY(-6px) scale(.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .saved-tick { animation: none; } }
+
+/* Private (end-to-end encrypted) chats */
+.e2e-lock { margin-left: 6px; vertical-align: -1px; color: var(--ds-success, #1f8a4c); }
+.e2e-banner { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 16px 0; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.35;
+  background: color-mix(in srgb, var(--ds-success, #1f8a4c) 9%, var(--ds-surface, #fff)); color: var(--ds-text, inherit); border: 1px solid color-mix(in srgb, var(--ds-success, #1f8a4c) 22%, transparent); }
+.e2e-banner > svg { color: var(--ds-success, #1f8a4c); flex: none; }
+.e2e-banner > span { flex: 1 1 200px; min-width: 0; }
+.e2e-banner .btn { min-height: 36px; }
+.e2e-setup { display: grid; gap: 12px; }
+.e2e-small { font-size: 12.5px; display: flex; gap: 6px; align-items: flex-start; }
+@media (max-width: 768px) { .e2e-banner { margin: 6px 12px 0; } .e2e-banner .btn { min-height: 44px; width: 100%; } }
+/* Above the phone Details sheet it can be opened from. */
+.modal-overlay.e2e-modal { z-index: 1300; }
+.saved-tick::after { content: attr(data-text); }

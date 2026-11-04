@@ -18,6 +18,7 @@ public partial class AppDbContext
             e.Property(x => x.RoomName).HasMaxLength(80);
             e.Property(x => x.Kind).HasMaxLength(16);
             e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.E2eeKeyCipher).HasMaxLength(60000);
             e.HasIndex(x => new { x.TenantId, x.MeetingId });
             e.HasIndex(x => new { x.TenantId, x.WorkspaceMeetingId });
         });

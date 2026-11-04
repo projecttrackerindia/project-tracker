@@ -1,3 +1,4 @@
+import { mergeById } from '../../lib/optimistic';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { dueMovesLater, hm, toApiTime } from '../work/dueTime';
 import { useMutation } from '@tanstack/react-query';
@@ -122,8 +123,13 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
           if (Object.keys(filled).length > 0) await customFieldApi.setValues(created.id, filled).catch(() => toast('The task was created, but some custom fields could not be saved.', 'warning'));
           return created;
         }),
+    // Edits show at once everywhere the task is cached (its sheet, every list); the shared cache undoes them if the server refuses.
+    meta: isEdit && currentId ? { optimistic: [
+      { key: [wid, 'task', currentId], apply: (old: unknown) => mergeById(old, currentId, { title: f.title.trim(), priority: f.priority, dueDate: f.dueDate || null, startDate: f.startDate || null, statusId: f.statusId } as never) },
+      { key: [wid, 'tasks'], apply: (old: unknown) => mergeById(old, currentId, { title: f.title.trim(), priority: f.priority, dueDate: f.dueDate || null, statusId: f.statusId } as never) },
+    ] } : undefined,
     // Close first: refreshing while the dialog is still open would refetch every one of its panels for nothing.
-    onSuccess: () => { toast(isEdit ? 'Task updated.' : 'Task created.'); onClose(); void invalidateWorkspace(wid); },
+    onSuccess: () => { if (!isEdit) toast('Task created.'); onClose(); void invalidateWorkspace(wid); },
     onError: async (err) => {
       if (err instanceof ApiError) {
         if (err.code === 'TASK_INCOMPLETE_CHILDREN' || err.code === 'STAGE_PREVIOUS_INCOMPLETE') {

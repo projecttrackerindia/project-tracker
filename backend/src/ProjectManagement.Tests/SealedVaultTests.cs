@@ -158,6 +158,11 @@ public class SealedVaultTests(ApiFactory factory)
         // What the browser did is recorded.
         Assert.True((await viewer.Post($"/api/v1/vault/sealed-items/{item}/events", new { action = "copied", field = "Password" })).Ok);
         Assert.True(factory.WithDb(db => db.AuditLogs.Any(a => a.UserId == viewer.UserId && a.Action == "vault.copied" && a.EntityId == item)));
+        // Showing a sealed value keeps the vault's rule: password AND a two-step code or passkey (a reveal grant), not just a click.
+        var shown = await viewer.Post($"/api/v1/vault/sealed-items/{item}/events", new { action = "revealed", field = "Password" });
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, shown.Status);
+        Assert.Equal("REVEAL_VERIFY_REQUIRED", shown.ErrorCode);
+        Assert.True(factory.WithDb(db => db.AuditLogs.Any(a => a.UserId == viewer.UserId && a.Action == "vault.reveal_denied" && a.EntityId == item)));
     }
 
     [Fact]

@@ -2,6 +2,7 @@ import type { ApiErrorItem, AuthResponse } from './types';
 import { saveFile } from '../lib/native';
 import { lensHeaders } from '../lib/lensState';
 import { mutationCommitted } from '../lib/mutationEffects';
+import { writeSucceeded } from '../lib/optimistic';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
@@ -203,7 +204,7 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   });
   const { data, error } = await parse(res);
   if (!error) {
-    if (auth) mutationCommitted(method, path, workspaceAtStart);
+    if (auth) { mutationCommitted(method, path, workspaceAtStart); writeSucceeded(method, path); }
     return data as T;
   }
 

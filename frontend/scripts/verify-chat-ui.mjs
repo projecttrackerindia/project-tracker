@@ -106,7 +106,7 @@ try {
  assert.equal(await dlg.locator('.call-agent').count(),0,'the project agent is offered only in projects');
  await page.waitForTimeout(400);await page.screenshot({path:path.join(artifacts,'start-call.png')});
  await dlg.locator('[data-testid="start-call-go"]').click();await page.waitForURL(/\/meetings\?call=c-new$/);
- assert.deepEqual(started,{projectId:null,conversationId:conversation.id,invite:[],agent:false});   // the server notifies everyone in the chat
+ assert.deepEqual(started,{projectId:null,conversationId:conversation.id,invite:[],agent:false,private:false,keyCipher:null});   // the server notifies everyone in the chat
  await page.locator('[data-testid="call-prejoin"]').waitFor();checks.push('start-call-from-chat');
  await page.close();await context.close();
  assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,writes,errors}));

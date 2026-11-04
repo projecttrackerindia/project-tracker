@@ -53,6 +53,39 @@ public class ChatController(ChatService chat, ChatAiService chatAi, ReminderSugg
         return NoContent();
     }
 
+    // ------------------------------------------------------------------ private (end-to-end encrypted) chats
+
+    /// <summary>Turns end-to-end encryption on or off for a direct chat or a group (a group admin, in a group).</summary>
+    [HttpPut("conversations/{id:guid}/private")]
+    public async Task<IActionResult> SetPrivate(Guid id, [FromBody] SetPrivateRequest req, CancellationToken ct) => Ok(await chat.SetPrivateAsync(id, req, ct));
+
+    /// <summary>The public keys of every device to encrypt for in this conversation.</summary>
+    [HttpGet("conversations/{id:guid}/keys")]
+    public async Task<IActionResult> ConversationKeys(Guid id, CancellationToken ct) => Ok(await chat.ConversationKeysAsync(id, ct));
+
+    [HttpGet("keys/me")]
+    public async Task<IActionResult> MyKeys(CancellationToken ct) => Ok(await chat.MyKeysAsync(ct));
+
+    [HttpPut("keys/devices")]
+    public async Task<IActionResult> RegisterDevice([FromBody] RegisterDeviceKeyRequest req, CancellationToken ct) => Ok(await chat.RegisterDeviceAsync(req, ct));
+
+    [HttpDelete("keys/devices/{deviceId}")]
+    public async Task<IActionResult> RevokeDevice(string deviceId, CancellationToken ct)
+    {
+        await chat.RevokeDeviceAsync(deviceId, ct);
+        return NoContent();
+    }
+
+    [HttpPost("keys/lookup")]
+    public async Task<IActionResult> PeopleKeys([FromBody] PeopleKeysRequest req, CancellationToken ct) => Ok(await chat.PeopleKeysAsync(req, ct));
+
+    /// <summary>The recovery copy of the caller's key (encrypted with their passphrase in the browser), or 204 when there is none.</summary>
+    [HttpGet("keys/backup")]
+    public async Task<IActionResult> Backup(CancellationToken ct) => await chat.BackupAsync(ct) is { } b ? Ok(b) : NoContent();
+
+    [HttpPut("keys/backup")]
+    public async Task<IActionResult> SaveBackup([FromBody] SaveKeyBackupRequest req, CancellationToken ct) => Ok(await chat.SaveBackupAsync(req, ct));
+
     [HttpGet("conversations/{id:guid}/messages")]
     public async Task<IActionResult> Messages(Guid id, [FromQuery] DateTime? before, [FromQuery] int? limit, CancellationToken ct) =>
         Ok(await chat.MessagesAsync(id, before, limit, ct));

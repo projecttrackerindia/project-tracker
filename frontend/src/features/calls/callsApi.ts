@@ -6,9 +6,11 @@ export interface Call {
   id: string; title: string; kind: 'project' | 'chat' | 'adhoc'; projectId: string | null; projectKey: string | null; conversationId: string | null;
   status: 'live' | 'ended'; startedAt: string; endedAt: string | null; startedBy: string; startedByName: string;
   agentEnabled: boolean; agentStatus: string | null; canEnd: boolean; people: CallPerson[];
+  /** End-to-end encrypted: no notetaker, recording or transcript. */ isPrivate?: boolean;
 }
-export interface CallJoin { callId: string; url: string; token: string; room: string; identity: string; title: string; agentEnabled: boolean; expiresAt: string }
-export interface StartCall { title?: string; projectId?: string | null; meetingId?: string | null; conversationId?: string | null; invite?: string[]; agent?: boolean }
+export interface CallJoin { callId: string; url: string; token: string; room: string; identity: string; title: string; agentEnabled: boolean; expiresAt: string;
+  /** Private calls: the room key, encrypted for this person's devices. */ e2ee?: boolean; keyCipher?: string | null }
+export interface StartCall { title?: string; projectId?: string | null; meetingId?: string | null; conversationId?: string | null; invite?: string[]; agent?: boolean; private?: boolean; keyCipher?: string | null }
 
 /** Where a call is opened: Meetings, with the call drawn over it while it is live (its notes, transcript and recording there after). */
 export const callLink = (id: string, audio = false) => `/meetings?call=${encodeURIComponent(id)}${audio ? '&audio=1' : ''}`;

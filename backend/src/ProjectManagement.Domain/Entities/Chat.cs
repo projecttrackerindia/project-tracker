@@ -32,6 +32,11 @@ namespace ProjectManagement.Domain.Entities
         public Guid? LastMessageId { get; set; }
         public Guid? LastMessageSenderId { get; set; }
         public string? LastMessageSnippet { get; set; }
+        /// <summary>
+        /// Private chat (end-to-end encrypted): messages are encrypted in the members' browsers for each of their devices, so the server keeps
+        /// ciphertext only (<see cref="ChatMessage.Cipher"/>). Aura, search, the bot and previews cannot read them.
+        /// </summary>
+        public bool IsPrivate { get; set; }
     }
 
     public class ConversationMember : TenantEntity, ITenantScoped
@@ -66,6 +71,35 @@ namespace ProjectManagement.Domain.Entities
         public Guid? PinnedBy { get; set; }
         /// <summary>What was made from this message (tasks, tickets, reminders, pages): a short JSON list of {kind, id, key, title}.</summary>
         public string? LinkedJson { get; set; }
+        /// <summary>Private chats: the end-to-end encrypted message (a JSON envelope: the text sealed once, its key wrapped per recipient device). <see cref="Body"/> is empty.</summary>
+        public string? Cipher { get; set; }
+    }
+
+    /// <summary>
+    /// One browser's public key for private chats (ECDH P-256, as a JWK). The private half never leaves that browser; anyone in the workspace may
+    /// read the public half to encrypt for it. Revoked keys stay so old messages can still be told apart, but nobody encrypts for them any more.
+    /// </summary>
+    public class ChatDeviceKey : TenantEntity, ITenantScoped
+    {
+        public Guid UserId { get; set; }
+        /// <summary>A random id made by the browser.</summary>
+        public string DeviceId { get; set; } = "";
+        public string PublicKey { get; set; } = "";
+        public string? Label { get; set; }
+        public DateTime? RevokedAt { get; set; }
+    }
+
+    /// <summary>
+    /// A person's recovery copy of their private-chat key: the private key encrypted in the browser with a key derived from a passphrase only they
+    /// know (PBKDF2-SHA-256). The server cannot open it; a new device that knows the passphrase can.
+    /// </summary>
+    public class ChatKeyBackup : TenantEntity, ITenantScoped
+    {
+        public Guid UserId { get; set; }
+        public string Salt { get; set; } = "";
+        public int Iterations { get; set; }
+        public string WrappedKey { get; set; } = "";
+        public string PublicKey { get; set; } = "";
     }
 
     /// <summary>Someone @mentioned in a project chat message. Kept so "you were mentioned" can be shown until the chat is read.</summary>

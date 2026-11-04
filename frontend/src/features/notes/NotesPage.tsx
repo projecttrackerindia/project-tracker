@@ -197,8 +197,11 @@ function NotePane({ note, phone, onBack, onSummary, onGone, onNav }: {
   };
 
   const meta = async (body: Parameters<typeof notesApi.update>[1], msg = '✓ Saved') => {
-    try { const out = await notesApi.update(note.id, body); setCur(out); queryClient.setQueryData([wid, 'notes', 'one', note.id], out); void invalidateWorkspace(wid, 'notes', 'list'); toast(msg, 'success'); }
-    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save that.', 'error'); }
+    // Instant: the note changes now; the server's answer replaces it, and a refusal puts the old one back.
+    const before = cur;
+    setCur((c) => ({ ...c, ...(body as Partial<Note>) }));
+    try { const out = await notesApi.update(note.id, body); setCur(out); queryClient.setQueryData([wid, 'notes', 'one', note.id], out); void invalidateWorkspace(wid, 'notes', 'list'); if (msg !== '✓ Saved') toast(msg, 'success'); }
+    catch (e) { setCur(before); toast(e instanceof ApiError ? e.message : 'Could not save that. Your change was undone.', 'error'); }
   };
 
   const crumb = [cur.folder, project?.name && project.name !== cur.folder ? project.name : null, cur.tags[0] ? `#${cur.tags[0]}` : null].filter(Boolean).join(' · ') || (cur.mine ? 'My notes' : `Shared by ${cur.owner.name}`);

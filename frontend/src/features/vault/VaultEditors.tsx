@@ -95,9 +95,11 @@ export function Generator({ onUse, clipboardSeconds }: { onUse?: (v: string) => 
  * workspace's reveal time, and as soon as the window loses focus or the tab is left. For a guarded item the current value is not in the page
  * at all until someone who can manage the item asks for it here (with any two-step check it needs); that is recorded.
  */
-function SecretInput({ field, value, onChange, existing, clipboardSeconds, revealSeconds, onLoadCurrent, onShown }: {
+function SecretInput({ field, value, onChange, existing, clipboardSeconds, revealSeconds, onLoadCurrent, onShown, onGate }: {
   field: { key: string; label: string; type: FieldType }; value: string; onChange: (v: string) => void; existing: boolean; clipboardSeconds: number; revealSeconds: number;
   onLoadCurrent?: () => Promise<boolean>; onShown?: () => void;
+  /** Sealed items: the decrypted value is shown only after the reveal check (password AND a two-step code or passkey). */
+  onGate?: () => Promise<boolean>;
 }) {
   const [visible, setVisibleRaw] = useState(false);
   const viewerName = useAuth((st) => st.ctx?.user.displayName ?? '');
@@ -124,6 +126,11 @@ function SecretInput({ field, value, onChange, existing, clipboardSeconds, revea
   const totpBad = field.type === 'totp' && !looksLikeTotp(value);
   const toggle = async () => {
     if (visible) { setVisibleRaw(false); return; }
+    if (onGate && !told.current) {
+      setLoading(true);
+      try { if (await onGate()) { told.current = true; setVisibleRaw(true); } } finally { setLoading(false); }
+      return;
+    }
     if (canLoad) {
       setLoading(true);
       try { if (await onLoadCurrent!()) setVisibleRaw(true); } finally { setLoading(false); }
@@ -236,7 +243,15 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
       return true;
     } catch (e) { toast(errText(e, 'Could not show it.'), 'error'); return false; }
   };
-  const shownSealed = (r: Row) => () => { if (sealedEdit && sp?.fields.some((f) => f.key === r.key && f.value)) void vaultApi.sealedEvent(sealedEdit.item.row.id, 'revealed', `${r.label} (edit screen)`).catch(() => undefined); };
+  // A sealed value is decrypted on this device, but it is drawn only after the reveal check, which the server also records (and refuses without).
+  const savedSealed = (r: Row) => !!sealedEdit && !!sp?.fields.some((f) => f.key === r.key && f.value && f.value === r.value);
+  const gateSealed = (r: Row) => async () => {
+    if (!sealedEdit) return true;
+    try {
+      const ok = await step.reveal((g) => vaultApi.sealedEvent(sealedEdit.item.row.id, 'revealed', `${r.label} (edit screen)`, g).then(() => true), document.getElementById(`vf-${r.key}`));
+      return ok === true;
+    } catch (e) { toast(errText(e, 'Could not show it.'), 'error'); return false; }
+  };
 
   const setRow = (key: string, value: string) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, value } : r)));
   const totpBad = rows.some((r) => r.type === 'totp' && !looksLikeTotp(r.value));
@@ -300,7 +315,7 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
         {kind !== 'Card' && <Field label="Address" full><input className="input" value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} placeholder="https://console.aws.amazon.com" inputMode="url" /></Field>}
         {rows.map((r) => r.secret
           ? <SecretInput key={r.key} field={r} value={r.value} existing={r.existing} clipboardSeconds={clipboardSeconds} revealSeconds={revealSeconds}
-              onLoadCurrent={existing?.canReveal && existing.canManage ? loadCurrent(r) : undefined} onShown={sealedEdit ? shownSealed(r) : undefined} onChange={(v) => setRow(r.key, v)} />
+              onLoadCurrent={existing?.canReveal && existing.canManage ? loadCurrent(r) : undefined} onGate={savedSealed(r) ? gateSealed(r) : undefined} onChange={(v) => setRow(r.key, v)} />
           : (
             <div key={r.key} className={`field${r.type === 'remark' ? ' full' : ''}`} data-field={r.key}>
               <label htmlFor={`vf-${r.key}`}>{r.label}{r.type === 'remark' && <span className="muted vlt-small"> · everyone with access can read this; put anything secret in Notes</span>}</label>
