@@ -103,6 +103,7 @@ const make = async (theme, writes, opts = {}) => {
       assert.ok(ALLOWED.some((re) => re.test(w)), `Unexpected write: ${w}`);
       writes.push({ w, body: req.postDataJSON?.() ?? null });
       let data = {};
+      if (/^\/api\/v1\/work-items\/[^/]+$/.test(ep)) { const t = tasks.find((x) => ep.endsWith(x.id)) ?? tasks[2]; const b = req.postDataJSON() ?? {}; data = { kind: 'task', id: t.id, key: t.key, title: b.title ?? t.title, description: b.description ?? null, projectId: t.projectId, projectKey: 'ATL', projectName: 'Atlas Payments', status: t.statusName, category: t.statusCategory, priority: b.priority ?? t.priority, startDate: b.startDate ?? t.startDate, dueDate: b.dueDate ?? t.dueDate, isOverdue: false, assignee: b.assigneeId ? ref(Number(b.assigneeId.slice(-3))) : t.assignee, reporter: t.reporter, version: 2, createdAt: t.createdAt, updatedAt: t.updatedAt, completedAt: null, loggedMinutes: 70, detail: {}, activity: [] }; }
       if (ep === '/api/v1/work-items') data = { ...mine[0], id: g(990), key: 'ATL-499', title: 'created', detail: null, activity: [] };
       if (ep === '/api/v1/projects') data = { project: { ...atlas, id: g(991) }, statuses, stages, members: [] };
       if (ep.includes('/checklist/')) data = { items: [{ id: g(970), title: 'Reproduce double refund', isDone: true, position: 0, completedAt: null }, { id: g(971), title: 'Add exponential backoff', isDone: true, position: 1, completedAt: null }, { id: g(972), title: 'Idempotency on retry', isDone: true, position: 2, completedAt: null }], total: 3, done: 3, progress: 100 };
@@ -112,7 +113,7 @@ const make = async (theme, writes, opts = {}) => {
     let data = [];
     const sp = url.searchParams;
     if (ep.endsWith('/auth/refresh')) data = { accessToken: `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`, expiresAt: '2099-01-01T00:00:00Z', user };
-    else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['projects.view', 'projects.create', 'projects.edit', 'projects.delete', 'tasks.view', 'tasks.create', 'tasks.edit', 'tasks.comment', 'org.manage', 'work.view', 'work.create', 'reports.view', 'reports.broad'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3, teams: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: {} } };
+    else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['projects.view', 'projects.create', 'projects.edit', 'projects.delete', 'tasks.view', 'tasks.create', 'tasks.edit', 'tasks.comment', 'org.manage', 'work.view', 'work.create', 'reports.view', 'reports.broad', 'vault.use'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3, teams: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: {} } };
     else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
     else if (ep === '/api/v1/workspace/members') data = members;
     else if (ep === '/api/v1/timer') data = null;
@@ -132,6 +133,9 @@ const make = async (theme, writes, opts = {}) => {
     else if (/^\/api\/v1\/projects\/[^/]+\/tasks$/.test(ep)) data = { items: ep.includes(atlas.id) ? tasks : [], page: 1, pageSize: 500, totalItems: tasks.length, totalPages: 1 };
     else if (/^\/api\/v1\/projects\/[^/]+\/activity$/.test(ep)) data = activity;
     else if (/^\/api\/v1\/projects\/[^/]+\/health$/.test(ep)) data = { health: 'AtRisk', byHand: false, note: null, until: null, reasons: [] };
+    else if (/^\/api\/v1\/work-items\/[^/]+$/.test(ep)) { const t = tasks.find((x) => ep.endsWith(x.id)) ?? tasks[2]; data = { kind: 'task', id: t.id, key: t.key, title: t.title, description: 'Retries with backoff.', projectId: t.projectId, projectKey: 'ATL', projectName: 'Atlas Payments',
+      status: t.statusName, category: t.statusCategory, priority: t.priority, startDate: t.startDate, dueDate: t.dueDate, isOverdue: t.isOverdue, assignee: t.assignee, reporter: t.reporter, version: 1, createdAt: t.createdAt, updatedAt: t.updatedAt, completedAt: null, loggedMinutes: 70,
+      detail: { statusId: t.statusId }, activity: [{ type: 'comment', id: g(985), at: at(today, 11, 2), actor: ref(11), summary: 'commented', body: 'QA is ready to go as soon as this lands.' }] }; }
     else if (/^\/api\/v1\/tasks\/[^/]+$/.test(ep)) data = { task: tasks.find((t) => ep.endsWith(t.id)) ?? tasks[2], subtasks: [] };
     else if (/^\/api\/v1\/tasks\/[^/]+\/checklist$/.test(ep)) data = { items: [{ id: g(970), title: 'Reproduce double refund', isDone: true, position: 0, completedAt: null }, { id: g(971), title: 'Add exponential backoff', isDone: true, position: 1, completedAt: null }, { id: g(972), title: 'Idempotency on retry', isDone: false, position: 2, completedAt: null }], total: 3, done: 2, progress: 67 };
     else if (/^\/api\/v1\/tasks\/[^/]+\/dependencies$/.test(ep)) data = { blockedBy: [{ id: g(980), type: 'FinishToStart', satisfied: true, task: { id: g(406), key: 'ATL-486', title: 'Idempotency keys', category: 'Done', statusName: 'Done', dueDate: day(-2) } }], blocks: [{ id: g(981), type: 'FinishToStart', satisfied: false, task: { id: g(410), key: 'ATL-490', title: 'Release checklist', category: 'Active', statusName: 'In progress', dueDate: day(3) } }], enforced: true, blockedReason: null };
@@ -148,19 +152,84 @@ const make = async (theme, writes, opts = {}) => {
   });
   return ctx;
 };
-const shot = async (page, name) => { await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, name), animations: 'disabled' }); };
+const shot = async (page, name) => { await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(700); await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, name), animations: 'disabled' }); };
 const watch = (page) => {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (e) => { if (e.type() === 'error' && !e.text().startsWith('Failed to load resource')) errors.push(e.text()); });
 };
+const fitsPhoneX = async (page, what) => { if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)) throw new Error(`${what}: sideways scroll`); };
 try {
-  const explore = process.env.EXPLORE;
-  if (explore) {
-    for (const [theme, width, height] of [['dark', 1440, 900], ['dark', 390, 844]]) {
-      const ctx = await make(theme, []); const page = await ctx.newPage(); watch(page); await page.setViewportSize({ width, height });
-      for (const p of explore.split(',')) { await page.goto(`${origin}/northwind${p}`); await page.waitForTimeout(2500); await page.screenshot({ path: path.join(out, `x-${p.replace(/\W+/g, '_')}-${width}.png`) }); }
-      await ctx.close();
+  for (const [theme, width, height] of [['light', 1440, 900], ['dark', 1440, 900], ['light', 1920, 1080], ['light', 1100, 800], ['light', 390, 844], ['dark', 390, 844]]) {
+    const tag = `${width}${theme === 'dark' ? '-dark' : ''}`, phone = width < 500;
+    const writes = [];
+    const ctx = await make(theme, writes); const page = await ctx.newPage(); watch(page); await page.setViewportSize({ width, height });
+
+    // Today and My work: the rail sits beside the main column on a desktop (>= 900px), stacked on a phone; no ⋯ bubble, no classic links.
+    for (const [p, h] of [['/', /Good afternoon, Ravi\./], ['/work', /due this week|Nothing due|Your list is clear/]]) {
+      await page.goto(`${origin}/northwind${p}`);
+      await page.getByRole('heading', { level: 1, name: h }).waitFor(); await page.waitForTimeout(500);
+      const g = await page.evaluate(() => { const m = document.querySelector('.calm-split-main')?.getBoundingClientRect(), r = document.querySelector('.calm-rail')?.getBoundingClientRect(); return m && r ? { beside: r.left >= m.right - 1, top: Math.abs(r.top - m.top) } : null; });
+      assert.ok(g, `${p} ${tag}: main and rail`);
+      assert.equal(g.beside, !phone, `${p} ${tag}: rail ${phone ? 'under' : 'beside'} the main column`);
+      assert.equal(await page.getByRole('button', { name: /More on Today/ }).count(), 0, 'no ⋯ bubble on Today');
+      assert.equal(await page.locator('a[href*="classic=1"]').count(), 0, `${p}: no link to a classic view`);
+      if (phone) await fitsPhoneX(page, `${p} ${tag}`);
+      await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `${p === '/' ? 'today' : 'mywork'}-${tag}.png`) });
     }
+    checks.push(`${tag}: Today and My work rails, no ⋯ bubble, no classic links`);
+
+    // Settings on a phone: the list, then each section page with ‹ Settings; nothing floats over either.
+    if (phone) {
+      await page.goto(`${origin}/northwind/settings`);
+      await page.getByTestId('settings-phone-list').waitFor();
+      const rows = await page.locator('.cs-nav-phone .cs-item').evaluateAll((els) => els.map((e) => [e.textContent, e.getAttribute('href')]));
+      assert.ok(rows.length >= 10, 'every section listed');
+      await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `settings-list-${tag}.png`), fullPage: true });
+      for (const [label, href] of rows) {
+        await page.goto(`${origin}/northwind${href}`); await page.waitForTimeout(500);
+        if (href.startsWith('/settings')) {
+          await page.getByTestId('settings-back').waitFor();
+          assert.equal(await page.getByTestId('settings-nav').count(), 0, `${label}: no list over the page`);
+        }
+        await fitsPhoneX(page, `settings ${label} ${tag}`);
+        await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `settings-${label.replace(/\W+/g, '-').toLowerCase()}-${tag}.png`) });
+      }
+      await page.goto(`${origin}/northwind/settings/general`);
+      await page.getByTestId('settings-back').click();
+      await page.getByTestId('settings-phone-list').waitFor();
+      checks.push(`${tag}: phone Settings list and ${rows.length} section pages`);
+    } else if (width === 1440) {
+      await page.goto(`${origin}/northwind/library`); await page.waitForTimeout(1200);
+      assert.equal(await page.locator('.lib-vault-space, a[href$="/library/vault"]').filter({ hasText: /Vault/ }).count(), 0, 'no Vault in Library');
+      await page.goto(`${origin}/northwind/settings/profile`);
+      await page.getByTestId('settings-nav').getByRole('link', { name: 'Passwords & vault' }).waitFor();
+      checks.push(`${tag}: Vault left Library, reached from Settings`);
+    }
+
+    // The task sheet: every field edits in place.
+    await page.goto(`${origin}/northwind/work/projects/${atlas.id}`);
+    await page.getByRole('button', { name: 'Refund webhook retries', exact: true }).click();
+    const ts = page.getByTestId('task-sheet-fields');
+    await ts.getByLabel('Title').waitFor();
+    if (theme === 'light') {
+      await ts.getByLabel('Title').fill('Refund webhook retries v2'); await ts.getByLabel('Title').press('Enter'); await ts.getByLabel('Title').blur();
+      await page.waitForTimeout(400);
+      await ts.getByLabel('Priority').selectOption('Low', { force: true });
+      await ts.getByLabel('Start date').fill(day(-2));
+      await ts.getByLabel('Due date').fill(day(-1));
+      await page.waitForTimeout(500);
+      const patches = writes.filter((x) => /^PATCH \/api\/v1\/work-items\//.test(x.w)).map((x) => Object.keys(x.body ?? {}).filter((k) => k !== 'version')).flat();
+      for (const k of ['title', 'priority', 'startDate', 'dueDate']) assert.ok(patches.includes(k), `${tag}: ${k} saves in place (${patches.join(',')})`);
+      await page.getByRole('textbox', { name: 'Add a checklist item' }).fill('Write the runbook'); await page.keyboard.press('Enter');
+      await page.waitForTimeout(300);
+      assert.ok(writes.some((x) => /checklist$/.test(x.w) && x.w.startsWith('POST')), 'checklist item added');
+      checks.push(`${tag}: task sheet edits title, priority, start, due, checklist`);
+    }
+    if (phone) await fitsPhoneX(page, `task sheet ${tag}`);
+    await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `task-sheet-${tag}.png`) });
+    await ctx.close();
   }
 } finally { await browser.close(); }
-console.log(errors.slice(0, 10).join('\n'));
+// The Library hub's catalog is not mocked here (verify-v2-library-ui covers it); its render error is expected in this fixture only.
+assert.deepEqual(errors.filter((e) => !/Failed to load|404|LibraryPage-|Unhandled UI error/.test(e)), [], 'no page errors');
+console.log(`OK calm round 3: ${checks.length} checks\n${checks.join('\n')}`);

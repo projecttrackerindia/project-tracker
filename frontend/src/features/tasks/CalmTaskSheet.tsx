@@ -72,7 +72,7 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
           <div className="ts-col" data-testid="task-sheet-fields">
             {/* Every field edits in place (title, description, status, priority, owner, start, due with a reason when later, files,
                 history and the ⋯ menu): the one Work panel, saved optimistically with ✓ Saved. */}
-            <WorkItemPanel id={t.id} onClose={onClose} />
+            <WorkItemPanel id={t.id} onClose={onClose} embedded />
           </div>
           <div className="ts-col">
             <div className="ts-lab" style={{ marginTop: 0 }}>Checklist · {cl.data?.done ?? 0} of {cl.data?.total ?? items.length}</div>
@@ -115,7 +115,7 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
 export function CalmWorkSheet({ id, title, onClose }: { id: string | null; title?: string; onClose: () => void }) {
   return (
     <CalmSheet open={!!id} onClose={onClose} width={720} label="Work item" title={title ?? 'Details'}>
-      {id && <div className="cws-body" data-testid="calm-work-sheet"><WorkItemPanel id={id} onClose={onClose} /></div>}
+      {id && <div className="cws-body" data-testid="calm-work-sheet"><WorkItemPanel id={id} onClose={onClose} embedded /></div>}
     </CalmSheet>
   );
 }

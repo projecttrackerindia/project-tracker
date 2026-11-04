@@ -25,7 +25,7 @@ try {
       assert.match(head.replace(/\s+/g, ' '), /Item Owner Start Due Status/);
     }
     assert.ok(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)), `${tag}: no sideways scroll`);
-    await page.screenshot({ path: path.join(out, `actions-${tag}.png`) });
+    await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `actions-${tag}.png`) });
     if (theme === 'light') {
       // Owner: the calm picker.
       await page.getByRole('button', { name: /^Owner of Freeze main at 14:30/ }).click();
@@ -42,7 +42,7 @@ try {
       await page.getByRole('button', { name: /^Share the sandbox keys with QA/ }).click();
       await page.getByTestId('calm-work-sheet').waitFor();
       assert.equal(page.url(), before, 'still on Portfolio');
-      await page.screenshot({ path: path.join(out, `actions-sheet-${tag}.png`) });
+      await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `actions-sheet-${tag}.png`) });
       await page.keyboard.press('Escape');
       // Plan sheet: a task opens the same panel.
       await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=sheet`);
@@ -51,7 +51,7 @@ try {
       await page.locator('button.cps-t').first().click();
       await page.getByTestId('calm-work-sheet').waitFor();
       assert.equal(page.url(), u, 'Plan sheet: still on Portfolio');
-      await page.screenshot({ path: path.join(out, `plansheet-sheet-${tag}.png`) });
+      await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `plansheet-sheet-${tag}.png`) });
       checks.push(`actions + plan sheet side panel ${tag}`);
     }
     assert.deepEqual(errors, [], `${tag}: no page errors`);

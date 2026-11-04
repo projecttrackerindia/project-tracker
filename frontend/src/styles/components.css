@@ -1236,3 +1236,5 @@ html .ss-pop { background: var(--calm-solid, var(--panel-solid)); border: 0; bor
     padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); z-index: 1200; }
   html .ss-pop .ss-list li [role="option"], html .ss-pop .ss-opt { min-height: 44px; }
 }
+/* Native selects that remain: Windows/Edge draws their option list from the option colours, so give them the theme's (no white popups in dark). */
+[data-theme='dark'] select, [data-theme='dark'] option, [data-theme='dark'] optgroup { background-color: var(--ds-surface, #161618); color: var(--ds-text, #f5f5f7); }
