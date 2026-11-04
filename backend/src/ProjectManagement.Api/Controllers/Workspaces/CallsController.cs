@@ -23,6 +23,10 @@ public sealed class CallsController(CallService calls, ProjectManagement.Applica
     [HttpGet("live")]
     public async Task<IActionResult> Live(CancellationToken ct) => Ok(await calls.LiveAsync(ct));
 
+    /// <summary>Private calls: the host shares the room key again (encrypted for each device; the server cannot read it).</summary>
+    [HttpPut("{id:guid}/key")]
+    public async Task<IActionResult> SetKey(Guid id, [FromBody] CallKeyRequest req, CancellationToken ct) => Ok(await calls.SetKeyAsync(id, req, ct));
+
     [HttpPost]
     public async Task<IActionResult> Start([FromBody] StartCallRequest req, CancellationToken ct) => Created(await calls.StartAsync(req, ct));
 

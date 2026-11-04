@@ -28,6 +28,10 @@ public class CallRoom : TenantEntity, ITenantScoped
     public Guid? AgentSessionId { get; set; }
     /// <summary>Highest number of people in the call at once.</summary>
     public int PeakParticipants { get; set; }
+    /// <summary>End-to-end encrypted call: media is encrypted in the browsers with a room key the server never sees. No recording, transcript or notetaker.</summary>
+    public bool IsPrivate { get; set; }
+    /// <summary>Private calls: the room key, encrypted for each invited person's devices (the same envelope as a private chat message).</summary>
+    public string? E2eeKeyCipher { get; set; }
 }
 
 /// <summary>Someone invited to or in a call. Invited people may join; others only through the project or conversation the call belongs to.</summary>

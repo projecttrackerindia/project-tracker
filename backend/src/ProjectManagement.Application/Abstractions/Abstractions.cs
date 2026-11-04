@@ -248,6 +248,8 @@ public interface IAppDbContext
     DbSet<ChatScheduledMessage> ChatScheduledMessages { get; }
     DbSet<ChatPoll> ChatPolls { get; }
     DbSet<ChatPollVote> ChatPollVotes { get; }
+    DbSet<ChatDeviceKey> ChatDeviceKeys { get; }
+    DbSet<ChatKeyBackup> ChatKeyBackups { get; }
     DbSet<ChatUserStatus> ChatUserStatuses { get; }
     DbSet<AiUserProfile> AiUserProfiles { get; }
     DbSet<ReminderSettings> ReminderSettings { get; }

@@ -158,7 +158,7 @@ export const vaultApi = {
   createSealed: (b: { id: string; collectionId: string; kind: VaultItemKind; keyVersion: number; blob: string; expiresAt?: string | null; rotateEveryDays?: number | null }) => post<SealedItemRow>('/vault/sealed-items', b),
   updateSealed: (id: string, b: { collectionId: string; kind: VaultItemKind; keyVersion: number; blob: string; expiresAt?: string | null; rotateEveryDays?: number | null; valueChanged: boolean; reason?: string | null }) => put<SealedItemRow>(`/vault/sealed-items/${id}`, b),
   sealedVersions: (id: string) => get<SealedVersionRow[]>(`/vault/sealed-items/${id}/versions`),
-  sealedEvent: (id: string, action: 'revealed' | 'copied' | 'totp_used', field?: string) => post(`/vault/sealed-items/${id}/events`, { action, field }),
+  sealedEvent: (id: string, action: 'revealed' | 'copied' | 'totp_used', field?: string, stepUp?: string) => post(`/vault/sealed-items/${id}/events`, { action, field, stepUp }),
   addSealedFile: (id: string, cipher: Blob, wrapped: string) => postForm<SealedFile>(`/vault/sealed-items/${id}/files`, (() => { const f = new FormData(); f.append('file', cipher, 'sealed.bin'); f.append('wrapped', wrapped); return f; })()),
   sealedFile: (id: string) => postBytes(`/vault/sealed-files/${id}`),
   breachRange: (prefix: string) => get<{ body: string }>(`/vault/breach-range/${prefix}`),

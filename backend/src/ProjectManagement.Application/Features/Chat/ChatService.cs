@@ -45,7 +45,7 @@ public record ChatMemberDto(Guid UserId, string Name, ConversationRole Role, Dat
     string? StatusEmoji = null, string? StatusText = null, bool Dnd = false);
 public record ChatLastMessageDto(Guid Id, string? SenderName, string Snippet, DateTime At, bool IsMine, bool IsSystem);
 public record ConversationDto(Guid Id, ConversationType Type, string Name, IReadOnlyList<ChatMemberDto> Members, ChatLastMessageDto? LastMessage,
-    int Unread, bool IsMuted, bool CanManage, Guid? OtherUserId, DateTime LastActivityAt, Guid? ProjectId = null, int UnreadMentions = 0);
+    int Unread, bool IsMuted, bool CanManage, Guid? OtherUserId, DateTime LastActivityAt, Guid? ProjectId = null, int UnreadMentions = 0, bool IsPrivate = false);
 /// <summary>How much of a project's team chat the caller has not read, and how many of those messages @mention them.</summary>
 public record ProjectChatUnreadDto(Guid ProjectId, Guid ConversationId, int Unread, int Mentions);
 public record ReplyPreviewDto(Guid Id, string? SenderName, string Snippet, bool IsDeleted);
@@ -61,7 +61,7 @@ public record ChatMessageDto(Guid Id, Guid ConversationId, Guid? SenderId, strin
     ReplyPreviewDto? ReplyTo, DateTime CreatedAt, DateTime? EditedAt, bool IsDeleted,
     IReadOnlyList<ChatAttachmentDto>? Attachments = null, IReadOnlyList<ChatReactionDto>? Reactions = null,
     Guid? ThreadRootId = null, int ThreadReplies = 0, DateTime? ThreadLastAt = null, DateTime? PinnedAt = null, string? PinnedBy = null,
-    bool Saved = false, bool AsksMe = false, ChatPollDto? Poll = null, IReadOnlyList<ChatLinkDto>? Linked = null);
+    bool Saved = false, bool AsksMe = false, ChatPollDto? Poll = null, IReadOnlyList<ChatLinkDto>? Linked = null, string? Cipher = null);
 public record MessagePageDto(IReadOnlyList<ChatMessageDto> Items, bool HasMore);
 public record ChatFileDto(Guid Id, string FileName, string ContentType, long SizeBytes, bool IsImage, Guid MessageId, Guid? SenderId, string SenderName, DateTime CreatedAt);
 public record ChatFilePageDto(IReadOnlyList<ChatFileDto> Items, bool HasMore);
@@ -77,9 +77,10 @@ public record CreateGroupRequest(string Name, IReadOnlyList<Guid>? MemberIds);
 public record RenameGroupRequest(string Name);
 public record AddMembersRequest(IReadOnlyList<Guid>? UserIds);
 /// <param name="ThreadRootId">A reply in the thread under this message (shown in the thread, not in the conversation).</param>
-public record SendMessageRequest(string? Body, Guid? ReplyToId, IReadOnlyList<Guid>? AttachmentIds = null, Guid? ThreadRootId = null);
+/// <param name="Cipher">Private chats only: the end-to-end encrypted envelope (Body stays empty).</param>
+public record SendMessageRequest(string? Body, Guid? ReplyToId, IReadOnlyList<Guid>? AttachmentIds = null, Guid? ThreadRootId = null, string? Cipher = null);
 public record ReactRequest(string? Emoji);
-public record EditMessageRequest(string? Body);
+public record EditMessageRequest(string? Body, string? Cipher = null);
 public record MuteRequest(bool Muted);
 
 /// <summary>
@@ -204,6 +205,9 @@ public partial class ChatService(IAppDbContext db, ICurrentContext ctx, AppClock
 
     // A mention is written into the text as @[Name](user id). Previews and the server's own checks read it as @Name.
     private static readonly Regex MentionToken = new(@"@\[([^\]\n]{1,100})\]\(([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)", RegexOptions.Compiled);
+
+    /// <summary>What previews, notices and the conversation list show for a private (encrypted) message: never its text, which the server cannot read.</summary>
+    public const string EncryptedSnippet = "🔒 Encrypted message";
 
     private static string Snippet(string body)
     {

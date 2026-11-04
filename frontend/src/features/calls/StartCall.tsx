@@ -7,6 +7,8 @@ import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { callLink, callsApi } from './callsApi';
+import { isPrivateConversation } from '../chat/e2e/session';
+import { sealRoomKey } from './callKey';
 
 interface Person { userId: string; name: string }
 
@@ -37,15 +39,19 @@ export function StartCallModal({ projectId, conversationId, people, agentAvailab
   const others = useMemo(() => people.filter((p) => p.userId !== me), [people, me]);
   const [title, setTitle] = useState('');
   const [invite, setInvite] = useState<Set<string>>(() => new Set(preselect && others.length <= 12 ? others.map((p) => p.userId) : []));
-  const [agent, setAgent] = useState(agentAvailable);
+  const chatIsPrivate = !!conversationId && isPrivateConversation(conversationId);
+  const [priv, setPriv] = useState(chatIsPrivate);
+  const [agent, setAgent] = useState(agentAvailable && !chatIsPrivate);
   const [busy, setBusy] = useState(false);
   const start = async () => {
     setBusy(true);
     try {
-      const call = await callsApi.start({ title: title.trim() || undefined, projectId: projectId ?? null, conversationId: conversationId ?? null, invite: [...invite], agent: !!projectId && agent });
+      // A private call: the room key is made here and encrypted for each invited person's devices; the server only passes it along.
+      const keyCipher = priv ? await sealRoomKey([...invite], conversationId) : null;
+      const call = await callsApi.start({ title: title.trim() || undefined, projectId: projectId ?? null, conversationId: conversationId ?? null, invite: [...invite], agent: !!projectId && agent && !priv, private: priv, keyCipher });
       if (agent && projectId && !call.agentEnabled && call.agentStatus) toast(call.agentStatus, 'info');
       nav(callLink(call.id, audio));
-    } catch (e) { toast(e instanceof ApiError ? e.message : 'The call could not be started.', 'error'); setBusy(false); }
+    } catch (e) { toast(e instanceof ApiError || e instanceof Error ? e.message : 'The call could not be started.', 'error'); setBusy(false); }
   };
   const toggle = (id: string) => setInvite((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
@@ -70,7 +76,11 @@ export function StartCallModal({ projectId, conversationId, people, agentAvailab
             <small className="muted">Anyone in the project can join from the link too.</small>
           </fieldset>
         )}
-        {projectId && (
+        <label className="call-private" data-testid="call-private">
+          <input type="checkbox" checked={priv} disabled={chatIsPrivate} onChange={(e) => { setPriv(e.target.checked); if (e.target.checked) setAgent(false); }} />
+          <span><b><Icon name="lock" size={12} /> Private call (end-to-end encrypted)</b><small>{chatIsPrivate ? 'This chat is private, so its calls are too.' : 'Only the people in the call can see and hear it. No notetaker, recording or transcript.'}</small></span>
+        </label>
+        {projectId && !priv && (
           <label className="call-agent">
             <input type="checkbox" checked={agent} onChange={(e) => setAgent(e.target.checked)} />
             <span><b>Bring the project agent</b><small>It joins by itself (no one has to let it in), writes down who said what, and sends the minutes and follow-ups after the call. Everyone sees it in the call.</small></span>

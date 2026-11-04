@@ -31,7 +31,8 @@ public record VaultSealRequest(VaultEnvelopeInput? Envelope, IReadOnlyList<Vault
 public record VaultExportFile(Guid Id, string FileName, string ContentType, string Data);
 public record VaultExportItem(Guid Id, VaultItemKind Kind, string Title, string? Url, IReadOnlyList<string> Tags, SensitivityClass Class, IReadOnlyList<VaultFieldDto> Fields,
     DateTime? ExpiresAt, int? RotateEveryDays, IReadOnlyList<VaultExportFile> Files);
-public record VaultItemEventRequest(string? Action, string? Field);
+/// <param name="StepUp">A reveal grant (password and a second factor): needed for "revealed", the same rule as for a guarded item.</param>
+public record VaultItemEventRequest(string? Action, string? Field, string? StepUp = null);
 public record VaultDeviceLinkRequest(string? Label, string? X25519Public, string? MlKemPublic);
 public record VaultDeviceLinkDto(Guid Id, string Label, string X25519Public, string MlKemPublic, DateTime CreatedAt, DateTime ExpiresAt, string? IpAddress, string? UserAgent,
     bool Approved, bool Denied, string? Envelope, string? Signature);
@@ -519,6 +520,13 @@ public partial class VaultService
         if (!item.Sealed) throw new ConflictException("This item is not sealed.", "VAULT_NOT_SEALED");
         var action = (req.Action ?? "").Trim();
         if (!SealedUseEvents.Contains(action)) throw new ValidationException("action", "Unknown event.");
+        // The browser holds the decrypted value, but the app shows it only after the same check as a guarded item: password AND a two-step code or passkey.
+        if (action == "revealed" && !await stepUp.IsRevealGrantAsync(me, item.TenantId, req.StepUp, ct))
+        {
+            recorder.Audit("vault.reveal_denied", "VaultItem", item.Id, null, new { collection = c.Name, field = Clip(req.Field, 60), sealedItem = true, reason = "shown without password and second-factor check" });
+            await db.SaveChangesAsync(ct);
+            throw new ForbiddenException("Showing a value needs your password and a two-step code or passkey. Copy works without it.", "REVEAL_VERIFY_REQUIRED");
+        }
         item.LastUsedAt = clock.Now; item.LastUsedBy = me;
         recorder.Audit($"vault.{action}", "VaultItem", item.Id, null, new { collection = c.Name, field = Clip(req.Field, 60), sealedItem = true });
         await db.SaveChangesAsync(ct);

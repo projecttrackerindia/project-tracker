@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
+import { optimisticMutationCache } from '../lib/optimistic';
 import { create } from 'zustand';
 import { refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
@@ -8,7 +9,9 @@ import { setAppZones } from '../lib/zone';
 import type { AppContext, AuthResponse } from '../api/types';
 import { clearOfflineData, readOfflineSnapshot } from '../features/offline/storage';
 
-export const queryClient = new QueryClient({
+// Every mutation in the app shares one MutationCache: optimistic cache updates, rollback on error and the "✓ Saved" tick (lib/optimistic.ts).
+export const queryClient: QueryClient = new QueryClient({
+  mutationCache: optimisticMutationCache(() => queryClient),
   defaultOptions: {
     queries: {
       // Answers stay in memory for 30 minutes (the default is 5), so going back to a page paints at once from the cache and refreshes

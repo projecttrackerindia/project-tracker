@@ -161,12 +161,12 @@ export function RemindersPage() {
   const patchOne = (r: Reminder) => queryClient.setQueryData<ReminderList>(key, (old) => old && { ...old, open: old.open.map((x) => (x.id === r.id ? r : x)) });
   const meta = async (r: Reminder, b: { flagged?: boolean; list?: string }) => {
     patchOne({ ...r, flagged: b.flagged ?? r.flagged, list: b.list === undefined ? r.list : b.list || null });
-    try { patchOne(await reminderApi.meta(r.id, b)); toast('✓ Saved', 'success'); }
+    try { patchOne(await reminderApi.meta(r.id, b)); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save that.', 'error'); void refreshReminders(wid); }
   };
   const change = async (r: Reminder, patch: { exact?: boolean; onlyIfOpen?: boolean }) => {
     patchOne({ ...r, ...patch });
-    try { patchOne(await reminderApi.update(r.id, { ...asSave(r), ...patch })); toast('✓ Saved', 'success'); }
+    try { patchOne(await reminderApi.update(r.id, { ...asSave(r), ...patch })); }
     catch (e) { toast(e instanceof ApiError ? e.errors[0]?.message ?? e.message : 'Could not save that.', 'error'); void refreshReminders(wid); }
   };
   const remove = async (r: Reminder) => {

@@ -13,6 +13,7 @@ import { usePriorities } from '../features/priorities/usePriorities';
 import { projectTypeLabel } from '../lib/workLabels';
 import { Icon, type IconName } from './Icon';
 import { lockScroll } from '../lib/scrollLock';
+import { SAVED_EVENT, SAVE_FAILED_EVENT } from '../lib/optimistic';
 
 // ------------------------------------------------------------------ badges
 const PRIORITY_CLASS: Record<Priority, string> = { Critical: 'badge-critical', High: 'badge-high', Medium: 'badge-medium', Low: 'badge-low' };
@@ -557,11 +558,37 @@ export function SubmitButton({ busy, children }: { busy?: boolean; children: Rea
 }
 
 // ------------------------------------------------------------------ global roots
+/**
+ * The one "✓ Saved" tick for the whole app (lib/optimistic.ts raises it after every save, from any page). It sits top-centre, fades with
+ * opacity/transform only, and a save that failed shows the reason instead (its optimistic change has already been undone).
+ */
+export function SavedTick() {
+  const [state, setState] = useState<{ kind: 'saved' | 'failed'; text: string; n: number } | null>(null);
+  useEffect(() => {
+    let timer = 0;
+    const show = (kind: 'saved' | 'failed', text: string) => {
+      setState((s) => ({ kind, text, n: (s?.n ?? 0) + 1 }));
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setState(null), kind === 'saved' ? 1400 : 4000);
+    };
+    const onSaved = () => show('saved', '✓ Saved');
+    const onFailed = (e: Event) => show('failed', (e as CustomEvent<{ message: string }>).detail?.message ?? 'Could not save.');
+    window.addEventListener(SAVED_EVENT, onSaved); window.addEventListener(SAVE_FAILED_EVENT, onFailed);
+    return () => { window.clearTimeout(timer); window.removeEventListener(SAVED_EVENT, onSaved); window.removeEventListener(SAVE_FAILED_EVENT, onFailed); };
+  }, []);
+  return (
+    <div className="saved-tick-root" aria-live="polite" role="status">
+      {state && <span key={state.n} className={`saved-tick ${state.kind}`} data-testid="saved-tick">{state.text}</span>}
+    </div>
+  );
+}
+
 export function ToastRoot() {
   const toasts = useUi((s) => s.toasts);
   const icon = { success: 'checkCircle', error: 'xCircle', warning: 'alert', info: 'info' } as const;
   return (
     <div className="toast-root" aria-live="polite">
+      <SavedTick />
       {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.type}`}>
           <span className="toast-ico"><Icon name={icon[t.type]} /></span><span>{t.message}</span>

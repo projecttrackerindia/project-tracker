@@ -3,17 +3,25 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../components/Icon';
 import { useWsQuery } from '../../lib/hooks';
-import { getAttention, playRing, primeSound } from '../../lib/attention';
+import { getAttention, playRing, primeSound, soundOn } from '../../lib/attention';
 import { orgHref } from '../../lib/orgPath';
 import { useAuth } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { CHECK_NOTIFICATIONS } from '../notifications/events';
+import { getAlertPrefs, isMuted } from '../notifications/centre/prefs';
 import { callLink, callsApi } from './callsApi';
 import { CALL_EVENT, expire, onRinging, ring, ringingCalls, stopRinging, type CallEventDetail, type IncomingCall } from './incomingCalls';
 import './calls.css';
 
 const RING_EVERY_MS = 3000;
 const away = () => document.hidden || !document.hasFocus();
+/**
+ * Whether a ringing call may make sound here: the device's sound switch, "Mute all" and Do not disturb, and the Meetings sound setting.
+ * Muted, the call still shows its card and a silent system notification, so it is never missed - it just does not ring.
+ */
+export function ringMaySound(p = getAlertPrefs(), master = soundOn()) {
+  return master && !isMuted(p) && !p.dnd && p.cats.meetings.sound;
+}
 const swReady = () => typeof navigator !== 'undefined' && 'serviceWorker' in navigator;
 
 /** A system notification for a ringing call, with Answer and Decline (the service worker handles the buttons). */
@@ -23,7 +31,7 @@ async function showSystemRing(c: IncomingCall) {
   const options: NotificationOptions & { renotify?: boolean; vibrate?: number[]; actions?: { action: string; title: string }[] } = {
     body: c.title, tag: `call-${c.callId}`, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', requireInteraction: true, renotify: true,
     // The page rings by itself when it can; when it cannot yet (no tap on it so far), the system notification makes the sound.
-    silent: false, vibrate: [400, 200, 400, 200, 400],
+    silent: !ringMaySound(), vibrate: ringMaySound() ? [400, 200, 400, 200, 400] : [],
     data: { link, call: c.callId },
     actions: [{ action: 'answer', title: 'Answer' }, { action: 'decline', title: 'Decline' }],
   };
@@ -118,7 +126,7 @@ export function IncomingCallHost() {
         else if (d.action === 'answer') { stopRinging(d.callId); nav(callLink(d.callId)); }
       } else if (d?.type === 'pm-push' && d.notificationType === 'Call' && d.call) {
         ring({ callId: d.call, fromName: d.title?.replace(/ is calling$/, '') });
-        e.ports[0]?.postMessage({ played: playRing() });
+        e.ports[0]?.postMessage({ played: ringMaySound() ? playRing() : true });   // muted: "played" so the worker does not ring instead
       }
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
@@ -137,10 +145,10 @@ export function IncomingCallHost() {
         if (away()) void showSystemRing(c);
       }
     }
-    playRing();
+    if (ringMaySound()) playRing();
     const timer = window.setInterval(() => {
       for (const c of expire()) void closeSystemRing(c.callId);
-      if (ringingCalls().length) playRing();
+      if (ringingCalls().length && ringMaySound()) playRing();
     }, RING_EVERY_MS);
     // Hidden after the ring began: the system notification takes over.
     const hidden = () => { if (away()) for (const c of ringingCalls()) void showSystemRing(c); };

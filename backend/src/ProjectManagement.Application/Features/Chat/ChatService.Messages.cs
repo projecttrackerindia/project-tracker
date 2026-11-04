@@ -22,7 +22,7 @@ public partial class ChatService
     {
         var replyIds = messages.Where(m => m.ReplyToId != null).Select(m => m.ReplyToId!.Value).Distinct().ToList();
         var replies = replyIds.Count == 0 ? [] : await db.ChatMessages.AsNoTracking().Where(m => replyIds.Contains(m.Id))
-            .Select(m => new { m.Id, m.SenderId, m.Body, m.DeletedAt }).ToListAsync(ct);
+            .Select(m => new { m.Id, m.SenderId, m.Body, m.DeletedAt, m.Cipher }).ToListAsync(ct);
         var userIds = messages.Where(m => m.SenderId != null).Select(m => m.SenderId!.Value)
             .Concat(replies.Where(r => r.SenderId != null).Select(r => r.SenderId!.Value))
             .Concat(messages.Where(m => m.PinnedBy != null).Select(m => m.PinnedBy!.Value)).Distinct().ToList();
@@ -50,13 +50,13 @@ public partial class ChatService
             {
                 var r = replies.FirstOrDefault(x => x.Id == rid);
                 reply = r is null ? new ReplyPreviewDto(rid, null, "", true)
-                    : new ReplyPreviewDto(r.Id, r.SenderId is { } s ? names.GetValueOrDefault(s) : null, r.DeletedAt is null ? Snippet(r.Body) : "", r.DeletedAt != null);
+                    : new ReplyPreviewDto(r.Id, r.SenderId is { } s ? names.GetValueOrDefault(s) : null, r.DeletedAt is null ? (r.Cipher != null ? EncryptedSnippet : Snippet(r.Body)) : "", r.DeletedAt != null);
             }
             return new ChatMessageDto(m.Id, m.ConversationId, m.SenderId, m.SenderId is { } sid ? names.GetValueOrDefault(sid) : null, m.Kind,
                 gone ? "" : m.Body, reply, m.CreatedAt, m.EditedAt, gone,
                 attachments is { Count: > 0 } ? attachments : null, reactions is { Count: > 0 } ? reactions : null,
                 m.ThreadRootId, m.ThreadReplies, m.ThreadLastAt, gone ? null : m.PinnedAt, !gone && m.PinnedBy is { } pb ? names.GetValueOrDefault(pb) : null,
-                saved.Contains(m.Id), !gone && asksMe?.Contains(m.Id) == true, polls.GetValueOrDefault(m.Id), gone ? null : ReadLinks(m.LinkedJson));
+                saved.Contains(m.Id), !gone && asksMe?.Contains(m.Id) == true, polls.GetValueOrDefault(m.Id), gone ? null : ReadLinks(m.LinkedJson), gone ? null : m.Cipher);
         }).ToList();
     }
 
@@ -144,7 +144,7 @@ public partial class ChatService
             var existing = await db.ChatMessages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == existingId, ct);
             if (existing is not null)
             {
-                if (existing.ConversationId != conversationId || existing.SenderId != me || existing.Body != req.Body
+                if (existing.ConversationId != conversationId || existing.SenderId != me || (req.Cipher is null ? existing.Body != req.Body : existing.Cipher != req.Cipher)
                     || existing.DeletedAt != null || req.ReplyToId is not null || req.AttachmentIds is { Count: > 0 })
                     throw new ConflictException("The message identity does not match the approved operation.", "CHAT_IDEMPOTENCY_MISMATCH");
                 return (await ToDtosAsync([existing], ct))[0];
@@ -160,6 +160,8 @@ public partial class ChatService
             projectName = name;
             audience = await SyncProjectMembersAsync(tenant, conv, ct);
         }
+        if (conv.IsPrivate) return await SendPrivateAsync(tenant, me, mine, conv, req, idempotencyId, ct);
+        if (req.Cipher is not null) throw new ValidationException("cipher", "Only a private chat carries encrypted messages.");
         // In a group the members can be @mentioned too (in a direct chat there is nobody else to name).
         var mentionable = audience ?? (conv.Type == ConversationType.Group ? await GroupMembersAsync(conversationId, ct) : null);
         var (normalized, mentioned) = await ResolveMentionsAsync(req.Body, mentionable, ct);
@@ -238,13 +240,20 @@ public partial class ChatService
         var members = await db.ConversationMembers.AsNoTracking().Where(m => m.ConversationId == conv.Id).Select(m => new { m.UserId, m.IsMuted, m.LastReadAt }).ToListAsync(ct);
         var now = clock.Now;
         var told = new List<Guid>();
-        foreach (var u in recipients.Where(u => u != me))
+        // Read once for everyone (not one count and one lookup per person: a 50-person group was 100 queries per message).
+        var targets = recipients.Where(u => u != me).Distinct().Where(u => members.Any(m => m.UserId == u && !m.IsMuted)).ToList();
+        if (targets.Count == 0) return told;
+        var since = members.Where(m => targets.Contains(m.UserId)).Min(m => m.LastReadAt);
+        var recent = await db.ChatMessages.AsNoTracking()
+            .Where(m => m.ConversationId == conv.Id && m.CreatedAt > since && m.Kind == ChatMessageKind.User && m.DeletedAt == null && m.ThreadRootId == null)
+            .OrderByDescending(m => m.CreatedAt).Take(1000).Select(m => new { m.SenderId, m.CreatedAt }).ToListAsync(ct);
+        var open = await db.Notifications.Where(n => targets.Contains(n.UserId) && n.Type == NotificationType.Message && n.Link == link && n.ReadAt == null).ToListAsync(ct);
+        foreach (var u in targets)
         {
-            var mem = members.FirstOrDefault(m => m.UserId == u);
-            if (mem is null || mem.IsMuted) continue;
-            var unread = await db.ChatMessages.CountAsync(m => m.ConversationId == conv.Id && m.CreatedAt > mem.LastReadAt && m.SenderId != u && m.Kind == ChatMessageKind.User && m.DeletedAt == null && m.ThreadRootId == null, ct) + 1;
+            var mem = members.First(m => m.UserId == u);
+            var unread = recent.Count(m => m.CreatedAt > mem.LastReadAt && m.SenderId != u) + 1;
             var body = unread <= 1 ? Snippet(preview) : $"{unread} new messages. Latest: {Snippet(preview)}";
-            var existing = await db.Notifications.FirstOrDefaultAsync(n => n.UserId == u && n.Type == NotificationType.Message && n.Link == link && n.ReadAt == null, ct);
+            var existing = open.FirstOrDefault(n => n.UserId == u);
             if (existing is not null)
             {
                 if (!await notifications.WantsInAppAsync(u, NotificationType.Message, ct)) continue;   // they have since switched these off: leave it as it was
@@ -271,6 +280,16 @@ public partial class ChatService
         var conv = await db.Conversations.FirstAsync(c => c.Id == msg.ConversationId, ct);
         var audience = conv.Type == ConversationType.Project ? await ProjectAudienceAsync(tenant, conv.ProjectId!.Value, ct)
             : conv.Type == ConversationType.Group ? await GroupMembersAsync(conv.Id, ct) : null;
+        if (conv.IsPrivate || msg.Cipher is not null)
+        {
+            if (!conv.IsPrivate) throw new ConflictException("This chat is no longer private, so this encrypted message cannot be changed.", "CHAT_NOT_PRIVATE");
+            msg.Cipher = E2eEnvelope.Clean(req.Cipher); msg.Body = ""; msg.EditedAt = clock.Now;
+            if (conv.LastMessageId == msg.Id) conv.LastMessageSnippet = EncryptedSnippet;
+            await db.SaveChangesAsync(ct);
+            var sealedDto = (await ToDtosAsync([msg], ct))[0];
+            await PushAsync(tenant, await RecipientsAsync(tenant, msg.ConversationId, ct), ChatEvents.MessageUpdated, new { conversationId = msg.ConversationId, message = sealedDto }, ct);
+            return sealedDto;
+        }
         var (normalized, mentioned) = await ResolveMentionsAsync(req.Body, audience, ct);
         var text = CleanBody(normalized);
         if (text == msg.Body) return (await ToDtosAsync([msg], ct))[0];
@@ -308,7 +327,7 @@ public partial class ChatService
         if (msg.SenderId != me && !moderator) throw new ForbiddenException("You can only delete your own messages.", "MESSAGE_NOT_YOURS");
         if (msg.DeletedAt != null) return;
 
-        msg.DeletedAt = clock.Now; msg.Body = "";   // the text is erased, not just hidden
+        msg.DeletedAt = clock.Now; msg.Body = ""; msg.Cipher = null;   // the text is erased, not just hidden
         if (conv.LastMessageId == msg.Id) conv.LastMessageSnippet = "Message deleted";
         // So are its files and reactions: the bytes are removed from storage, not just hidden.
         var gone = await db.ChatAttachments.Where(a => a.MessageId == msg.Id).ToListAsync(ct);

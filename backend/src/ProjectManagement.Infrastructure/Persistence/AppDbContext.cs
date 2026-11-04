@@ -227,6 +227,8 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<ChatScheduledMessage> ChatScheduledMessages => Set<ChatScheduledMessage>();
     public DbSet<ChatPoll> ChatPolls => Set<ChatPoll>();
     public DbSet<ChatPollVote> ChatPollVotes => Set<ChatPollVote>();
+    public DbSet<ChatDeviceKey> ChatDeviceKeys => Set<ChatDeviceKey>();
+    public DbSet<ChatKeyBackup> ChatKeyBackups => Set<ChatKeyBackup>();
     public DbSet<ChatUserStatus> ChatUserStatuses => Set<ChatUserStatus>();
     public DbSet<AiUserProfile> AiUserProfiles => Set<AiUserProfile>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();

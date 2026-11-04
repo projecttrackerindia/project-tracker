@@ -26,6 +26,7 @@ public partial class ChatService
     {
         var (tenant, me) = Require();
         await MembershipAsync(conversationId, me, ct);
+        await RejectPrivateAsync(conversationId, "Files", ct);
         await entitlements.EnsureFeatureAsync(FeatureKeys.ChatAttachments, ct);
         var conv = await db.Conversations.AsNoTracking().Where(c => c.Id == conversationId).Select(c => new { c.Type, c.ProjectId }).FirstAsync(ct);
         if (conv.Type == ConversationType.Project && await db.Projects.AsNoTracking().AnyAsync(p => p.Id == conv.ProjectId && p.Status == ProjectStatus.Archived, ct))

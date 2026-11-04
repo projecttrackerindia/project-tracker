@@ -838,7 +838,22 @@ public partial class AppDbContext
             e.HasIndex(x => x.ThreadRootId);
             e.Property(x => x.Body).HasMaxLength(4000);
             e.Property(x => x.LinkedJson).HasMaxLength(2000);
+            e.Property(x => x.Cipher).HasMaxLength(60000);
             e.HasOne<Conversation>().WithMany().HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ChatDeviceKey>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId, x.DeviceId }).IsUnique();
+            e.Property(x => x.DeviceId).HasMaxLength(64);
+            e.Property(x => x.PublicKey).HasMaxLength(1000);
+            e.Property(x => x.Label).HasMaxLength(80);
+        });
+        b.Entity<ChatKeyBackup>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            e.Property(x => x.Salt).HasMaxLength(64);
+            e.Property(x => x.WrappedKey).HasMaxLength(4000);
+            e.Property(x => x.PublicKey).HasMaxLength(1000);
         });
         b.Entity<ChatMention>(e =>
         {

@@ -49,8 +49,10 @@ public partial class ChatService
     {
         var (_, me) = Require();
         var member = await MembershipAsync(conversationId, me, ct);
-        var type = await db.Conversations.AsNoTracking().Where(c => c.Id == conversationId).Select(c => c.Type).FirstAsync(ct);
-        return (member, await ConversationNameAsync(conversationId, me, ct), type);
+        var conv = await db.Conversations.AsNoTracking().Where(c => c.Id == conversationId).Select(c => new { c.Type, c.IsPrivate }).FirstAsync(ct);
+        // Private chats are end-to-end encrypted: the server (and so Aura) has nothing it could read.
+        if (conv.IsPrivate) throw new ConflictException("This is a private chat. It is end-to-end encrypted, so Aura cannot read it.", "CHAT_PRIVATE");
+        return (member, await ConversationNameAsync(conversationId, me, ct), conv.Type);
     }
 
     /// <summary>A message as plain words: mentions as @Name, no formatting marks.</summary>
@@ -307,6 +309,7 @@ public partial class ChatService
     {
         var (tenant, me) = Require();
         await MembershipAsync(conversationId, me, ct);
+        await RejectPrivateAsync(conversationId, "Polls", ct);
         var conv = await db.Conversations.FirstAsync(c => c.Id == conversationId, ct);
         if (conv.Type == ConversationType.Project)
         {
@@ -411,6 +414,7 @@ public partial class ChatService
     {
         var (tenant, me) = Require();
         await MembershipAsync(conversationId, me, ct);
+        await RejectPrivateAsync(conversationId, "Scheduled messages", ct);
         var text = CleanBody(req.Body);
         var now = clock.Now;
         if (req.SendAt <= now.AddMinutes(1) || req.SendAt > now.AddDays(60)) throw new ValidationException("sendAt", "Choose a time between a minute and 60 days from now.");
@@ -512,6 +516,7 @@ public partial class ChatService
     /// </summary>
     public async Task<ChatAttachmentDto> UploadVoiceAsync(Guid conversationId, Stream content, long length, int? durationSeconds, CancellationToken ct = default)
     {
+        await RejectPrivateAsync(conversationId, "Voice notes", ct);
         if (length > 20 * 1024 * 1024) throw new ValidationException("voice", "Keep a voice note under about 10 minutes.");
         using var ms = new MemoryStream();
         await content.CopyToAsync(ms, ct);
