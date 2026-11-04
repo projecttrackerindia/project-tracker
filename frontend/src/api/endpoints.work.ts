@@ -1,4 +1,4 @@
-import { del, download, fetchBlobUrl, get, patch, post, put, uploadFile, create } from './client';
+import { workDeleted, del, download, fetchBlobUrl, get, patch, post, put, uploadFile, create } from './client';
 import type { WeekDraft,ParsedTime,LogTimeWordsEntry,LogTimeWordsResult,EffectiveAccessList,AutomationInput,AutomationRule,AutomationTest,AutomationRunEntry,AutomationBacktest,AutomationDraft,ProjectTime,TaskTime,TimeEntry,Timesheet,AccessMatrix,DependencyType,Milestone,MilestoneInput,TaskDependencies,ActionItem,ActionItemInput,ActionItemStatus,Attachment,AttachmentLimits,ProjectGroup,ProjectStatusReport,StatusGroup,Issue,IssueDetail,IssueInput,DevEmail,OrgRole,OrgStructure,TimesheetWeek,Approvals,BulkReviewResult,TimesheetGrid,GridCellChange,SaveGridResult,TimesheetInsights } from './types';
 
 export const devApi = { emails: () => get<DevEmail[]>('/dev/emails', undefined, { auth: false }) };
@@ -49,7 +49,7 @@ export const actionItemApi = {
   create: (projectId: string, b: ActionItemInput) => create<ActionItem>(`/projects/${projectId}/action-items`, b),
   update: (projectId: string, id: string, b: ActionItemInput & { status: ActionItemStatus }) => put<ActionItem>(`/projects/${projectId}/action-items/${id}`, b),
   setStatus: (projectId: string, id: string, status: ActionItemStatus, version?: number) => put<ActionItem>(`/projects/${projectId}/action-items/${id}/status`, { status, version }),
-  remove: (projectId: string, id: string) => del<void>(`/projects/${projectId}/action-items/${id}`),
+  remove: (projectId: string, id: string) => del<void>(`/projects/${projectId}/action-items/${id}`).then(workDeleted),
 };
 
 export interface WeeklyItem { text: string; owner: string | null; source: string | null; link: string | null; external: boolean }

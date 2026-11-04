@@ -38,7 +38,8 @@ try {
     else if (ep.includes('/counts') || ep.includes('/unread')) data = { count: 0, total: 0 };
     await json(data);
   });
-  const page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+  let leaving = false;
+  let page = await ctx.newPage(); page.on('pageerror', (e) => { if (!leaving) errors.push(e.message); });
   await page.setViewportSize({ width: 1280, height: 900 });
   const q = new URLSearchParams({ response_type: 'code', client_id: 'ptc_1', redirect_uri: redirect, state: 'st1', code_challenge: 'c'.repeat(43), code_challenge_method: 'S256', scope: 'mcp:read' });
 
@@ -49,9 +50,14 @@ try {
   await page.screenshot({ path: path.join(out, 'consent-1280.png') });
   await page.getByRole('radio', { name: /Read and make changes/ }).click();
   const back = page.waitForRequest((r) => r.url().startsWith('https://claude.ai/'));
+  leaving = true;   // what the tab does while it is sent away to the app (an error page here) is not the consent page's
   await page.getByRole('button', { name: 'Allow and connect' }).click();
   assert.ok((await back).url().includes('code=abc'));
   assert.equal(writes[0].scope, 'mcp:read mcp:write'); assert.equal(writes[0].approve, true); assert.equal(writes[0].state, 'st1');
+  // Allowing sends this tab to the app (blocked here, an error page): the rest goes on in a fresh tab so that navigation cannot race the next one.
+  await page.close();
+  page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1280, height: 900 });
   checks.push('consent');
 
   // An address the app did not register is refused without a way forward.

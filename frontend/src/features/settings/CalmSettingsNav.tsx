@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useAuth, useModule } from '../../stores/auth';
+import { useAuth, useCan, useModule } from '../../stores/auth';
 import { leafHref, useWorkspaceSections, type WorkspaceSection } from './sections';
 import { SettingsSearch } from './SettingsCenter';
 import './calm-settings.css';
@@ -11,11 +11,12 @@ type Item = { label: string; to: string; match?: (path: string) => boolean };
  * Personal for everyone; Workspace for admins and owners (each row only where its permission allows); Billing for owners only;
  * My teams for anyone who manages people or leads a team. Every older section stays reachable from its group.
  */
-export function CalmSettingsNav({ places, isPlatformAdmin }: { places: readonly string[]; isPlatformAdmin: boolean }) {
+export function CalmSettingsNav({ places, isPlatformAdmin, phone }: { places: readonly string[]; isPlatformAdmin: boolean; /** The phone list: full-width rows with ›, search inline. */ phone?: boolean }) {
   const { pathname } = useLocation();
   const ws = useAuth((s) => s.ctx?.current);
   const leaves = new Set(useWorkspaceSections().map((l) => l.id));
   const mTeams = useModule('teams');
+  const canVault = useCan('vault.use');
   const role = ws?.role;
   const admin = role === 'Owner' || role === 'Admin';
   const owner = role === 'Owner';
@@ -28,6 +29,8 @@ export function CalmSettingsNav({ places, isPlatformAdmin }: { places: readonly 
     { label: 'Appearance', to: '/settings/appearance' },
     { label: 'Security & sessions', to: '/settings/security/account' },
     ...(!isPlatformAdmin ? [{ label: 'Connected apps', to: '/settings/profile/accounts' }] : []),
+    // The vault is its own place (not a Library tab); it is reached from here.
+    ...(canVault && !isPlatformAdmin && role !== 'Guest' ? [{ label: 'Passwords & vault', to: '/library/vault', match: (p: string) => p.startsWith('/library/vault') }] : []),
   ];
   const workspace: Item[] = admin ? [
     places.includes('general') ? { label: 'General', to: '/settings/general', match: (p: string) => /^\/settings\/(general|fields|timelines)/.test(p) } : null,
@@ -51,14 +54,15 @@ export function CalmSettingsNav({ places, isPlatformAdmin }: { places: readonly 
     <div className="cs-grp" role="group" aria-label={title}>
       <span className="cs-grp-t">{title}</span>
       {items.map((it) => {
-        const on = it.match ? it.match(pathname) : pathname === it.to.split('?')[0];
+        const on = !phone && (it.match ? it.match(pathname) : pathname === it.to.split('?')[0]);
         return <Link key={it.to + it.label} to={it.to} className={`cs-item${on ? ' on' : ''}`} aria-current={on ? 'page' : undefined}>{it.label}</Link>;
       })}
     </div>
   );
   return (
-    <nav className="set-mac-nav cs-nav" aria-label="Settings sections" data-testid="settings-nav">
-      <details className="cs-find"><summary aria-label="Find a setting">⋯</summary><div><SettingsSearch compact autoFocus /></div></details>
+    <nav className={`set-mac-nav cs-nav${phone ? ' cs-nav-phone' : ''}`} aria-label="Settings sections" data-testid="settings-nav">
+      {phone ? <div className="cs-find-inline"><SettingsSearch compact /></div>
+        : <details className="cs-find"><summary aria-label="Find a setting">⋯</summary><div><SettingsSearch compact autoFocus /></div></details>}
       {group('Personal', personal)}
       {group('My teams', teams)}
       {group('Workspace', workspace)}

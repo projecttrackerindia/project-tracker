@@ -149,7 +149,7 @@ try {
   assert.equal(await sheet.getByRole('radio', { name: 'Weekly' }).getAttribute('aria-checked'), 'true');
   assert.equal(await sheet.getByRole('radio', { name: '45m' }).getAttribute('aria-checked'), 'true');
   assert.equal(await sheet.getByLabel('Start', { exact: true }).inputValue(), '11:30');
-  await sheet.getByLabel('Project', { exact: true }).selectOption(pid);
+  await sheet.getByLabel('Project', { exact: true }).locator('xpath=..').locator('select.ss-native').selectOption(pid, { force: true });
   await page.getByTestId('free-busy').getByText('Everyone free').waitFor();
   assert.match(await page.getByTestId('repeat-line').innerText(), /^Every Tue · until 21 Nov \(project due\)$/);
   await sheet.getByRole('button', { name: 'Review action items since last' }).click();

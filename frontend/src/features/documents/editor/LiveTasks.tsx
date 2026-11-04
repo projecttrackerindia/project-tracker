@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import { Select } from '../../../components/Select';
 import { Link } from 'react-router-dom';
 import { Mark, mergeAttributes, Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
@@ -32,10 +33,10 @@ function LiveTasksView({ node, updateAttributes, editor, selected, deleteNode }:
         {editable && (
           <span className="live-tasks-tools">
             {page.projects.length > 1 && (
-              <select aria-label="Project" value={projectId} onChange={(e) => updateAttributes({ projectId: e.target.value })}>
+              <Select aria-label="Project" value={projectId} onChange={(e) => updateAttributes({ projectId: e.target.value })}>
                 {!projectId && <option value="">Choose a project</option>}
                 {page.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              </Select>
             )}
             <select aria-label="Which tasks" value={filter} onChange={(e) => updateAttributes({ filter: e.target.value })}>
               {FILTERS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}

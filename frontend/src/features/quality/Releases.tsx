@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Select } from '../../components/Select';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -212,9 +213,9 @@ function SignOffPeople({ current, onClose, onSave }: { current: ReleaseSignOff[]
           <input className="input" value={x.role} maxLength={60} placeholder="Role, e.g. QA" aria-label={`Role for ${name(x.userId)}`} onChange={(e) => setRows((r) => r.map((y, j) => (j === i ? { ...y, role: e.target.value } : y)))} />
           <button type="button" className="rl-x" aria-label={`Remove ${name(x.userId)}`} onClick={() => setRows((r) => r.filter((_, j) => j !== i))}>×</button></li>
       ))}</ul>
-      <label className="rl-tie">Add a person<select value={who} onChange={(e) => { const v = e.target.value; setWho(''); if (v) setRows((r) => [...r, { userId: v, role: '' }]); }}>
+      <label className="rl-tie">Add a person<Select value={who} onChange={(e) => { const v = e.target.value; setWho(''); if (v) setRows((r) => [...r, { userId: v, role: '' }]); }}>
         <option value="">Choose…</option>{list.filter((m) => !rows.some((x) => x.userId === m.userId)).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}{m.jobRole ? ` · ${m.jobRole}` : ''}</option>)}
-      </select></label>
+      </Select></label>
     </Modal>
   );
 }
@@ -250,7 +251,7 @@ function NewRelease({ onClose, onDone }: { onClose: () => void; onDone: (r: Rele
     <Modal title="New release" onClose={onClose} footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" form="rl-new" disabled={busy || !name.trim()}>Create</button></>}>
       <form id="rl-new" className="form-grid" onSubmit={(e) => void submit(e)}>
         <Field label="Name" required><input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="v2.4" /></Field>
-        <Field label="Project"><select className="input" value={project} onChange={(e) => setProject(e.target.value)}><option value="">Across projects</option>{live.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+        <Field label="Project"><Select className="input" value={project} onChange={(e) => setProject(e.target.value)}><option value="">Across projects</option>{live.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
         <Field label="Target date"><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
       </form>
     </Modal>

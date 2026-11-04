@@ -599,8 +599,15 @@ public partial class ProjectService(
         var now = clock.Now;
 
         project.IsDeleted = true; project.DeletedAt = now; project.DeletedBy = ctx.UserId;
+        var gone = new List<Guid>();
         foreach (var t in await db.Tasks.Where(t => t.ProjectId == id).ToListAsync(ct))
-        { t.IsDeleted = true; t.DeletedAt = now; t.DeletedBy = ctx.UserId; }
+        { t.IsDeleted = true; t.DeletedAt = now; t.DeletedBy = ctx.UserId; gone.Add(t.Id); }
+        // Its action items go with it (soft): they belong to the project and no list should show them once it is gone.
+        foreach (var w in await db.WorkTasks.Where(w => w.RelatedProjectId == id && w.Kind == WorkTaskKind.ActionItem).ToListAsync(ct))
+        { w.IsDeleted = true; w.DeletedAt = now; w.DeletedBy = ctx.UserId; gone.Add(w.Id); }
+        // Traces that only point at it by a link or a copied id: reminders stop (orphaned), notifications are archived.
+        await DeletedWorkTraces.OrphanRemindersAsync(db, id, gone, ct);
+        await DeletedWorkTraces.ArchiveNotificationsAsync(db, now, id, [], ct);
 
         recorder.Audit("project.deleted", "Project", id, new { project.Name, project.Key });
         recorder.Activity("project.deleted", "Project", id, $"Deleted project \"{project.Name}\"");

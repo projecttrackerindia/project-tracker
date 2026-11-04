@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Select } from '../../components/Select';
 import { ApiError } from '../../api/client';
 import { attachmentApi } from '../../api/endpoints';
 import { projectApi } from '../../api/endpoints';
@@ -149,10 +150,10 @@ function RequestForm({ draft, onDone }: { draft: ApprovalDraft; onDone: () => vo
               {steps.map((s, i) => (
                 <div key={i} className="apq-edit-row">
                   <input aria-label={`Step ${i + 1} role`} value={s.role} maxLength={60} onChange={(e) => setChain(steps.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))} />
-                  <select aria-label={`Step ${i + 1} person`} value={s.userId ?? ''} onChange={(e) => setChain(steps.map((x, j) => (j === i ? { ...x, userId: e.target.value || null } : x)))}>
+                  <Select aria-label={`Step ${i + 1} person`} value={s.userId ?? ''} onChange={(e) => setChain(steps.map((x, j) => (j === i ? { ...x, userId: e.target.value || null } : x)))}>
                     <option value="">By role</option>
                     {(members.data ?? []).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-                  </select>
+                  </Select>
                   <button type="button" className="apq-x" aria-label={`Remove step ${i + 1}`} onClick={() => setChain(steps.filter((_, j) => j !== i))}><Icon name="close" size={12} /></button>
                 </div>
               ))}
@@ -169,10 +170,10 @@ function RequestForm({ draft, onDone }: { draft: ApprovalDraft; onDone: () => vo
             <Icon name="paperclip" size={16} />
             <span>{uploading ? 'Uploading…' : <>Drop a file or <button type="button" className="ap-lk bl" onClick={() => fileRef.current?.click()}>choose</button></>}</span>
             <small>{t.hint}</small>
-            <select aria-label="Project the file belongs to" value={project} onChange={(e) => setProject(e.target.value)}>
+            <Select aria-label="Project the file belongs to" value={project} onChange={(e) => setProject(e.target.value)}>
               <option value="">Keep it on project…</option>
               {(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            </Select>
             <input ref={fileRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ''; }} />
           </div>
 

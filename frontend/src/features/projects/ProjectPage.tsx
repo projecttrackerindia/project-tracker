@@ -186,7 +186,6 @@ export function ProjectPage() {
         { label: 'Docs', icon: 'note', onSelect: () => setTab('docs') },
         { label: 'Time', icon: 'clock', hidden: !allowed.includes('time'), onSelect: () => setTab('time') },
         { label: 'Activity and agent', icon: 'activity', hidden: !allowed.includes('activity'), onSelect: () => setTab('activity') },
-        { label: 'Overview · stages and sign-off', icon: 'flag', hint: 'The earlier overview, with the timeline and sign-off', onSelect: () => nav(`${loc.pathname}?classic=1`) },
         { label: 'Share link', icon: 'link', onSelect: () => void share() },
         ...menu,
       ]} canEdit={canEdit && !archived} addWork={addWork} onHealth={() => setHealthOpen(true)} onFullTask={(tid) => setParams({ task: tid })} />
