@@ -35,7 +35,7 @@ export function QualityPage() {
   const [cell, setCell] = useState<{ runId: string; caseId: string; x: number; y: number } | null>(null);
   const wid = useWorkspaceId();
   const qc = useQueryClient();
-  const matrix = useWsQuery(['quality', 'matrix'], () => qualityApi.matrix(undefined, 4), { refetchInterval: 30_000 });
+  const matrix = useWsQuery(['quality', 'matrix'], () => qualityApi.matrix(undefined, 4), { refetchInterval: 300_000 });
   const m: TestMatrix = matrix.data ?? { runs: [], cases: [], results: [] };
   const current: TestRun | null = useMemo(() => [...m.runs].reverse().find((r) => r.status === 'Running') ?? m.runs[m.runs.length - 1] ?? null, [m.runs]);
   const ready = useWsQuery(['quality', 'readiness', current?.id ?? 'none'], () => qualityApi.readiness(current ? { runId: current.id } : {}), { enabled: !!current });

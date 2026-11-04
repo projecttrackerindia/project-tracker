@@ -68,7 +68,7 @@ export function RemindersPage() {
   const phone = useIsMobile();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
-  const list = useWsQuery(['reminders', 'list'], reminderApi.list, { refetchInterval: 60_000 });
+  const list = useWsQuery(['reminders', 'list'], reminderApi.list, { refetchInterval: 300_000 });
   const insights = useWsQuery(['reminders', 'insights'], reminderApi.insights, { staleTime: 120_000 });
   const settings = useWsQuery(['reminders', 'settings'], reminderApi.settings, { staleTime: 300_000 });
   const suggestions = useWsQuery(['reminders', 'suggestions'], reminderApi.suggestions, { staleTime: 30_000, refetchInterval: 120_000 });
