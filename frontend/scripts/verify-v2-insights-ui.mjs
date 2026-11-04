@@ -114,7 +114,8 @@ try {
     // Overview: four numbers, the workload bars and what stands out.
     await page.goto(`${origin}/preview-org/insights`);
     await page.locator('.calm-ins-head .calm-hero-title').first().waitFor();
-    for (const t of ['Overview', 'Time', 'Reports']) await page.getByRole('tab', { name: t }).waitFor();
+    assert.equal(await page.getByRole('tab', { name: 'Time' }).count(), 0, 'Insights does not repeat Time');
+    for (const t of ['Overview', 'Reports']) await page.getByRole('tab', { name: t }).waitFor();
     // The details (rings, workload, what stands out) open from "See all insights ›".
     await page.getByRole('button', { name: 'See all insights ›' }).click();
     // Three rings: Projects on track, Load balance, Time logged.
@@ -142,7 +143,8 @@ try {
     await shot(page, `overview-${tag}.png`);
 
     // Time: one input (with voice when the browser has it), one draft card, the clean grid, total vs target, Submit week.
-    await page.getByRole('tab', { name: 'Time' }).click();
+    // Logging time lives with Time now; its quick-log page opens from + New › Time (?tab=time&log=).
+    await page.goto(page.url().replace(/\/insights.*$/, '/insights?tab=time&log='));
     await page.getByRole('heading', { level: 1, name: 'Time' }).waitFor();
     await page.getByText(/Week of .* · not submitted/).waitFor();
     const say = page.getByRole('textbox', { name: 'Log time in words' });
