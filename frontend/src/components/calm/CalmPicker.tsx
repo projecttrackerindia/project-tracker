@@ -47,8 +47,12 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
   for (const it of remote ?? []) known.current.set(it.id, it);
   const chosen = (value ? known.current.get(value) : null) ?? selectedProp ?? null;
 
-  // Server search, debounced; a stale answer is dropped.
+  // Server search, debounced; a stale answer is dropped. The latest `search` is read from a ref, so an inline function never re-fires it.
+  const searchRef = useRef(search);
+  searchRef.current = search;
+  const hasSearch = !!search;
   useEffect(() => {
+    const search = searchRef.current;
     if (!open || !search) return;
     let live = true;
     setLoading(true);
@@ -56,7 +60,7 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
       search(q.trim()).then((r) => { if (live) setRemote(r); }).catch(() => { if (live) setRemote([]); }).finally(() => { if (live) setLoading(false); });
     }, q ? 200 : 0);
     return () => { live = false; window.clearTimeout(t); };
-  }, [q, open, search]);
+  }, [q, open, hasSearch]);
 
   const shown = useMemo(() => {
     const pool = search && remote ? remote : items;
@@ -134,10 +138,10 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
         <span className="cpk-chev" aria-hidden="true">⌄</span>
       </button>
       {open && createPortal(phone
-        ? <div className="cpk-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+        ? <div className="cpk-scrim" data-keep-detail="" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
             <div className="cpk-sheet" role="dialog" aria-label={label}><div className="cpk-grab" aria-hidden="true" /><h3 className="cpk-h">{label}</h3>{list}</div>
           </div>
-        : place && <div className={`cpk-pop${place.up ? ' up' : ''}`} style={{ left: place.left, width: place.width, ...(place.up ? { bottom: window.innerHeight - place.top } : { top: place.top }) }}>{list}</div>,
+        : place && <div data-keep-detail="" className={`cpk-pop${place.up ? ' up' : ''}`} style={{ left: place.left, width: place.width, ...(place.up ? { bottom: window.innerHeight - place.top } : { top: place.top }) }}>{list}</div>,
       document.body)}
     </>
   );
