@@ -1,5 +1,5 @@
 import { deliveryTime } from '../features/notifications/deliveryTime';
-import { lazy, Suspense, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { isViewing } from '../features/notifications/centre/readSync';
 import { prefetchPages } from '../lib/prefetchPages';
 import { MutationSync } from '../lib/MutationSync';
@@ -20,7 +20,6 @@ import { NetworkPill } from '../components/AppSplash';
 import { SignInIsland } from '../components/SignInIsland';
 // "Single active session": a new device of mine asking to sign in (loaded beside the app, not in its first bundle).
 const SessionApprovalHost = lazy(() => import('../features/auth/SessionApproval').then((m) => ({ default: m.SessionApprovalHost })));
-import { CommandPalette } from '../components/CommandPalette';
 import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
 import { AlertsSetup } from '../features/notifications/AlertsSetup';
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
@@ -59,6 +58,30 @@ const ScheduleHost = lazy(() => import('../features/meet/ScheduleSheet').then((m
 const GrootChatHost = lazy(() => import('../components/groot/GrootChat').then((m) => ({ default: m.GrootChatHost })));
 const MeetTimePrompt = lazy(() => import('../features/meet/MeetTime').then((m) => ({ default: m.MeetTimePrompt })));
 const ChatRealtime = lazy(() => import('../features/chat/ChatRealtime').then((m) => ({ default: m.ChatRealtime })));
+
+const CommandPalette = lazy(() => import('../components/CommandPalette').then((m) => ({ default: m.CommandPalette })));
+
+/**
+ * ⌘K / Ctrl K and every "open the palette" button: the palette's code is fetched on the first ask, then the ask is passed on to it (it
+ * listens for the same signal once mounted).
+ */
+function PaletteLauncher() {
+  const [wanted, setWanted] = useState(false);
+  useEffect(() => {
+    if (wanted) return;
+    const ask = () => setWanted(true);
+    const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); ask(); } };
+    window.addEventListener('pm:palette', ask);
+    document.addEventListener('keydown', key);
+    return () => { window.removeEventListener('pm:palette', ask); document.removeEventListener('keydown', key); };
+  }, [wanted]);
+  return wanted ? <Suspense fallback={null}><CommandPalette /><PassOn /></Suspense> : null;
+}
+/** Mounted right after the palette, so its listener is in place: re-sends the first ask. */
+function PassOn() {
+  useEffect(() => { window.dispatchEvent(new Event('pm:palette')); }, []);
+  return null;
+}
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -199,7 +222,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <MutationSync />
       <DesktopNotifier />
       <AccessWatcher />
-      <CommandPalette />
+      <PaletteLauncher />
       <ReminderAlerts />
       <AlertsSetup />
       <ComposerSlot />

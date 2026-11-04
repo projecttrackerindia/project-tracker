@@ -45,8 +45,9 @@ for (const [name, url] of pages) {
   await cdp.send('Network.enable');
   await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 150, downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8 });
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-  const t0 = Date.now();
-  const log = { js: [], api: [], inflight: 0, lastActivity: t0 };
+  let t0 = Date.now();
+  let log = { js: [], api: [], inflight: 0, lastActivity: t0 };
+  const cached = new Set();   // WARM=1: the second open finds the fingerprinted files in the HTTP cache (nginx: immutable)
   await ctx.route('**/*', async (route) => {
     const req = route.request(), u = new URL(req.url()), ep = u.pathname;
     if (u.origin !== origin || ep.startsWith('/hubs/')) return route.abort();
@@ -55,8 +56,10 @@ for (const [name, url] of pages) {
       try {
       const file = path.resolve(dist, ep.startsWith('/assets/') ? ep.slice(1) : 'index.html');
       let body; try { body = await fs.readFile(file); } catch { return route.fulfill({ status: 404, body: '' }); }
-      await wire(ep.startsWith('/assets/') ? zlib.gzipSync(body).length : body.length);
-      if (ep.endsWith('.js')) log.js.push({ file: ep.replace('/assets/', ''), gz: zlib.gzipSync(body).length, at: Date.now() - t0 });
+      const hit = ep.startsWith('/assets/') && cached.has(ep);
+      if (!hit) await wire(ep.startsWith('/assets/') ? zlib.gzipSync(body).length : body.length);
+      if (ep.startsWith('/assets/')) cached.add(ep);
+      if (ep.endsWith('.js')) log.js.push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : zlib.gzipSync(body).length, at: Date.now() - t0 });
       return await route.fulfill({ contentType: { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' }[path.extname(file)] || 'application/octet-stream', body, headers: ep.startsWith('/assets/') ? {} : { 'content-security-policy': csp } });
       } finally { log.inflight--; log.lastActivity = Date.now(); }
     }
@@ -70,6 +73,7 @@ for (const [name, url] of pages) {
     else if (ep === '/api/v1/me/fingerprint') data = { fingerprint: me.fingerprint };
     else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: true };
     else if (ep.endsWith('/approvals')) data = { items: [], counts: { needsMe: 0, mine: 0, all: 0, history: 0 }, week: { approved: 0, rejected: 0, expired: 0, medianMinutes: null }, byType: {}, elsewhere: [] };
+    else if (ep.endsWith('/shell/summary')) data = { workspaceId: ws.id, notifications: { unread: 0, needsYou: 0, forInfo: 0, tabs: {} }, approvals: { needsMe: 0 }, chatUnread: { count: 0, conversations: 0 }, reminders: null };
     else if (ep.endsWith('/approvals/counts')) data = { needsMe: 0, mine: 0, all: 0, history: 0 };
     else if (ep.endsWith('/notifications/counts')) data = { unread: 0, needsYou: 0, forInfo: 0, tabs: {} };
     else if (ep.endsWith('/avatar') || ep.endsWith('/file')) { log.inflight--; entry.end = Date.now() - t0; return route.fulfill({ status: 404, body: '' }); }
@@ -77,10 +81,20 @@ for (const [name, url] of pages) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data }) });
   });
   page.on('request', () => { log.lastActivity = Date.now(); });
-  await page.goto(origin + url, { waitUntil: 'domcontentloaded', timeout: 120_000 });
-  // Settled: nothing on the network for 1.5 s (or 60 s at most).
-  while (Date.now() - log.lastActivity < 2500 || log.inflight > 0) { if (Date.now() - t0 > 60_000) break; await page.waitForTimeout(100); }
-  await page.waitForTimeout(800);
+  const settle = async () => {
+    await page.goto(origin + url, { waitUntil: 'domcontentloaded', timeout: 120_000 });
+    // Settled: nothing on the network for 2.5 s (or 60 s at most).
+    while (Date.now() - log.lastActivity < 2500 || log.inflight > 0) { if (Date.now() - t0 > 60_000) break; await page.waitForTimeout(100); }
+    await page.waitForTimeout(800);
+  };
+  await settle();
+  if (process.env.WARM) {
+    // Reopening the app later: same device (its storage and HTTP cache), a fresh page load.
+    await page.waitForTimeout(5000);   // the warm-start copy is saved a few seconds after reads settle
+    await page.goto('about:blank');
+    t0 = Date.now(); log = { js: [], api: [], inflight: 0, lastActivity: t0 }; pipeFree = 0;
+    await settle();
+  }
   const perf = await page.evaluate(() => window.__perf);
   const rendered = await page.evaluate(() => (document.querySelector('main')?.textContent ?? document.body.textContent ?? '').trim().length > 0);
   const scrollX = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -100,5 +114,5 @@ for (const [name, url] of pages) {
   await ctx.close();
 }
 await browser.close();
-console.log(JSON.stringify({ label: process.argv[2] ?? 'run', network: 'Fast 3G + 4x CPU, 390x844', apiLatencyMs: latency, results }, null, 1));
+console.log(JSON.stringify({ label: process.argv[2] ?? 'run', network: 'Fast 3G + 4x CPU, 390x844', warm: !!process.env.WARM, apiLatencyMs: latency, results }, null, 1));
 if (results.some((r) => !r.rendered)) process.exit(1);

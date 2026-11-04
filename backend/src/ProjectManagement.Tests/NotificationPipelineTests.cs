@@ -162,4 +162,26 @@ public class NotificationPipelineTests(ApiFactory factory)
         Assert.True(row.InApp);
         Assert.True(AnnouncedTo(member.UserId, row.Id));
     }
+
+    [Fact]
+    public async Task The_shell_summary_matches_each_badge_endpoint_and_stays_inside_the_workspace()
+    {
+        var (_, admin, member, _) = await TeamAsync("Shell");
+        await AskAsync(member, admin.UserId, "Renew the TLS certificate");
+        var summary = await admin.Get("/api/v1/shell/summary");
+        Assert.True(summary.Ok, summary.ToString());
+        var d = summary.Data!;
+        Assert.Equal(admin.WorkspaceId.ToString(), S(d["workspaceId"]));
+        var counts = (await admin.Get("/api/v1/notifications/counts")).Data!;
+        Assert.Equal(counts["unread"]!.GetValue<int>(), d["notifications"]!["unread"]!.GetValue<int>());
+        Assert.Equal(1, d["approvals"]!["needsMe"]!.GetValue<int>());
+        Assert.Equal((await admin.Get("/api/v1/chat/unread")).Data!.ToJsonString(), d["chatUnread"]!.ToJsonString());
+        Assert.Equal((await admin.Get("/api/v1/reminders/counts")).Data!.ToJsonString(), d["reminders"]!.ToJsonString());
+
+        // Someone in another workspace sees only their own numbers.
+        var (_, otherAdmin, _, _) = await TeamAsync("Elsewhere");
+        var theirs = (await otherAdmin.Get("/api/v1/shell/summary")).Data!;
+        Assert.Equal(otherAdmin.WorkspaceId.ToString(), S(theirs["workspaceId"]));
+        Assert.Equal(0, theirs["approvals"]!["needsMe"]!.GetValue<int>());
+    }
 }

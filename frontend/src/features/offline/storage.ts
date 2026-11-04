@@ -1,3 +1,4 @@
+import { clearWarmStart } from '../../lib/warmStart';
 import type { WorkItem } from '../../api/types';
 
 /**
@@ -29,6 +30,7 @@ export function readOfflineSnapshot(): OfflineSnapshot | null {
 const DEVICE_KEYS = new Set(['pm_theme', 'pm_alerts_prompt', 'pm_hint']);
 
 export function clearOfflineData() {
+  clearWarmStart();
   try {
     localStorage.removeItem(KEY);
     // Everything else this app (or an older version of it) cached for the person - chat threads, layouts, recent items - goes too.
