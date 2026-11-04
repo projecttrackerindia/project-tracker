@@ -155,7 +155,7 @@ public class DeletedWorkTracesTests(ApiFactory factory)
 
         // Run it twice: it is idempotent.
         for (var run = 0; run < 2; run++)
-            factory.WithDb(db => { foreach (var sql in DeletedWorkCleanupSql.Statements(tenant)) db.Database.ExecuteSqlRaw(sql); return 0; });
+            factory.WithDb(db => { foreach (var sql in DeletedWorkCleanupSql.Statements(tenant)) db.Database.ExecuteSqlRaw(sql.Replace("{", "{{").Replace("}", "}}")); return 0; });
 
         var rows = factory.WithDb(db => db.WorkItems.IgnoreQueryFilters().Where(x => new[] { firstId, secondId, differentId, orphanId, orphanTask }.Contains(x.Id))
             .ToDictionary(x => x.Id, x => x.IsDeleted));
