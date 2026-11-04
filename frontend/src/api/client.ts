@@ -3,6 +3,7 @@ import { saveFile } from '../lib/native';
 import { lensHeaders } from '../lib/lensState';
 import { mutationCommitted } from '../lib/mutationEffects';
 import { writeSucceeded } from '../lib/optimistic';
+import { enqueue, isCreate, resolveIds, isNetworkFailure, isQueueable, newTempId, recordId, type OutboxEntry } from '../lib/outbox';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
@@ -157,7 +158,7 @@ export function refreshSession(): Promise<AuthResponse | null> {
   return refreshing;
 }
 
-interface Options { auth?: boolean; retry?: boolean; signal?: AbortSignal; idempotent?: boolean }
+interface Options { auth?: boolean; retry?: boolean; signal?: AbortSignal; idempotent?: boolean; noQueue?: boolean }
 
 /**
  * Creating things (projects, tasks, tickets, issues) must never happen twice for one intention: a double click, Enter plus a click, a
@@ -186,6 +187,8 @@ export async function api<T = void>(method: string, path: string, body?: unknown
 }
 
 async function send<T>(method: string, path: string, body: unknown, opts: Options, idempotencyKey?: string): Promise<T> {
+  // Something created offline and saved since: its temporary id in an address means the server's id.
+  if (path.includes('offline-')) path = resolveIds(path);
   const { auth = true, retry = true, signal } = opts;
   // Started before the session was confirmed (a warm start shows the page at once): wait for the refresh that is running instead of
   // being refused and sent again.
@@ -199,9 +202,20 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   // Sign-in requests say which time zone this device is in: a sign-in waiting for approval shows its approximate region (no IP lookups).
   if (path.startsWith('/auth/')) { try { headers['X-Client-Zone'] = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* no Intl */ } }
 
-  const res = await fetch(`${BASE}/api/v1${path}`, {
-    method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api/v1${path}`, {
+      method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    // No connection: a small edit to the person's own work waits in the outbox and the page shows it at once (see lib/outbox.ts).
+    if (auth && !opts.noQueue && !signal?.aborted && isQueueable(method, path) && isNetworkFailure(e)) {
+      const tempId = isCreate(method, path) ? newTempId() : undefined;
+      await enqueue({ method, path, body, workspaceId: workspaceAtStart, idempotencyKey: idempotencyKey ?? newKey(), tempId });
+      return (onQueued?.(method, path, body, workspaceAtStart, tempId) ?? body) as T;
+    }
+    throw e;
+  }
   const { data, error } = await parse(res);
   if (!error) {
     if (auth) { mutationCommitted(method, path, workspaceAtStart); writeSucceeded(method, path); }
@@ -215,6 +229,28 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
     if (lastRefreshRefused) { accessToken = null; onAuthLost?.(); }
   }
   throw error;
+}
+
+type QueuedHandler = (method: string, path: string, body: unknown, workspaceId: string | null, tempId?: string) => unknown;
+let onQueued: QueuedHandler | null = null;
+/** Set by the app: applies a queued offline edit to the cached answers and returns the optimistic copy for the caller. */
+export const setQueuedHandler = (fn: QueuedHandler | null) => { onQueued = fn; };
+
+/** Sends one queued offline edit now (on reconnect), with this session's token: sent, refused as a conflict (server wins), or still offline. */
+export async function replayQueued(e: OutboxEntry): Promise<'sent' | 'conflict' | 'rejected' | 'offline' | 'reason'> {
+  if (tabWorkspaceId && e.workspaceId && e.workspaceId !== tabWorkspaceId) return 'rejected';
+  try {
+    const data = await send<{ id?: unknown } | undefined>(e.method, e.path, e.body, { retry: true, noQueue: true }, e.idempotencyKey);
+    // A create made offline: from now on its temporary id means the server's one (later queued edits, links, the address bar).
+    if (e.tempId && data && typeof data === 'object' && typeof data.id === 'string') recordId(e.tempId, data.id);
+    return 'sent';
+  } catch (err) {
+    if (isNetworkFailure(err)) return 'offline';
+    const status = (err as { status?: number }).status ?? 0;
+    if (status === 0 || status >= 500 || status === 408 || status === 429) return 'offline';
+    if (status === 422 && (err as { code?: string }).code === 'DATE_EXTENSION_REASON_REQUIRED') return 'reason';
+    return status === 409 || status === 412 ? 'conflict' : 'rejected';
+  }
 }
 
 export const get = <T>(path: string, query?: Query, opts?: Options) => api<T>('GET', path + qs(query), undefined, opts);
@@ -329,3 +365,9 @@ export async function download(path: string, filename: string, signal?: AbortSig
   const blob = await res.blob(); signal?.throwIfAborted();
   await saveFile(blob, filename);
 }
+
+// A project, task or action item was deleted: everything that showed it (Today, My work, Portfolio, the plan sheet, reminders, the bell,
+// search, Aura) reads again at once, so no trace lingers. The query cache registers the refresh (stores/auth.ts) to avoid an import cycle.
+let workDeletedHandler: (() => void) | null = null;
+export function setWorkDeletedHandler(f: (() => void) | null) { workDeletedHandler = f; }
+export function workDeleted<T>(value: T): T { workDeletedHandler?.(); return value; }

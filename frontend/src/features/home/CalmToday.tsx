@@ -7,7 +7,6 @@ import {
   AuraLine, CalmAv, CalmBar, CalmCard, CalmDayRibbon, CalmDot, CalmFoot, CalmGo, CalmInsights, CalmLink, CalmPills, CalmRailCard, CalmRailRow, CalmSheet, CalmSplit,
   type CalmSeg,
 } from '../../components/calm';
-import { DotsMenu } from '../talk/DotsMenu';
 import { Icon } from '../../components/Icon';
 import { projectColor, ribbonColors } from '../../lib/calm';
 import { todayISO } from '../../lib/format';
@@ -128,20 +127,8 @@ export function CalmToday() {
   const waiting = (inbox.data?.rows ?? [])[0];
   const auraText = waiting ? `${waiting.title}.` : briefing.data?.reasons?.[0];
 
-  const dots = (
-        <DotsMenu label="More on Today" items={[
-          { label: 'Briefing and Needs you', hint: 'The full inbox, My team and your numbers', icon: 'inbox', onSelect: () => nav('/?classic=1') },
-          { label: 'My team', icon: 'users', onSelect: () => nav('/?classic=1&view=team') },
-          { label: 'Check-ins and “what if”', icon: 'target', onSelect: () => nav('/?tab=today') },
-          { label: 'Decisions', icon: 'checks', onSelect: () => nav('/?tab=decisions') },
-          { label: 'Audit trail', icon: 'shield', onSelect: () => nav('/?tab=audit') },
-          { label: 'Dashboard', icon: 'dashboard', onSelect: () => nav('/?tab=dashboard') },
-          { label: 'Reminders', icon: 'bell', onSelect: () => nav('/?tab=reminders') },
-          { label: 'Aura conversations', icon: 'sparkle', onSelect: () => nav('/?tab=assistant') },
-        ]} />
-  );
   return (
-    <CalmSplit className="cp-page" crumb={<><span>{headDay(today)}</span><span style={{ flex: 1 }} />{dots}</>} label="Today" rail={<TodayRail meets={meets} nowH={nowH} freeMin={day?.freeMin ?? 0} hero={hero} />}>
+    <CalmSplit className="cp-page" crumb={<span>{headDay(today)}</span>} label="Today" rail={<TodayRail meets={meets} nowH={nowH} freeMin={day?.freeMin ?? 0} hero={hero} />}>
       <header className="cp-hero" data-testid="today-hero"><h1>{title}<em>{second}</em></h1></header>
       {state === 'morning' ? <CheckInCard planned={planned} usual={a?.workStart} />
         : state === 'evening' ? <EveningCard logged={logged} planned={planned} />
@@ -309,7 +296,7 @@ function TodayRail({ meets, nowH, freeMin, hero }: { meets: MeetLite[]; nowH: nu
         })}
       </CalmRailCard>
       {rows.length > 0 && (
-        <CalmRailCard title="Waiting on you" link="All ›" to="/?classic=1">
+        <CalmRailCard title="Waiting on you" link="All ›" to="/approvals">
           {rows.map((r) => <CalmRailRow key={r.id} lead={<CalmAv name={r.title} />} title={r.title} sub={r.sub} hot={r.urgent} right={agoText(r.at)} to={r.href ?? undefined} />)}
         </CalmRailCard>
       )}

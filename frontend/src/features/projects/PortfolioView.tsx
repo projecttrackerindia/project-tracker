@@ -69,7 +69,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
     if (url.mode === 'sheet') return shared;
     return [
       { label: n ? `Filters · ${n}` : 'Filters', icon: 'search', hint: 'Lead, group, health and due dates', onSelect: () => setFiltersOpen((x) => !x) },
-      ...(url.mode === 'overview' || url.mode === 'timeline' ? [{ label: params.get('classic') === '1' ? 'Back to the calm view' : url.mode === 'overview' ? 'Board in detail · money and capacity' : 'Full Gantt', icon: 'list' as const,
+      ...((url.mode === 'overview' || url.mode === 'timeline') && params.get('classic') === '1' ? [{ label: params.get('classic') === '1' ? 'Back to the calm view' : url.mode === 'overview' ? 'Board in detail · money and capacity' : 'Full Gantt', icon: 'list' as const,
         onSelect: () => setParams((cur) => { const n = new URLSearchParams(cur); if (n.get('classic') === '1') n.delete('classic'); else n.set('classic', '1'); return n; }) }] : []),
       { label: 'Export to Excel', icon: 'download', onSelect: () => void exportAs(url.filter, 'xlsx') },
       { label: 'Export to PDF', icon: 'download', onSelect: () => void exportAs(url.filter, 'pdf') },

@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { openSchedule } from '../meet/scheduleStore';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -12,12 +11,12 @@ import { useAuth, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { connectApi, meetApi, type Rsvp } from '../meet/meetApi';
 import { reminderApi } from '../reminders/api';
-import { canComplete, canMoveDue, completeWork, editError, entryLock, isoAt as isoAtHour, moveDue, moveReminder, overlapText, refreshAfterEdit } from './calendarEdit';
-import { appZone } from '../../lib/zone';
+import { canComplete, canMoveDue, completeWork, editError, entryLock, moveDue, moveReminder, overlapText, refreshAfterEdit } from './calendarEdit';
 import { clock24 } from '../work/dueTime';
 import { TimeEntryEditor, type WorkChoice } from './TimeEntryEditor';
 import { KIND, countdown, END, MONTHS, START, SNAP, addDays, clockAP, dateOf, dayLabel, fmtMins, hourOf, hrefOf, type Detail, type Focus, type Meet } from './plannerModel';
 import './eventDetail.css';
+import { QuickCreate } from './QuickCreate';
 import { lockScroll } from '../../lib/scrollLock';
 
 const KIND_NAME: Record<string, string> = { task: 'Task', action: 'Action item', work: 'Ticket', project: 'Project', milestone: 'Milestone', stage: 'Stage' };
@@ -30,6 +29,10 @@ const ago = (s: string | null | undefined) => {
 };
 const dueText = (date: string, today: string) => (date === today ? 'due today' : date < today ? `overdue since ${dayLabel(date, today)}` : `due ${dayLabel(date, today).replace(/^Tomorrow$/, 'tomorrow')}`);
 export interface DetailActions {
+  /** Quick create: show the chosen span on the grid as it changes. */
+  previewSpan?: (day: string, start: number, end: number) => void;
+  /** Quick create: the project calendars a meeting can be filed under (a soft colour dot each). */
+  projects?: { id: string; name: string; colour: string }[];
   /** Move a focus block (a time you chose; kept on this device) or take its item out of the plan. */
   moveFocus: (f: Focus, day: string, start: number) => void;
   /** quiet: no Undo toast (the block became a time entry). */
@@ -162,7 +165,7 @@ function DatePicker({ current, onSave, onCancel, busy }: { current: string; onSa
   return (
     <form className="ed-pick" data-testid="ed-date" onSubmit={(e) => { e.preventDefault(); if (date && (!later || reason.trim())) onSave(date, reason.trim()); }}>
       <label><span>New date</span><input className="ed-sel" type="date" aria-label="New due date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-      {later && <label className="wide"><span>Why it needs more time</span><input className="ed-sel" aria-label="Reason" value={reason} maxLength={500} placeholder="Waiting on the vendor's fix" onChange={(e) => setReason(e.target.value)} /></label>}
+      {later && <label className="wide"><span>Reason for extending (required)</span><input className="ed-sel" aria-label="Reason" value={reason} maxLength={500} placeholder="Waiting on the vendor's fix" onChange={(e) => setReason(e.target.value)} /></label>}
       <div className="ed-pick-act"><button type="button" className="ed-btn ghost" onClick={onCancel}>Cancel</button><button type="submit" className="ed-btn primary" disabled={busy || !date || date === current || (later && !reason.trim())}>{busy ? 'Saving…' : 'Move date'}</button></div>
     </form>
   );
@@ -179,7 +182,7 @@ function Body({ detail, today, nowH, days, actions, onClose }: { detail: Detail;
     case 'done': return <DoneBody t={detail.t} today={today} onClose={onClose} />;
     case 'call': return <CallBody t={detail.t} today={today} onClose={onClose} />;
     case 'reminder': return <ReminderBody t={detail.t} today={today} days={days} onClose={onClose} />;
-    case 'create': return <CreateBody day={detail.day} start={detail.start} end={detail.end} today={today} nowH={nowH} actions={actions} onClose={onClose} />;
+    case 'create': return <QuickCreate day={detail.day} start={detail.start} end={detail.end} title={detail.title} today={today} nowH={nowH} actions={actions} onClose={onClose} />;
     case 'leave': return (
       <Head kind="leave" title={detail.note || 'On leave'} when={<>{longDay(detail.day)} · all day</>} why="Leave recorded on your timesheet for this day — no focus time is planned on it." />
     );
@@ -536,54 +539,3 @@ function MeetingDetailsForm({ m, onCancel, onSaved }: { m: Meet; onCancel: () =>
   );
 }
 
-/**
- * What a span dragged over empty time becomes: logged time (only for time that has happened), a focus block on one of your open items, or a
- * meeting (held by Project Tracker; invite people from Messages). Each writes the real record.
- */
-function CreateBody({ day, start, end, today, nowH, actions, onClose }: { day: string; start: number; end: number; today: string; nowH: number; actions: DetailActions; onClose: () => void }) {
-  const wid = useWorkspaceId();
-  const past = day < today || (day === today && start < nowH);
-  const future = day > today || (day === today && end > nowH);
-  const [tab, setTab] = useState<'log' | 'focus' | 'meet'>(past ? 'log' : 'focus');
-  const items = actions.openItems ?? [];
-  const [item, setItem] = useState(items[0] ? `${items[0].type}:${items[0].id}` : '');
-  const [title, setTitle] = useState('');
-  const [busy, setBusy] = useState(false);
-  const logEnd = day === today ? Math.min(end, Math.floor(nowH * 4) / 4) : end;
-  const schedule = async () => {
-    setBusy(true);
-    try {
-      await meetingApi.scheduleForWorkspace({ title: title.trim(), startTime: isoAtHour(day, start), endTime: isoAtHour(day, end), timeZone: appZone(), service: 'ours' });
-      toast(`${title.trim()} scheduled ${dayLabel(day, today).toLowerCase()} ${clockAP(start)}.`, 'success');
-      void invalidateWorkspace(wid, 'meet'); refreshAfterEdit(wid);
-      onClose();
-    } catch (err) { toast(editError(err, 'The meeting could not be scheduled.'), 'error'); }
-    finally { setBusy(false); }
-  };
-  return (
-    <>
-      <Head kind="create" title={`${clockAP(start)} – ${clockAP(end)}`} when={<>{longDay(day)} · {fmtMins(Math.round((end - start) * 60))}</>}
-        why={past && future ? 'Part of this has happened: log the time spent, or plan the rest.' : past ? 'Time that has happened: log what it was spent on.' : 'Time still to come: plan focus or a meeting.'} />
-      <div className="ed-seg" role="tablist" aria-label="Make it">
-        {([['log', 'Log time'], ['focus', 'Plan focus'], ['meet', 'Schedule meeting']] as const).map(([k, label]) => (
-          <button key={k} type="button" role="tab" aria-selected={tab === k} disabled={(k === 'log' && !past) || (k === 'meet' && day < today)} onClick={() => setTab(k)}>{label}</button>
-        ))}
-      </div>
-      {tab === 'log' && past && <TimeEntryEditor entry={null} day={day} start={start} end={Math.max(logEnd, start + 0.25)} choices={actions.choices ?? []} today={today} onCancel={onClose} onDone={onClose} />}
-      {tab === 'focus' && (items.length === 0 ? <p className="ed-note">No open work due this week to plan focus on.</p> : (
-        <form className="ed-pick" data-testid="ed-focus-form" onSubmit={(e) => { e.preventDefault(); const it = items.find((x) => `${x.type}:${x.id}` === item); if (it && actions.planFocus) { actions.planFocus(it, day, start, end); onClose(); } }}>
-          <label className="wide"><span>Focus on</span><select className="ed-sel" aria-label="Focus on" value={item} onChange={(e) => setItem(e.target.value)}>
-            {items.map((x) => <option key={`${x.type}:${x.id}`} value={`${x.type}:${x.id}`}>{x.key ? `${x.key} · ` : ''}{x.title}</option>)}</select></label>
-          <div className="ed-pick-act"><button type="button" className="ed-btn ghost" onClick={onClose}>Cancel</button><button type="submit" className="ed-btn primary">Plan focus</button></div>
-        </form>
-      ))}
-      {tab === 'meet' && (
-        <form className="ed-pick" data-testid="ed-meet-form" onSubmit={(e) => { e.preventDefault(); if (title.trim()) void schedule(); }}>
-          <label className="wide"><span>Title</span><input className="ed-sel" aria-label="Meeting title" maxLength={200} value={title} placeholder="Sync on the release" onChange={(e) => setTitle(e.target.value)} /></label>
-          <p className="ed-note wide">A Project Tracker call. <button type="button" className="link" data-testid="ed-meet-more" onClick={() => { onClose(); openSchedule({ title: title.trim() || null, start: isoAtHour(day, start), minutes: Math.max(15, Math.round((end - start) * 60)) }); }}>Invite people, a project, repeats…</button></p>
-          <div className="ed-pick-act"><button type="button" className="ed-btn ghost" onClick={onClose}>Cancel</button><button type="submit" className="ed-btn primary" disabled={busy || !title.trim()}>{busy ? 'Scheduling…' : 'Schedule'}</button></div>
-        </form>
-      )}
-    </>
-  );
-}

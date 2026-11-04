@@ -120,7 +120,7 @@ export type Detail =
   | { kind: 'reminder'; key: string; t: TimelineEvent }
   | { kind: 'leave'; key: string; day: string; note: string | null }
   /** A span chosen on the grid by dragging over empty time: log time there, plan focus or schedule a meeting. */
-  | { kind: 'create'; key: string; day: string; start: number; end: number };
+  | { kind: 'create'; key: string; day: string; start: number; end: number; title?: string };
 
 /** Colour and icon of each kind of block, shared with the grid. */
 export const KIND: Record<Detail['kind'], { icon: IconName; tint: string; label: string }> = {

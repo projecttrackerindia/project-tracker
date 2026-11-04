@@ -6,7 +6,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { instantIn } from '../../lib/zone';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import { meetApi } from '../meet/meetApi';
+import { connectApi, meetApi, type OccurrenceScope } from '../meet/meetApi';
 import { undoToast } from '../talk/flyTask';
 import { editError, entryLock, isoAt, moveReminder, overlapFixes, placeEntry, refreshAfterEdit, useMyEntries, warnOverlap } from './calendarEdit';
 import { DOW3, addDays, clockH, dateOf, fmtMins, planKey, type Focus, type Meet, type PlanOverrides } from './plannerModel';
@@ -62,25 +62,28 @@ export function useDayEdit({ from, to, enabled = true, today, nowH, plan, savePl
   const canMove = useCallback((m: Meet): string | null => {
     if (!m.feed) return 'Open the meeting in Messages to move it';
     if (!m.feed.canManage) return 'Only the organiser can move this meeting';
-    if (m.feed.recurring) return 'A recurring meeting moves from its series in Messages';
     if (Date.parse(m.feed.end) < Date.now()) return 'This meeting has ended';
     return null;
   }, []);
   const timeWhy = useCallback((t: TimelineEvent): string | null => (t.running ? 'The timer is running on this. Stop it to change its time.' : entryLock(entries.get(t.sourceId))), [entries]);
   const remWhy = (t: TimelineEvent) => (t.status !== 'scheduled' ? 'This reminder went off: snooze it or mark it done' : null);
 
-  const reschedule = async (m: Meet, day: string, start: number, len: number, undo = false) => {
+  /** scope: a repeating meeting moves just this occurrence ('this') or this and every later one ('following'). */
+  const reschedule = async (m: Meet, day: string, start: number, len: number, undo = false, scope?: OccurrenceScope) => {
     const was = { day: m.day, start: m.start, end: m.end };
     setMoved((s) => ({ ...s, [m.key]: { day, start, end: start + len } }));
     try {
       const body = { startTime: instantIn(day, start).toISOString(), endTime: instantIn(day, start + len).toISOString() };
-      if (m.e.projectId) await meetingApi.reschedule(m.e.id, body); else await meetingApi.workspaceReschedule(m.e.id, body);
+      if (m.feed?.recurring) await connectApi.changeOccurrence(m.feed.ref, { occurrenceStart: m.feed.start, scope: scope ?? 'this', ...body });
+      else if (m.e.projectId) await meetingApi.reschedule(m.e.id, body); else await meetingApi.workspaceReschedule(m.e.id, body);
       void invalidateWorkspace(wid, 'meet');
       void invalidateWorkspace(wid, 'timeline');
       if (undo) { toast('Moved back.', 'info'); return; }
       const hit = focus().filter((f) => f.day === day && f.end > start && f.start < start + len);
       const label = `${m.e.title} moved to ${DOW3[dateOf(day).getDay()]} ${clockH(start)}${Math.abs(len - (was.end - was.start)) > 1e-6 ? `–${clockH(start + len)}` : ''}${hit.length ? ' · focus replanned' : ''}`;
-      undoToast(label, () => void reschedule({ ...m, day, start, end: start + len }, was.day, was.start, was.end - was.start, true), anchor(), 46);
+      // Undo of a repeating meeting puts back what was moved (the same scope), from where it is now.
+      const at = m.feed ? { ...m.feed, start: instantIn(day, start).toISOString(), end: instantIn(day, start + len).toISOString() } : null;
+      undoToast(`${label}${m.feed?.recurring ? (scope === 'following' ? ' · and following' : ' · this one') : ''}`, () => void reschedule({ ...m, day, start, end: start + len, feed: at }, was.day, was.start, was.end - was.start, true, scope), anchor(), 46);
     } catch (err) {
       setMoved((s) => ({ ...s, [m.key]: was }));
       toast(err instanceof ApiError ? err.message : 'Could not move the meeting.', 'error');

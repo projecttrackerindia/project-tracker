@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { delegateApi, projectApi, workspaceApi } from '../../api/endpoints';
+import { delegateApi, projectApi } from '../../api/endpoints';
 import type { MyMeeting } from '../../api/types';
 import { Face } from '../../components/Face';
 import { Icon } from '../../components/Icon';
@@ -14,7 +14,6 @@ import { toast } from '../../stores/ui';
 import { SettingsCard } from '../command/CommandParts';
 import { NotetakerPanel } from '../notetaker/NotetakerPage';
 import { callsApi, type CallLog } from '../calls/callsApi';
-import { StartCallModal } from '../calls/StartCall';
 import { DotsMenu } from '../talk/DotsMenu';
 import { meetApi, parseRef, type MeetItem } from './meetApi';
 import { MeetingForm } from './ScheduleMeeting';
@@ -45,7 +44,7 @@ const inWords = (iso: string) => {
 
 /**
  * Meetings (/meetings): its own place, apart from Messages, and the home of every call. Tabs Upcoming · Past · Recordings (Series and the
- * notetaker in ⋯), + Schedule and Call now; ad-hoc and missed calls are in Past beside the meetings, and a call opens here with its
+ * notetaker in ⋯), + Schedule; ad-hoc and missed calls are in Past beside the meetings, and a call opens here with its
  * transcript, Aura's summary and action items (?call=). A meeting opens as a page (?open=p:{id}|w:{id}, &at= a session); ?new=schedule|now
  * schedules or starts one; ?review= reviews action items; ?join=p:{id}|w:{id} opens a meeting's own call.
  */
@@ -82,7 +81,6 @@ export function MeetPage({ section }: { section: Section }) {
   const projectId = params.get('project');
   const opened = parseRef(params.get('open'));
   const [form, setForm] = useState<'now' | null>(params.get('new') === 'now' ? 'now' : null);
-  const [calling, setCalling] = useState(false);
   const projectQ = useWsQuery(['project', projectId], () => projectApi.get(projectId!), { enabled: !!projectId });
   const project = projectId && projectQ.data ? { id: projectId, name: projectQ.data.project.name } : null;
   const setParam = (k: string, v: string | null) => { const next = new URLSearchParams(params); if (v) next.set(k, v); else next.delete(k); setParams(next, { replace: true }); };
@@ -101,7 +99,6 @@ export function MeetPage({ section }: { section: Section }) {
   const upcoming = useWsQuery(['meet', 'feed', 'upcoming', projectId ?? 'all'], () => meetApi.feed({ from: new Date(range.now - 3 * 3600_000).toISOString(), to: new Date(range.now + 30 * DAY).toISOString(), projectId }), { refetchInterval: 300_000 });
   const past = useWsQuery(['meet', 'feed', 'past', projectId ?? 'all'], () => meetApi.feed({ from: new Date(range.now - 30 * DAY).toISOString(), to: new Date(range.now).toISOString(), projectId }), { staleTime: 60_000 });
   const calls = useWsQuery(['calls', 'history'], () => callsApi.history(30), { staleTime: 30_000, retry: false, enabled: !projectId });
-  const callsOn = useWsQuery(['calls', 'status'], callsApi.status, { staleTime: 600_000, retry: false });
   const now = Date.now();
   const next = (upcoming.data?.items ?? []).filter((m) => Date.parse(m.end) > now && m.status === 'Scheduled');
   const first = next.find((m) => m.myRsvp !== 'Declined') ?? null;
@@ -145,7 +142,6 @@ export function MeetPage({ section }: { section: Section }) {
           {project && <span className="mz-proj">{project.name}<button type="button" aria-label="All meetings" onClick={() => setParam('project', null)}><Icon name="close" size={11} /></button></span>}
           <span className="mz-sp" />
           <button type="button" className="mz-chip" onClick={() => openSchedule({ project })} data-testid="mz-schedule" aria-label="Schedule meeting"><Icon name="plus" size={13} />Schedule</button>
-          {callsOn.data?.available && role !== 'Guest' && <button type="button" className="mz-chip" onClick={() => setCalling(true)} data-testid="mz-call-now"><Icon name="phone" size={13} />Call now</button>}
           <DotsMenu label="More" items={more} />
         </div>
         <CalmCard variant="list" className="mz-list">
@@ -162,7 +158,6 @@ export function MeetPage({ section }: { section: Section }) {
         <WeekCard items={[...(past.data?.items ?? []), ...(upcoming.data?.items ?? [])]} />
       </aside>
       {form && <MeetingForm mode={form} project={project} title={params.get('title')} details={params.get('details')} onClose={() => { setForm(null); setParam('new', null); }} />}
-      {calling && <CallNowModal onClose={() => setCalling(false)} />}
     </div>
   );
 }
@@ -397,17 +392,6 @@ function WeekCard({ items }: { items: MeetItem[] }) {
     </SideCard>
   );
 }
-
-// ------------------------------------------------------------------ call now
-
-/** Call now: an ad-hoc call with the people you pick (it shows in Past, with its notes, once it is over). */
-function CallNowModal({ onClose }: { onClose: () => void }) {
-  const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000, retry: false });
-  if (!members.data) return null;
-  return <StartCallModal people={members.data.map((m) => ({ userId: m.userId, name: m.displayName }))} agentAvailable={false} preselect={false} onClose={onClose} />;
-}
-
-// ------------------------------------------------------------------ notetaker
 
 function NotetakerSection() {
   const role = useAuth((s) => s.ctx?.current?.role);

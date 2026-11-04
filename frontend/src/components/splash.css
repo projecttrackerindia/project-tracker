@@ -15,11 +15,4 @@
 @keyframes as-sweep { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
 @keyframes as-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .as-mark, .as-name, .as-bar i { animation: none; } .as-bar i { width: 100%; opacity: .5; } }
-
-/* Lost the connection while working: a small pill at the top, gone again once it is back. */
-.net-pill { position: fixed; z-index: 1200; left: 50%; top: calc(10px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px;
-  padding: 7px 14px; border-radius: 99px; font-size: 12.5px; font-weight: 650; color: #fff; background: #1f2937; box-shadow: 0 10px 28px -12px rgba(0, 0, 0, .55); animation: net-in .3s ease both; }
-.net-pill i { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, .25); }
-.net-pill.back { background: #047857; }
-.net-pill.back i { background: #a7f3d0; box-shadow: none; }
 @keyframes net-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }

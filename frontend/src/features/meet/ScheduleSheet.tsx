@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Select } from '../../components/Select';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { connectedAccountsApi, meetingApi, projectApi, teamApi, type MeetingRepeatInput, type NotetakerChoice } from '../../api/endpoints';
@@ -255,10 +256,10 @@ export function ScheduleSheet({ open, onClose }: { open: ScheduleOpen; onClose: 
           <div className="ms-val">
             <label className={`ms-chip ms-select${project ? ' on' : ''}`}>
               <span>{project?.name ?? (isGuest ? 'Choose a project…' : 'No project')}</span><Icon name="chevronD" size={12} />
-              <select aria-label="Project" value={project?.id ?? ''} onChange={(e) => chooseProject(e.target.value)}>
+              <Select aria-label="Project" value={project?.id ?? ''} onChange={(e) => chooseProject(e.target.value)}>
                 {isGuest ? (!project && <option value="" disabled>Choose a project…</option>) : <option value="">No project (whole workspace)</option>}
                 {projectList.map((p) => <option key={p.id} value={p.id}>{p.key ? `${p.key} · ` : ''}{p.name}</option>)}
-              </select>
+              </Select>
             </label>
           </div>
         </div>

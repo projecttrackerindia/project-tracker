@@ -26,17 +26,3 @@ export function AppSplash({ message = 'Loading your workspace' }: { message?: st
     </div>
   );
 }
-
-/** A small pill at the top while the connection is lost ("Back online" for a moment once it returns). */
-export function NetworkPill() {
-  const [state, setState] = useState<'online' | 'offline' | 'back'>(() => (typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'online'));
-  useEffect(() => {
-    let t: ReturnType<typeof setTimeout> | undefined;
-    const off = () => { clearTimeout(t); setState('offline'); };
-    const on = () => { setState((s) => (s === 'offline' ? 'back' : s)); t = setTimeout(() => setState('online'), 2500); };
-    window.addEventListener('offline', off); window.addEventListener('online', on);
-    return () => { clearTimeout(t); window.removeEventListener('offline', off); window.removeEventListener('online', on); };
-  }, []);
-  if (state === 'online') return null;
-  return <div className={`net-pill ${state === 'back' ? 'back' : ''}`} role="status" aria-live="polite"><i />{state === 'back' ? 'Back online' : 'You are offline - showing what was already loaded'}</div>;
-}

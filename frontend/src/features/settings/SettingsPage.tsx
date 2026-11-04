@@ -9,6 +9,7 @@ import { TeamLensPicker } from '../../components/TeamLensPicker';
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useIsMobile } from '../../lib/mobile';
 import { ApiError } from '../../api/client';
 import { authApi, meApi, workspaceApi } from '../../api/endpoints';
 import { Icon, type IconName } from '../../components/Icon';
@@ -126,6 +127,13 @@ export function SettingsPage() {
   const ctx = useAuth((s) => s.ctx);
   const isPlatformAdmin = !!ctx?.user.isPlatformAdmin;
   useSettingJump();
+  const phone = useIsMobile();
+  // On a phone, /settings is the list itself (iOS Settings): each row pushes its section page, which has "‹ Settings" back.
+  if (!section && phone) {
+    const have = new Set(leaves.map((l) => l.id));
+    const listPlaces = WORKSPACE_PLACES.filter((p) => PLACE_LEAVES[p].some((l) => have.has(l)) || (p === 'integrations' && !isPlatformAdmin));
+    return <SettingsShell nav={nav} places={listPlaces} current="profile" isPlatformAdmin={isPlatformAdmin} listOnly>{null}</SettingsShell>;
+  }
   // Mail is connected in one place: Integrations › Mail (the old "Mail accounts" address lands there).
   if (section === 'mail') return <Navigate to={`/settings/integrations/mail${loc.search}${loc.hash}`} replace />;
   // Roles & access moved to People & Roles (the old ?view= keeps working there).
@@ -205,7 +213,20 @@ export function SettingsPage() {
 }
 
 /** The window: "Settings" in the toolbar row, the calm grouped list (Personal / Workspace / My teams) and the pane. */
-function SettingsShell({ places, isPlatformAdmin, children }: { nav: (to: string) => void; places: readonly string[]; current: NavId; isPlatformAdmin: boolean; children: React.ReactNode }) {
+function SettingsShell({ places, isPlatformAdmin, children, listOnly }: { nav: (to: string) => void; places: readonly string[]; current: NavId; isPlatformAdmin: boolean; children: React.ReactNode; listOnly?: boolean }) {
+  const phone = useIsMobile();
+  // A phone shows one level at a time: the list (/settings), or a section page with "‹ Settings" back to it. Nothing floats over either.
+  if (phone) return (
+    <div className="set-mac set-calm cs-phone" data-testid={listOnly ? 'settings-phone-list' : 'settings-phone-page'}>
+      {listOnly ? <>
+        <h1 className="cs-phone-title">Settings</h1>
+        <CalmSettingsNav places={places} isPlatformAdmin={isPlatformAdmin} phone />
+      </> : <>
+        <Link to="/settings" className="cs-back" data-testid="settings-back">‹ Settings</Link>
+        <div className="set-mac-pane"><Embedded>{children}</Embedded></div>
+      </>}
+    </div>
+  );
   return (
     <div className="set-mac set-calm">
       <h1 className="set-mac-title">Settings</h1>

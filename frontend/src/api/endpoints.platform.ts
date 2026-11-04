@@ -259,7 +259,7 @@ export const opsApi = {
   saveRule: (id: string, b: RoutingRuleInput) => put<OpsSettings>(`/operations/routing/${id}`, b),
   removeRule: (id: string) => del<OpsSettings>(`/operations/routing/${id}`),
   triage: (b: { title: string; description?: string | null; workTypeId?: string | null }) => post<Triage>('/operations/triage', b),
-  bulk: (b: { ids: string[]; status?: string; assigneeId?: string; unassign?: boolean; priority?: string; dueDate?: string; clearDueDate?: boolean }) => post<{ updated: number; failed: { id: string; message: string }[] }>('/operations/bulk', b),
+  bulk: (b: { ids: string[]; status?: string; assigneeId?: string; unassign?: boolean; priority?: string; dueDate?: string; clearDueDate?: boolean; extensionReason?: string }) => post<{ updated: number; failed: { id: string; message: string }[] }>('/operations/bulk', b),
   insights: (days = 90) => get<OpsInsights>('/operations/insights', { days }),
 };
 export const workApi = {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Select } from '../../components/Select';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { meetingApi, projectApi } from '../../api/endpoints';
@@ -108,9 +109,9 @@ export function MeetingCapture({ kind, id, at, projectId, projectName, title }: 
             {line.due && <span className="mc-chip">{dateOnly(line.due)}</span>}
             {projectId ? (pname && <span className="mc-chip">{pname}</span>) : (
               <label className="mc-chip mc-pick"><span>{pname ?? 'Choose project'}</span>
-                <select aria-label="Project for the task" value={pick ?? ''} onChange={(e) => setPick(e.target.value || null)}>
+                <Select aria-label="Project for the task" value={pick ?? ''} onChange={(e) => setPick(e.target.value || null)}>
                   <option value="">Choose project…</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select></label>
+                </Select></label>
             )}
             <span className="mc-chip src"><i aria-hidden="true">◆</i>Source: this meeting</span>
             <button type="button" className="mc-enter" aria-label="Create the task" disabled={!line.title || busy} onClick={() => void create()}>↵</button>
