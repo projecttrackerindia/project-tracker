@@ -601,13 +601,13 @@ public class ChatTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task The_live_connection_needs_a_valid_token_and_an_organization_workspace()
+    public async Task The_live_connection_needs_a_valid_token_and_personal_workspaces_get_realtime_sync()
     {
         var anonymous = new HubConnectionBuilder()
             .WithUrl(new Uri(factory.Server.BaseAddress, "/hubs/chat"), o => { o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler(); o.Transports = HttpTransportType.LongPolling; }).Build();
         await Assert.ThrowsAnyAsync<Exception>(() => anonymous.StartAsync());
 
-        // A personal workspace has nobody to chat with: the server closes the connection straight away.
+        // A personal workspace has nobody to chat with, but its own changes still sync live across the person's devices: the connection stays open.
         var personal = await TestClient.RegisterAsync(factory);
         var connection = new HubConnectionBuilder()
             .WithUrl(new Uri(factory.Server.BaseAddress, "/hubs/chat"), o =>
@@ -618,8 +618,10 @@ public class ChatTests(ApiFactory factory)
             }).Build();
         var closed = new TaskCompletionSource();
         connection.Closed += _ => { closed.TrySetResult(); return Task.CompletedTask; };
-        try { await connection.StartAsync(); } catch { closed.TrySetResult(); }
-        Assert.Same(closed.Task, await Task.WhenAny(closed.Task, Task.Delay(5000)));
+        await connection.StartAsync();
+        Assert.NotSame(closed.Task, await Task.WhenAny(closed.Task, Task.Delay(1500)));
+        Assert.Equal(HubConnectionState.Connected, connection.State);
+        Assert.NotEqual(default, await connection.InvokeAsync<DateTime>("Ping"));
         await connection.DisposeAsync();
     }
 }
