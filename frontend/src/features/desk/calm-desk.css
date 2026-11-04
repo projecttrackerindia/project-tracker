@@ -76,3 +76,27 @@
 .cdix .dix-ic { background: var(--calm-tint) !important; color: var(--calm-tint-ink); }
 .cdix .dq-btn.pri { background: var(--calm-go-bg); color: var(--calm-go-fg); }
 @media (max-width: 760px) { .cdix .dix-grid { grid-template-columns: minmax(0, 1fr); } }
+/* The ticket's field list, macros and history (demo shot 07). */
+.cdq-fields { display: flex; flex-direction: column; gap: 10px; }
+.cdq-who { display: flex; gap: 10px; align-items: center; }
+.cdq-dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); margin: 4px 0 6px; }
+.cdq-dl dt, .cdq-dl dd { margin: 0; padding: 10px 0; border-bottom: .5px solid var(--calm-fill-2); font-size: 14px; }
+.cdq-dl dt { color: var(--calm-ink3-text); font-size: 13px; }
+.cdq-dl dd { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--calm-ink); }
+.cdq-dl dd > span:not(.cdq-status):not(.cdq-prio) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdq-status { padding: 2px 10px; border-radius: 99px; background: var(--calm-accent-soft); color: var(--calm-accent-text); font-size: 12.5px; font-weight: 600; }
+.cdq-prio { font-weight: 600; } .cdq-prio.p-critical, .cdq-prio.p-high { color: var(--calm-red-text); }
+.cdq-macros { display: flex; flex-wrap: wrap; gap: 6px; }
+.cdq-macros .calm-chip { border: 0; cursor: pointer; font: inherit; font-size: 12.5px; min-height: 32px; padding: 4px 12px; border-radius: 99px; background: var(--calm-fill); color: var(--calm-ink2); }
+.cdq-macros .calm-chip:hover { background: var(--calm-accent-soft); color: var(--calm-accent-text); }
+.cdq-hist { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13.5px; padding: 6px 0; }
+.cdq-hist i { width: 10px; height: 10px; border-radius: 50%; background: var(--calm-ink3); } .cdq-hist i.ok { background: var(--calm-green); }
+.cdq-hist span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .cdq-hist small { color: var(--calm-ink3-text); font-size: 12px; }
+.cdq-dl .dq-own-av { flex: none; width: 22px !important; height: 22px !important; margin: 0; border-radius: 50%; }
+/* The critical incident, calm: one card with a red live dot (no red banner). */
+.cdq-work .dq-inc { background: var(--calm-card); color: var(--calm-ink); box-shadow: var(--calm-sh); border-radius: var(--calm-r-card); margin-bottom: 14px; }
+.cdq-work .dq-inc .dq-inc-sub, .cdq-work .dq-inc .dq-tm-left { color: var(--calm-ink2); }
+.cdq-work .dq-inc .dq-tm { background: var(--calm-fill); color: var(--calm-ink); }
+.cdq-work .dq-inc .dq-war { background: var(--calm-red); color: #fff; }
+.cdq-work .dq-inc .dq-live { background: var(--calm-red); }
+.cdq-dl dd > .dq-own-av { flex: 0 0 22px; max-width: 22px; min-width: 22px; padding: 0; overflow: hidden; font-size: 9px; }
