@@ -1228,3 +1228,11 @@ tr.row-deleted .td-title { font-style: italic; }
 /* Above the phone Details sheet it can be opened from. */
 .modal-overlay.e2e-modal { z-index: 1300; }
 .saved-tick::after { content: attr(data-text); }
+
+/* The searchable Select in the calm style (same look as CalmPicker); on a phone it opens as a bottom sheet with 44px rows. */
+html .ss-pop { background: var(--calm-solid, var(--panel-solid)); border: 0; border-radius: 16px; box-shadow: var(--calm-sh-sheet, var(--shadow-lg)), 0 0 0 .5px color-mix(in srgb, currentColor 10%, transparent); padding: 6px; }
+@media (max-width: 768px) {
+  html .ss-pop { left: 0 !important; right: 0 !important; width: auto !important; top: auto !important; bottom: 0 !important; max-height: 72vh !important; border-radius: 22px 22px 0 0;
+    padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); z-index: 1200; }
+  html .ss-pop .ss-list li [role="option"], html .ss-pop .ss-opt { min-height: 44px; }
+}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Select } from '../../components/Select';
 import type { WorkKind, WorkListFilters, WorkRow, WorkStatusFilter } from '../../api/workItemsApi';
 import { Icon } from '../../components/Icon';
 import { EmptyState, ErrorState } from '../../components/ui';
@@ -173,12 +174,12 @@ export function WorkList({ filters, viewKey, selectedId, onOpen, empty, kinds, d
         <div className="wk-filters" role="group" aria-label="Filters">
           <label className="wk-search"><Icon name="search" size={15} /><input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title or key" aria-label="Search work" /></label>
           {projects.length > 0 && (
-            <label className="wk-select"><select aria-label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">All projects</option>{projects.map(([id, name]) => <option key={id} value={id}>{name}</option>)}<option value="none">No project</option></select></label>
+            <label className="wk-select"><Select aria-label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">All projects</option>{projects.map(([id, name]) => <option key={id} value={id}>{name}</option>)}<option value="none">No project</option></Select></label>
           )}
           {owners.length > 1 && (
-            <label className="wk-select"><select aria-label="Owner" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-              <option value="">Anyone</option>{owners.map(([id, name]) => <option key={id} value={id}>{name}</option>)}<option value="none">Nobody yet</option></select></label>
+            <label className="wk-select"><Select aria-label="Owner" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+              <option value="">Anyone</option>{owners.map(([id, name]) => <option key={id} value={id}>{name}</option>)}<option value="none">Nobody yet</option></Select></label>
           )}
           <button type="button" className={`wk-kchip ${overdue ? 'on danger' : ''}`} aria-pressed={overdue} onClick={() => setOverdue((v) => !v)}>Overdue</button>
           {narrowed && <button type="button" className="btn btn-link btn-sm" onClick={reset}>Clear</button>}

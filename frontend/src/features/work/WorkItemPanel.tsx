@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Select } from '../../components/Select';
 import { FromMeetingCard } from '../meet/MeetingWork';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, download, uploadFile } from '../../api/client';
@@ -223,11 +224,11 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
           <select aria-label="Priority" value={w.priority} onChange={(e) => void save({ priority: e.target.value as Priority })} disabled={!editable}><PriorityOptions /></select>
         </Tile>
         <Tile label="Owner" value={w.assignee ? (w.assignee.id === me?.id ? `${w.assignee.name.split(' ')[0]} (you)` : w.assignee.name) : 'Nobody yet'} disabled={!editable}>
-          <select aria-label="Owner" value={w.assignee?.id ?? ''} onChange={(e) => void save({ assigneeId: e.target.value || null })} disabled={!editable}>
+          <Select aria-label="Owner" value={w.assignee?.id ?? ''} onChange={(e) => void save({ assigneeId: e.target.value || null })} disabled={!editable}>
             <option value="">Nobody yet</option>
             {w.assignee && !people.some((p) => p.userId === w.assignee!.id) && <option value={w.assignee.id}>{w.assignee.name}</option>}
             {people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}{m.userId === me?.id ? ' (you)' : ''}</option>)}
-          </select>
+          </Select>
         </Tile>
         <Tile label="Due" value={<span data-testid="wkp-due">{dueValue}</span>} tone={w.isOverdue ? 'late' : undefined} disabled={!editable}>
           <input type="date" aria-label="Due date" value={w.dueDate ?? ''} disabled={!editable} onChange={(e) => setDue(e.target.value || null)} />
@@ -397,9 +398,9 @@ function TicketFields({ w, editable, save }: { w: WorkItemDetail; editable: bool
       </dd></div>
       <div><dt>Project</dt><dd className="wkp-inline">
         <span>{d.relatedProject?.name ?? 'None'}</span>
-        {editable && <select aria-label="Related project" value={d.relatedProject?.id ?? ''} onChange={(e) => void save({ projectId: e.target.value || null })}>
+        {editable && <Select aria-label="Related project" value={d.relatedProject?.id ?? ''} onChange={(e) => void save({ projectId: e.target.value || null })}>
           <option value="">None</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-        </select>}
+        </Select>}
       </dd></div>
       {w.loggedMinutes > 0 && <div><dt>Time logged</dt><dd>{formatMinutes(w.loggedMinutes)}</dd></div>}
       <div className="wkp-res"><dt>Resolution</dt><dd><Resolution id={w.id} done={w.category === 'Done'} /></dd></div>
