@@ -697,9 +697,15 @@ try {
   await page.locator('.vlt-panel-sealed').getByRole('button', { name: 'Edit', exact: true }).click();
   await page.locator('#vf-password[data-state="masked"]').waitFor();
   await page.getByRole('button', { name: 'Show Password', exact: true }).click();
+  // Same rule as a guarded item: the decrypted value is drawn only after the password AND a two-step code (a fresh grant counts).
+  if (await page.getByTestId('reveal-sheet').waitFor({ timeout: 1000 }).then(() => true, () => false)) {
+    await page.getByTestId('reveal-sheet').getByLabel('Account password').fill(ACCOUNT_PASSWORD);
+    await page.getByTestId('reveal-sheet').getByLabel('Two-step code').fill('123456');
+    await page.getByTestId('reveal-sheet').getByRole('button', { name: 'Reveal', exact: true }).click();
+  }
   await page.locator('#vf-password[data-state="revealed"]').waitFor();
   assert.equal(await page.locator('#vf-password').inputValue(), 'Se@led!Root#2026x');
-  await waitFor(() => sealedState.events.some((e) => e.action === 'revealed' && /edit screen/.test(e.field)), 'the edit-screen reveal is recorded');
+  await waitFor(() => sealedState.events.some((e) => e.action === 'revealed' && /edit screen/.test(e.field) && e.stepUp === REVEAL), 'the edit-screen reveal is recorded with its grant');
   await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click();
   checks.push('sealed-item-never-readable-on-server');
   await shot(page, 'sealed-item-1440.png');
