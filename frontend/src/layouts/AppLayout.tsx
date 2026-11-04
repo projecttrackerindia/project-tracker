@@ -1,5 +1,5 @@
 import { deliveryTime } from '../features/notifications/deliveryTime';
-import { lazy, Suspense, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { isViewing } from '../features/notifications/centre/readSync';
 import { prefetchPages } from '../lib/prefetchPages';
 import { MutationSync } from '../lib/MutationSync';
@@ -9,7 +9,6 @@ import { notificationApi } from '../api/endpoints';
 import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
 import { useAuth } from '../stores/auth';
 import { AccessWatcher } from './AccessWatcher';
-import { ChatRealtime } from '../features/chat/ChatRealtime';
 import { ProjectChatHost } from '../features/chat/ProjectChat';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { LensSync } from '../lib/teamLens';
@@ -21,7 +20,6 @@ import { NetworkPill } from '../components/AppSplash';
 import { SignInIsland } from '../components/SignInIsland';
 // "Single active session": a new device of mine asking to sign in (loaded beside the app, not in its first bundle).
 const SessionApprovalHost = lazy(() => import('../features/auth/SessionApproval').then((m) => ({ default: m.SessionApprovalHost })));
-import { CommandPalette } from '../components/CommandPalette';
 import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
 import { AlertsSetup } from '../features/notifications/AlertsSetup';
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
@@ -35,9 +33,10 @@ import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
 import { IncomingCallHost } from '../features/calls/IncomingCall';
 import { isRingNotice } from '../features/calls/incomingCalls';
-import { ScheduleHost } from '../features/meet/ScheduleSheet';
-import { MeetTimePrompt } from '../features/meet/MeetTime';
-import { AuraKeys, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
+import { AuraKeys, CopilotHost, LiveBanners, PhoneBar, Rail, Toolbar, useNewSheet } from '../components/v2';
+import { useScheduleSheet } from '../features/meet/scheduleStore';
+import { useGroot } from '../components/groot/store';
+import { AfterFirstPaint, WhenFirstOpened } from '../lib/afterFirstPaint';
 import { Fab } from '../components/shell/Fab';
 import { ApprovalRequestHost } from '../features/approvals/host';
 import '../components/shell/shell.css';
@@ -51,6 +50,38 @@ import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
 const calmCreate = import.meta.glob<{ CalmCreateHost: ComponentType }>('../features/calm/createSheets.tsx');
 const calmCreateLoad = Object.values(calmCreate)[0];
 const CalmCreateHost = calmCreateLoad ? lazy(() => calmCreateLoad().then((m) => ({ default: m.CalmCreateHost }))) : null;
+
+// Sheets (their code arrives the first time they open) and background hosts (mounted once the page has painted): kept out of the
+// shell's first download so a phone on a slow network shows the page sooner. Each reads its state from a store, so nothing is missed.
+const NewSheetHost = lazy(() => import('../components/v2/NewSheet').then((m) => ({ default: m.NewSheetHost })));
+const ScheduleHost = lazy(() => import('../features/meet/ScheduleSheet').then((m) => ({ default: m.ScheduleHost })));
+const GrootChatHost = lazy(() => import('../components/groot/GrootChat').then((m) => ({ default: m.GrootChatHost })));
+const MeetTimePrompt = lazy(() => import('../features/meet/MeetTime').then((m) => ({ default: m.MeetTimePrompt })));
+const ChatRealtime = lazy(() => import('../features/chat/ChatRealtime').then((m) => ({ default: m.ChatRealtime })));
+
+const CommandPalette = lazy(() => import('../components/CommandPalette').then((m) => ({ default: m.CommandPalette })));
+
+/**
+ * ⌘K / Ctrl K and every "open the palette" button: the palette's code is fetched on the first ask, then the ask is passed on to it (it
+ * listens for the same signal once mounted).
+ */
+function PaletteLauncher() {
+  const [wanted, setWanted] = useState(false);
+  useEffect(() => {
+    if (wanted) return;
+    const ask = () => setWanted(true);
+    const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); ask(); } };
+    window.addEventListener('pm:palette', ask);
+    document.addEventListener('keydown', key);
+    return () => { window.removeEventListener('pm:palette', ask); document.removeEventListener('keydown', key); };
+  }, [wanted]);
+  return wanted ? <Suspense fallback={null}><CommandPalette /><PassOn /></Suspense> : null;
+}
+/** Mounted right after the palette, so its listener is in place: re-sends the first ask. */
+function PassOn() {
+  useEffect(() => { window.dispatchEvent(new Event('pm:palette')); }, []);
+  return null;
+}
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -133,6 +164,9 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const newOpen = useNewSheet((s) => s.open);
+  const scheduleOpen = useScheduleSheet((s) => !!s.open);
+  const grootOpen = useGroot((s) => s.open);
   useEffect(() => { window.scrollTo({ top: 0, left: 0 }); }, [loc.pathname]);   // left too: a page never stays shifted sideways
   // Warm likely destinations on hover/focus; unopened features stay off the network.
   useEffect(() => { prefetchPages(); }, []);
@@ -173,10 +207,10 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <AuraKeys />}
       {!admin && <ApprovalRequestHost />}
       {!admin && CalmCreateHost && <Suspense fallback={null}><CalmCreateHost /></Suspense>}
-      {!admin && <NewSheetHost />}
-      {!admin && <ScheduleHost />}
-      {!admin && <MeetTimePrompt />}
-      {!admin && <GrootChatHost />}
+      {!admin && <WhenFirstOpened open={newOpen}><NewSheetHost /></WhenFirstOpened>}
+      {!admin && <WhenFirstOpened open={scheduleOpen}><ScheduleHost /></WhenFirstOpened>}
+      {!admin && <AfterFirstPaint><MeetTimePrompt /></AfterFirstPaint>}
+      {!admin && <WhenFirstOpened open={grootOpen}><GrootChatHost /></WhenFirstOpened>}
       {!admin && <CopilotHost />}
       <SignInIsland />
       <Suspense fallback={null}><SessionApprovalHost /></Suspense>
@@ -188,14 +222,14 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <MutationSync />
       <DesktopNotifier />
       <AccessWatcher />
-      <CommandPalette />
+      <PaletteLauncher />
       <ReminderAlerts />
       <AlertsSetup />
       <ComposerSlot />
       {!admin && <AttendanceHost />}
       {!admin && <AuraWatcher />}
       {!admin && <ChangeUndoPrompt />}
-      {chatOn && <ChatRealtime />}
+      {chatOn && <AfterFirstPaint><ChatRealtime /></AfterFirstPaint>}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}
       {!admin && <BadgeSync />}

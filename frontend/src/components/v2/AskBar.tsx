@@ -12,7 +12,7 @@ import { DEFAULT_DAY, dayPart, suggestionsFor } from '../groot/grootTime';
 import { appZone } from '../../lib/zone';
 import { openScheduleFromWords } from '../../features/meet/openFromWords';
 import { openNew, pageContext, useCopilot, useNewSheet, type NewType } from './state';
-import { openPalette, searchHitLink } from '../CommandPalette';
+import { openPalette, searchHitLink } from '../paletteLink';
 import { haptic, useIsMobile } from '../../lib/mobile';
 import { NotificationBell } from '../../features/notifications/centre/NotificationCentre';
 import { AttendanceCapsule } from '../../features/attendance/AttendanceCapsule';

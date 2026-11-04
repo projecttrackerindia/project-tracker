@@ -58,6 +58,7 @@ public partial class AppDbContext
     }
     private readonly HashSet<Guid> pendingTenantInvalidations = [];
     private readonly List<ChangeEvent> pendingChanges = [];
+    private readonly List<NotificationAnnouncement> pendingNotifications = [];
     private bool pendingPlanInvalidation;
 
     // ------------------------------------------------------------------ audit stamping & write guard
@@ -85,9 +86,13 @@ public partial class AppDbContext
         // Activity written in this save is what other people's open screens need to hear about (sent only once it is committed).
         var changes = changeFeed is null ? null : ChangeTracker.Entries<Activity>().Where(e => e.State == EntityState.Added)
             .Select(e => new ChangeEvent(e.Entity.TenantId, e.Entity.EntityType, e.Entity.EntityId, e.Entity.ProjectId, e.Entity.Action, e.Entity.ActorId)).ToList();
+        // New notifications (in the bell): their recipients' open tabs hear of them once committed, instead of at the next poll.
+        var created = notificationFeed is null ? null : ChangeTracker.Entries<Notification>().Where(e => e.State == EntityState.Added && e.Entity.InApp)
+            .Select(e => new NotificationAnnouncement(e.Entity.TenantId, e.Entity.UserId, e.Entity.Id, e.Entity.Type, e.Entity.InApp)).ToList();
         var saved = await SaveChainedAsync(acceptAllChangesOnSuccess, cancellationToken);
         if (Database.CurrentTransaction is not null)
         {
+            if (created is not null) pendingNotifications.AddRange(created);
             pendingPlanInvalidation |= plansChanged;
             pendingTenantInvalidations.UnionWith(tenants);
             if (changes is not null) pendingChanges.AddRange(changes);
@@ -99,6 +104,7 @@ public partial class AppDbContext
             foreach (var t in tenants) await entitlementCache.InvalidateTenantAsync(t, cancellationToken);
         }
         if (changes is { Count: > 0 }) changeFeed!.Publish(changes);
+        if (created is { Count: > 0 }) notificationFeed!.Announce(created);
         return saved;
     }
 
@@ -107,6 +113,7 @@ public partial class AppDbContext
         var tenants = pendingTenantInvalidations.ToArray();
         var plansChanged = pendingPlanInvalidation;
         var changes = pendingChanges.ToArray();
+        var created = pendingNotifications.ToArray();
         DiscardTransactionEffects();
         if (entitlementCache is not null)
         {
@@ -114,12 +121,14 @@ public partial class AppDbContext
             foreach (var tenant in tenants) await entitlementCache.InvalidateTenantAsync(tenant, ct);
         }
         if (changes.Length > 0) changeFeed?.Publish(changes);
+        if (created.Length > 0) notificationFeed?.Announce(created);
     }
 
     internal void DiscardTransactionEffects()
     {
         pendingTenantInvalidations.Clear();
         pendingChanges.Clear();
+        pendingNotifications.Clear();
         pendingPlanInvalidation = false;
     }
 

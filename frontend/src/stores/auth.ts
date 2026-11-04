@@ -1,12 +1,40 @@
 import { QueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
-import { refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
+import { get as apiGet, refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
 import { isApprovalStart, type ApprovalStart } from '../api/endpoints.sessionApproval';
 import { disableNativePush } from '../lib/native';
 import { setAppZones } from '../lib/zone';
 import type { AppContext, AuthResponse } from '../api/types';
 import { clearOfflineData, readOfflineSnapshot } from '../features/offline/storage';
+import { clearWarmStart, hydrateWarm, readWarmStart, saveWarmStart } from '../lib/warmStart';
+
+// Someone signed in on this device before (pm_hint): the session check and the warm-start read start as this module loads, before React
+// renders anything, so they overlap the rest of the scripts instead of following them.
+let earlyRefresh: Promise<AuthResponse | null> | null = null;
+if (typeof window !== 'undefined') {
+  let hint = false;
+  try { hint = localStorage.getItem('pm_hint') === '1'; } catch { /* storage unavailable */ }
+  if (hint && !/^\/(login|register|verify-email|forgot-password|reset-password|invite|auth|approve|unsubscribe|s|r)(\/|$)/.test(window.location.pathname)) {
+    earlyRefresh = refreshSession();
+    void readWarmStart();
+  }
+}
+
+/**
+ * The frame's numbers in one call (/shell/summary: bell and tab badges, Approvals, chat unread, reminders), fetched beside /me and put in
+ * the cache under the same keys those badges read, so they do not each make their own first request.
+ */
+interface ShellSummary { workspaceId: string; notifications: unknown; approvals: unknown; chatUnread: unknown; reminders: unknown }
+let pendingSummary: Promise<ShellSummary | null> | null = null;
+function seedSummary(s: ShellSummary | null, wid: string | undefined) {
+  if (!s || !wid || s.workspaceId !== wid) return;   // only ever into the workspace it was read for
+  const put = (key: unknown[], v: unknown) => { if (v !== null && v !== undefined) queryClient.setQueryData(key, v); };
+  put([wid, 'notifications', 'counts'], s.notifications);
+  put([wid, 'approvals', 'counts'], s.approvals);
+  put([wid, 'chat', 'unread'], s.chatUnread);
+  put([wid, 'reminders', 'counts'], s.reminders);
+}
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,16 +70,33 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   /** On page load: trade the HttpOnly refresh cookie for an access token, then load the user's context. */
   bootstrap: async () => {
-    const auth = await refreshSession();
+    // Warm start: what this device knew last time is on the screen at once (stale), while the session is checked and every read refreshes.
+    const refresh = earlyRefresh ?? refreshSession();
+    earlyRefresh = null;
+    const warm = await readWarmStart();
+    const slug = window.location.pathname.split('/').filter(Boolean)[0];
+    const sameAddress = warm && (!slug || slug === warm.ctx.current?.slug);
+    if (warm && sameAddress && get().status === 'loading') {
+      hydrateWarm(queryClient, warm);
+      set({ ctx: warm.ctx, status: 'authenticated' });
+    }
+    const auth = await refresh;
     if (!auth) {
+      if (warm) { clearWarmStart(); queryClient.clear(); }
       // Not answered (a release restarting, a blip) is not "signed out": with saved work the offline view shows, and it is tried again.
       const unreachable = !refreshWasRefused();
       set({ status: (!navigator.onLine || unreachable) && readOfflineSnapshot() ? 'offline' : 'anonymous', ctx: null });
       return;
     }
+    pendingSummary = apiGet<ShellSummary>('/shell/summary').catch(() => null);
     // The session is good; loading the context can still hit a passing server error - try again before giving up on it.
     for (let attempt = 0; ; attempt++) {
-      try { await get().reloadContext(); return; }
+      try {
+        const ctx = await get().reloadContext();
+        // Someone else signed in on this device since: nothing of the previous person's stays in the cache.
+        if (warm && (ctx.user.id !== warm.userId || ctx.current?.id !== warm.workspaceId)) { queryClient.clear(); clearWarmStart(); }
+        return;
+      }
       catch (e) {
         const status = (e as { status?: number })?.status ?? 0;
         if (attempt >= 2 || !transientStatus(status)) { setAccessToken(null); set({ status: 'anonymous', ctx: null }); return; }
@@ -107,6 +152,12 @@ export const useAuth = create<AuthState>((set, get) => ({
       setAccessToken(res.accessToken);
       ctx = await meApi.context();
     }
+    if (pendingSummary) {
+      // At most a short wait: the summary normally lands with /me; a slow one must not hold the page back.
+      const summary = await Promise.race([pendingSummary, new Promise<null>((r) => setTimeout(() => r(null), 400))]);
+      pendingSummary = null;
+      seedSummary(summary, ctx.current?.id);
+    }
     set({ ctx, status: 'authenticated' });
     return ctx;
   },
@@ -130,9 +181,21 @@ export const useAuth = create<AuthState>((set, get) => ({
 }));
 
 setAuthLostHandler(() => {
+  clearWarmStart();
   queryClient.clear();
   useAuth.setState({ status: 'anonymous', ctx: null });
 });
+
+// Keep the warm-start copy current: after reads settle (debounced) and at once when the tab is hidden (a phone closing the app).
+if (typeof window !== 'undefined') {
+  queryClient.getQueryCache().subscribe((e) => {
+    if (e.type === 'updated' && e.action.type === 'success') { const st = useAuth.getState(); if (st.status === 'authenticated') saveWarmStart(queryClient, st.ctx); }
+  });
+  document.addEventListener('visibilitychange', () => {
+    const st = useAuth.getState();
+    if (document.visibilityState === 'hidden' && st.status === 'authenticated') saveWarmStart(queryClient, st.ctx, true);
+  });
+}
 
 // Every refresh names this tab's workspace; keep the API client told which one that is.
 useAuth.subscribe((s) => setTabWorkspace(s.ctx?.current?.id ?? null));

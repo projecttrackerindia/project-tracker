@@ -136,6 +136,7 @@ try {
   await pop(page).waitFor();
   await card(page, 'm1').waitFor();
   // A reminder says why it came, in a few words, under its title.
+  await page.locator('[data-testid="ncx-reason"]').first().waitFor();
   assert.equal((await page.locator('[data-testid="ncx-reason"]').allInnerTexts()).join('|'), 'You set this for 15:30');
   checks.push('reminder-reason');
   const pb = await pop(page).boundingBox();
