@@ -606,3 +606,10 @@ html[data-theme='dark'] .wp-task { background: color-mix(in srgb, var(--calm-p2)
 .wp-glance-logged { margin-top: 8px; width: 100%; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 0; border-radius: var(--calm-r-row); background: var(--calm-fill); font: inherit; font-size: 13px; color: var(--calm-ink); cursor: pointer; }
 .wp-glance-logged svg:last-child { margin-left: auto; color: var(--calm-ink3-text); }
 .wp-glance-logged.open { box-shadow: inset 0 0 0 1.5px var(--calm-accent); }
+/* Side panels never spill into the grid: long names truncate with an ellipsis (full name in the tooltip). */
+.wp-side, .wp-rc { min-width: 0; overflow: hidden; }
+.wp-fr { display: flex; align-items: center; min-width: 0; }
+.wp-fr > span, .wp-up-t b, .wp-up-t small { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-up-t { min-width: 0; flex: 1; }
+.wp-fr > span { flex: 1; }
+.wp-fr > em { flex: none; }

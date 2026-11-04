@@ -361,7 +361,7 @@ function HomeNumbers() {
   return (
     <section className="hm-card hm-mini" aria-label="Your numbers">
       {cell(show(c?.myOverdue, dash.isLoading), <Term k="overdue" focusable={false}>Overdue</Term>, '/work?overdue=1', c?.myOverdue ? 'red' : undefined, 'overdue')}
-      {cell(c ? (c.myLoggedMinutesThisWeek > 0 ? formatMinutes(c.myLoggedMinutesThisWeek) : '0h') : dash.isLoading ? '…' : '—', <><Term k="logged" focusable={false}>Logged</Term> this week</>, '/insights?tab=time', undefined, 'logged')}
+      {cell(c ? (c.myLoggedMinutesThisWeek > 0 ? formatMinutes(c.myLoggedMinutesThisWeek) : '0h') : dash.isLoading ? '…' : '—', <><Term k="logged" focusable={false}>Logged</Term> this week</>, '/time', undefined, 'logged')}
       {cell(show(risk, projects.isLoading), <>Projects <Term k="at risk" focusable={false}>at risk</Term></>, '/work/projects?status=AtRisk', risk ? 'orange' : undefined, 'risk')}
       {cell(show(team.data?.totals?.open, team.isLoading), <>Team <Term k="open" focusable={false}>open</Term> items</>, '/work?tab=team', undefined, 'team')}
     </section>

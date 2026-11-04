@@ -129,7 +129,7 @@ try {
   if (process.env.ONLY) { await browser.close(); console.log('calm-know UI checks passed'); process.exit(0); }
   // Org chart: change manager → impact sheet → confirm posts the move.
   { const { c, page } = await open('light', 1440, 900);
-    await go(page, '/people/org');
+    await go(page, '/people/org?layout=canvas');   // the calm canvas (the org chart itself is the earlier lines view again)
     await page.getByRole('button', { name: /^Dev Mora/ }).click();
     await page.getByRole('button', { name: 'Change manager' }).click();
     await page.locator('.co-pick').getByRole('button', { name: /Cara Lund/ }).click();

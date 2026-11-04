@@ -511,7 +511,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
         <Route path="documents" element={<LegacyDocuments />} />
         <Route path="documents/*" element={<Moved to="/library/docs" prefix="/documents" />} />
         <Route path="vault/*" element={<Moved to="/library/vault" prefix="/vault" />} />
-        <Route path="timesheet" element={<Moved to="/insights?tab=time" />} />
+        <Route path="timesheet" element={<Moved to="/time" />} />
         <Route path="timesheet/:s" element={<SectionMoved to="/insights?tab=time" />} />
         <Route path="workload" element={<Moved to="/insights" />} />
         <Route path="workload/capacity" element={<Moved to="/work?tab=team&s=capacity" />} />
