@@ -363,7 +363,13 @@ public static class PasswordHashes
 }
 
 /// <summary>Something changed in a workspace (one activity record): enough for open screens to know what to reload, nothing more.</summary>
-public record ChangeEvent(Guid TenantId, string EntityType, Guid? EntityId, Guid? ProjectId, string Action, Guid? ActorId);
+/// <param name="Op">created, updated, deleted or restored (null for an activity record that only names its action).</param>
+/// <param name="Fields">The properties that changed (updates only): names, never values.</param>
+/// <param name="Audience">Set for personal things (a reminder, a note, a timesheet, attendance, chat read state): only these people hear of it.</param>
+/// <param name="Type">The kind on the wire (task, actionItem, comment, reminder...), derived from the entity.</param>
+/// <param name="ParentId">For a comment: the task or item it is on.</param>
+public record ChangeEvent(Guid TenantId, string EntityType, Guid? EntityId, Guid? ProjectId, string Action, Guid? ActorId,
+    string? Op = null, IReadOnlyList<string>? Fields = null, IReadOnlyList<Guid>? Audience = null, string? Type = null, Guid? ParentId = null);
 
 /// <summary>Tells the people who have the app open that something changed, so boards and lists update without a reload.</summary>
 public interface IChangeFeed

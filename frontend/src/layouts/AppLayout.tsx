@@ -164,6 +164,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  // Realtime sync runs for everyone in a workspace (personal workspaces and guests too); chat rides on the same connection.
+  const liveOn = useAuth((s) => !!s.ctx?.current && !s.ctx.user.isPlatformAdmin);
   const newOpen = useNewSheet((s) => s.open);
   const scheduleOpen = useScheduleSheet((s) => !!s.open);
   const grootOpen = useGroot((s) => s.open);
@@ -229,7 +231,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <AttendanceHost />}
       {!admin && <AuraWatcher />}
       {!admin && <ChangeUndoPrompt />}
-      {chatOn && <AfterFirstPaint><ChatRealtime /></AfterFirstPaint>}
+      {liveOn && <AfterFirstPaint><ChatRealtime chat={chatOn} /></AfterFirstPaint>}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}
       {!admin && <BadgeSync />}

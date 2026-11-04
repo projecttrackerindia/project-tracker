@@ -2,7 +2,7 @@ import { openMessage } from './e2e/session';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { HubConnection } from '@microsoft/signalr';
-import { getAccessToken, refreshSession } from '../../api/client';
+import { get, getAccessToken, refreshSession } from '../../api/client';
 import { chatApi } from '../../api/endpoints';
 import type { ChatMessage, ChatThread, Conversation, PresenceStatus } from '../../api/types';
 import { appPath } from '../../lib/orgPath';
@@ -21,6 +21,7 @@ import { useProjectChat } from './projectChatStore';
 import { bumpUnread, dropUnread, useUnreadCatchUp } from './unreadBadge';
 import { emitCallEvent } from '../calls/incomingCalls';
 import { committedHereRecently } from '../../lib/mutationEffects';
+import { createSync, type SyncEvent } from '../live/realtimeSync';
 import { emitReminders, emitSheetFocus, emitViewing, notifyLiveConnected, setLiveConnection, type ReminderEvent, type SheetFocusEvent, type ViewingEvent } from '../live/bus';
 
 /** Screens that show work: refreshed (if open) when someone else changes something. Chat, settings and the like have their own events or none. */
@@ -51,6 +52,18 @@ async function freshToken(): Promise<string> {
 }
 
 let current: HubConnection | null = null;
+let liveSync: ReturnType<typeof createSync> | null = null;
+/** Runs the realtime catch-up now (for example right after a push woke the app). */
+export const catchUpNow = () => liveSync?.catchUp();
+
+/** End-to-end latency of live changes (server commit → this tab), kept for the realtime checks and the diagnostics panel. */
+const latencies: number[] = [];
+function markLatency(events: SyncEvent[]) {
+  const now = Date.now();
+  for (const e of events) if (e.at) { const ms = now - Date.parse(e.at); if (Number.isFinite(ms)) latencies.push(ms); }
+  if (latencies.length > 200) latencies.splice(0, latencies.length - 200);
+  (window as unknown as { __pmLiveLatency?: number[] }).__pmLiveLatency = latencies;
+}
 
 /**
  * The connection library is fetched when the live connection is first opened (after signing in), not with the first page: it is a fair
@@ -71,7 +84,7 @@ export function sendTyping(conversationId: string) {
  * written straight into the cached data, so the screen updates without asking the server again. When the connection drops it reconnects
  * by itself and reloads what was missed.
  */
-export function ChatRealtime() {
+export function ChatRealtime({ chat: chatOn = true }: { chat?: boolean } = {}) {
   const wid = useWorkspaceId();
   const me = useAuth((s) => s.ctx?.user.id);
   // Read through a ref: the navigate function can change with the route, and that must not restart the connection.
@@ -80,7 +93,7 @@ export function ChatRealtime() {
   navigate.current = goto;
   const [hub, setHub] = useState<SignalR | null>(signalr);
   const [attempt, setAttempt] = useState(0);
-  useUnreadCatchUp(wid);
+  useUnreadCatchUp(chatOn ? wid : null);
 
   useEffect(() => {
     if (!wid || !me || hub) return;
@@ -98,8 +111,10 @@ export function ChatRealtime() {
     let stopped = false;
     let retry: number | undefined;
 
+    // WebSocket first; where a proxy or network blocks it, Server-Sent Events, then long polling (the same hub, the same events).
     const connection = new hub.HubConnectionBuilder()
-      .withUrl(`${BASE}/hubs/chat`, { accessTokenFactory: freshToken })
+      .withUrl(`${BASE}/hubs/chat`, { accessTokenFactory: freshToken,
+        transport: hub.HttpTransportType.WebSockets | hub.HttpTransportType.ServerSentEvents | hub.HttpTransportType.LongPolling })
       .withAutomaticReconnect([0, 2000, 5000, 10000, 20000, 30000])
       .configureLogging(hub.LogLevel.None)
       .build();
@@ -111,7 +126,7 @@ export function ChatRealtime() {
     const sendIdle = (idle: boolean) => { if (connection.state === hub.HubConnectionState.Connected) void connection.invoke('SetIdle', idle).catch(() => { /* best effort */ }); };
     const idle = trackIdle(sendIdle);
 
-    // Serialize refreshes for open work screens; bursts queue one catch-up without restarting in-flight reads.
+    // Everything else that is not chat: open work screens reload (all of them) only when the realtime catch-up says the gap is too old.
     const matchesWork = (q: { queryKey: readonly unknown[] }) => q.queryKey[0] === wid && LIVE_KEYS.has(String(q.queryKey[1]));
     const liveQueue: RefreshQueue = createRefreshQueue(async () => {
       const wasFetching = queryClient.getQueryCache().findAll({ predicate: (q) => matchesWork(q) && q.isActive() }).some((q) => q.state.fetchStatus === 'fetching');
@@ -119,13 +134,19 @@ export function ChatRealtime() {
       if (wasFetching) liveQueue.request();
     }, LIVE_THROTTLE_MS);
     const refreshWork = liveQueue.request;
-    connection.on('changed', (changes: { actorId: string | null }[]) => {
-      // Same actor does not mean same tab: another visible tab or an AI action may have made this change.
-      if (changes.some((c) => c.actorId !== me)) window.dispatchEvent(new Event(CHECK_NOTIFICATIONS));   // someone else's change may have notified me
-      // My own save from this tab: already refreshed by MutationSync, so the echo would only read every open view a second time.
-      if (changes.length && changes.every((c) => c.actorId === me) && committedHereRecently()) return;
-      refreshWork();
+    // Realtime sync (features/live/realtimeSync.ts): each change marks exactly the reads it touches; versions make the catch-up exact.
+    const sync = createSync({
+      client: queryClient, wid, me,
+      ownRecent: () => committedHereRecently(),
+      onForeign: () => window.dispatchEvent(new Event(CHECK_NOTIFICATIONS)),   // someone else's change may have notified me
+      onScope: () => { if (connection.state === hub.HubConnectionState.Connected) void connection.invoke('RefreshScope').catch(() => undefined); },
+      onReset: refreshWork,
+      load: (since) => get<{ version: number; reset: boolean; changes: SyncEvent[] }>('/realtime/changes', { since }),
     });
+    liveSync = sync;
+    connection.on('sync', (events: SyncEvent[]) => { markLatency(events); sync.apply(events); });
+    // The older, coarser event (still sent for apps that have not updated): covered by "sync" above.
+    connection.on('changed', () => { /* superseded by "sync" */ });
     connection.on('viewing', (e: ViewingEvent) => emitViewing(e));
     connection.on('sheetFocus', (e: SheetFocusEvent) => emitSheetFocus(e));
     connection.on('reminder', (e: ReminderEvent[]) => emitReminders(e));
@@ -262,9 +283,9 @@ export function ChatRealtime() {
     connection.onreconnected(() => {
       useChat.setState({ link: 'connected', online: {}, status: {} });         // presence may have changed while offline
       if (idle.isIdle()) sendIdle(true);
-      void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });    // and so may everything else
+      if (chatOn) void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid) });    // and so may chat
       notifyLiveConnected();                                                  // open tasks announce their viewers again
-      refreshWork();
+      void sync.catchUp();                                                    // exactly what was missed while the link was down
     });
     connection.onclose(() => {
       if (stopped) return;
@@ -283,9 +304,10 @@ export function ChatRealtime() {
         useChat.getState().setLink('connected');
         if (idle.isIdle()) sendIdle(true);
         notifyLiveConnected();
-        void queryClient.prefetchQuery({ queryKey: chatKeys.myStatus(wid), queryFn: () => chatApi.status(), staleTime: 60_000 });   // do not disturb
+        void sync.catchUp();   // the starting version, or (after the app slept or was closed) what changed meanwhile
+        if (chatOn) void queryClient.prefetchQuery({ queryKey: chatKeys.myStatus(wid), queryFn: () => chatApi.status(), staleTime: 60_000 });   // do not disturb
         // Catch up on anything sent before the live link was up - but not data that was fetched a moment ago (no double requests on load).
-        void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid), predicate: (q) => Date.now() - q.state.dataUpdatedAt > 5000 });
+        if (chatOn) void queryClient.invalidateQueries({ queryKey: chatKeys.all(wid), predicate: (q) => Date.now() - q.state.dataUpdatedAt > 5000 });
       } catch {
         if (stopped) return;
         useChat.getState().setLink('offline');
@@ -294,15 +316,46 @@ export function ChatRealtime() {
     };
     void start();
 
+    // Waking up: a phone brought back to the front, a laptop opened, the network back. The socket may have died silently while the app was
+    // in the background (the push brought the alerts meanwhile): catch up at once, and reconnect if the link is gone.
+    const wake = () => {
+      if (document.visibilityState === 'hidden') return;
+      void sync.catchUp();
+      if (connection.state === hub.HubConnectionState.Disconnected) { window.clearTimeout(retry); void start(); }
+    };
+    document.addEventListener('visibilitychange', wake);
+    document.addEventListener('resume', wake);   // Capacitor / Cordova: the app came back from the background
+    window.addEventListener('online', wake);
+    window.addEventListener('focus', wake);
+    // Heartbeat: the transport's keep-alive covers a dead socket; this also notices a link that is up but stalled (a sleeping proxy).
+    const beat = window.setInterval(() => {
+      if (document.visibilityState === 'hidden' || connection.state !== hub.HubConnectionState.Connected) return;
+      const t = window.setTimeout(() => { void connection.stop(); }, 10_000);   // onclose opens it again
+      void connection.invoke('Ping').then(() => window.clearTimeout(t), () => window.clearTimeout(t));
+    }, 30_000);
+    // The slow safety net (instead of each screen polling every 30-60 s): every 5 minutes, the catch-up and the project groups.
+    const safety = window.setInterval(() => {
+      void sync.catchUp();
+      if (connection.state === hub.HubConnectionState.Connected) void connection.invoke('RefreshScope').catch(() => undefined);
+    }, 5 * 60_000);
+
     return () => {
       stopped = true;
+      document.removeEventListener('visibilitychange', wake);
+      document.removeEventListener('resume', wake);
+      window.removeEventListener('online', wake);
+      window.removeEventListener('focus', wake);
+      window.clearInterval(beat);
+      window.clearInterval(safety);
+      sync.dispose();
+      if (liveSync === sync) liveSync = null;
       window.clearTimeout(retry);
       liveQueue.dispose();
       idle.stop();
       if (current === connection) { current = null; setLiveConnection(null); }
       void connection.stop();
     };
-  }, [wid, me, hub]);
+  }, [wid, me, hub, chatOn]);
 
   return null;
 }

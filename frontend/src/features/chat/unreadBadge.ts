@@ -33,7 +33,7 @@ export function useChatUnread(): ChatUnread {
   const canChat = useCanChat();
   const q = useQuery({
     queryKey: chatKeys.unread(wid ?? ''), queryFn: () => get<ChatUnread>('/chat/unread'),
-    enabled: !!wid && canChat, refetchInterval: 90_000, staleTime: 30_000,
+    enabled: !!wid && canChat, refetchInterval: 300_000, staleTime: 30_000,
   });
   return canChat && q.data ? q.data : { count: 0 };
 }

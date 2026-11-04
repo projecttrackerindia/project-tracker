@@ -96,7 +96,7 @@ export function MeetPage({ section }: { section: Section }) {
 
   // One read of each list: upcoming sessions, the last 30 days, and the call log.
   const [range] = useState(() => ({ now: Date.now() }));
-  const upcoming = useWsQuery(['meet', 'feed', 'upcoming', projectId ?? 'all'], () => meetApi.feed({ from: new Date(range.now - 3 * 3600_000).toISOString(), to: new Date(range.now + 30 * DAY).toISOString(), projectId }), { refetchInterval: 60_000 });
+  const upcoming = useWsQuery(['meet', 'feed', 'upcoming', projectId ?? 'all'], () => meetApi.feed({ from: new Date(range.now - 3 * 3600_000).toISOString(), to: new Date(range.now + 30 * DAY).toISOString(), projectId }), { refetchInterval: 300_000 });
   const past = useWsQuery(['meet', 'feed', 'past', projectId ?? 'all'], () => meetApi.feed({ from: new Date(range.now - 30 * DAY).toISOString(), to: new Date(range.now).toISOString(), projectId }), { staleTime: 60_000 });
   const calls = useWsQuery(['calls', 'history'], () => callsApi.history(30), { staleTime: 30_000, retry: false, enabled: !projectId });
   const now = Date.now();

@@ -117,7 +117,7 @@ function ServerFilters({ url, open }: { url: PortfolioUrlState; open: boolean })
 function BoardTab({ ai }: { ai: boolean }) {
   const { url, passes } = usePortfolio();
   const { filter, mode, setMode } = url;
-  const q = useWsQuery(portfolioKeys.board(filter), () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
+  const q = useWsQuery(portfolioKeys.board(filter), () => portfolioApi.board(filter), { refetchInterval: 300_000, staleTime: 60_000, placeholderData: (prev) => prev });
   const board = q.data;
   const b = board?.brief;
   const ranked = useMemo(() => (b?.ranked ?? []).filter((r) => passes({ id: r.projectId, name: r.name, key: r.key, owner: r.owner, health: r.health, due: r.dueDate })), [b, passes]);
