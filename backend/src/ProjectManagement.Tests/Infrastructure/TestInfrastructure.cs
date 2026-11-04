@@ -132,6 +132,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public RecordingPushHandler Push { get; } = new();
     /// <summary>What would be broadcast to open screens.</summary>
     public RecordingChangeFeed Changes { get; } = new();
+    public RecordingNotificationFeed Announced { get; } = new();
 
     /// <summary>Stands in for the internet: records every webhook request and answers with whatever the test asks for.</summary>
     public RecordingWebhookTransport Webhooks { get; } = new();
@@ -202,6 +203,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddScoped<ProjectManagement.Application.Features.Voice.ConnectorCaller, TestConnectorCaller>();
             services.RemoveAll<ProjectManagement.Application.Abstractions.IChangeFeed>();
             services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed>(Changes);
+            services.RemoveAll<ProjectManagement.Application.Abstractions.INotificationFeed>();
+            services.AddSingleton<ProjectManagement.Application.Abstractions.INotificationFeed>(Announced);
         });
     }
 

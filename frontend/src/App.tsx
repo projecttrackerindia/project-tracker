@@ -50,6 +50,20 @@ function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>
 // straight away when the address is one of them, alongside the session check rather than after it.
 const loadAuthPages = () => import('./features/auth/AuthPages');
 if (typeof window !== 'undefined' && /^\/(login|register|verify-email|forgot-password|reset-password|invite|auth)(\/|$)/.test(window.location.pathname)) void loadAuthPages().catch(() => undefined);
+// The page the address opens (Today, Work, Messages, Approvals) is fetched at once too, alongside the session check, instead of after
+// it and the shell: on a phone on a slow network that removes one round of waiting before the page can ask for its own data.
+const loadHome = () => import('./features/home/HomePage');
+const loadWork = () => import('./features/work/WorkPage');
+const loadApprovals = () => import('./features/approvals/ApprovalsPage');
+const loadTalk = () => import('./features/talk/TalkPage');
+if (typeof window !== 'undefined') {
+  const places: Record<string, () => Promise<unknown>> = { '': loadHome, dashboard: loadHome, work: loadWork, approvals: loadApprovals, messages: loadTalk };
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  const auth = /^(login|register|verify-email|forgot-password|reset-password|invite|auth|admin|legal|status|s|r|approve|unsubscribe)$/;
+  // /{workspace}/{place}/... or /{place}/... (paths are inside the workspace's address); the bare workspace address is Today.
+  const hit = parts.length && !auth.test(parts[0]) ? (places[parts[0]] ?? (parts.length >= 1 ? places[parts[1] ?? ''] : undefined)) : undefined;
+  if (hit) void hit().catch(() => undefined);
+}
 const LoginPage = page(loadAuthPages, 'LoginPage');
 const RegisterPage = page(loadAuthPages, 'RegisterPage');
 const VerifyEmailPage = page(loadAuthPages, 'VerifyEmailPage');
@@ -63,12 +77,12 @@ const ApproveSignInPage = lazy(() => import('./features/auth/SessionApproval').t
 const TwoStepRow = page(() => import('./features/settings/TwoStep'), 'TwoStepRow');
 const AdminPage = page(() => import('./features/admin/AdminPage'), 'AdminPage');
 // The five places of v2, the project pages, People and Settings (V2-PLAN §1).
-const HomePage = page(() => import('./features/home/HomePage'), 'HomePage');
-const WorkPage = page(() => import('./features/work/WorkPage'), 'WorkPage');
+const HomePage = page(loadHome, 'HomePage');
+const WorkPage = page(loadWork, 'WorkPage');
 // Release 1: the support desk and Quality (testers) as their own places.
 const DeskPage = page(() => import('./features/desk/DeskPage'), 'DeskPage');
 // The calm shell's new places: Approvals (formerly Inbox), Reminders and Notes (their page agents fill them in).
-const ApprovalsPage = page(() => import('./features/approvals/ApprovalsPage'), 'ApprovalsPage');
+const ApprovalsPage = page(loadApprovals, 'ApprovalsPage');
 const RemindersPlace = page(() => import('./features/reminders/RemindersPage'), 'RemindersPage');
 const NotesPage = page(() => import('./features/notes/NotesPage'), 'NotesPage');
 const TimePage = page(() => import('./features/time/TimePage'), 'TimePage');
@@ -77,7 +91,7 @@ const QualityPage = page(() => import('./features/quality/QualityPage'), 'Qualit
 const ProjectsHome = page(() => import('./features/projects/ProjectsHome'), 'ProjectsHome');
 const ProjectPage = page(() => import('./features/projects/ProjectPage'), 'ProjectPage');
 const WeeklyReportPage = page(() => import('./features/projects/WeeklyReport'), 'WeeklyReportPage');
-const TalkPage = page(() => import('./features/talk/TalkPage'), 'TalkPage');
+const TalkPage = page(loadTalk, 'TalkPage');
 const MeetingsPage = page(() => import('./features/meet/MeetPage'), 'MeetingsPage');
 const MailPage = page(() => import('./features/mail/MailPage'), 'MailPage');
 const LibraryPage = page(() => import('./features/library/LibraryPage'), 'LibraryPage');

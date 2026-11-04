@@ -258,8 +258,9 @@ public class ApprovalService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             case "remind":
                 if (r.Status != ApprovalStatuses.Pending || current is null) throw new ConflictException("This request has already been decided.", "APPROVAL_DECIDED");
                 if (r.RequesterId != me && !Broad) throw new ForbiddenException("Only the person who asked can send a reminder.");
+                var expiresLocal = r.ExpiresAt is { } e ? await InZoneOfAsync(current.ApproverId, e, ct) : null;
                 await notifications.AddAsync(current.ApproverId, NotificationType.Approval, $"Waiting on you: {r.Title}",
-                    r.ExpiresAt is { } e ? $"Expires {e:dd MMM HH:mm} UTC if nobody decides." : "A decision is needed.", link, $"approval:{id:N}:remind:{clock.Now:yyyyMMddHH}", ct: ct);
+                    expiresLocal is not null ? $"Expires {expiresLocal} if nobody decides." : "A decision is needed.", link, $"approval:{id:N}:remind:{clock.Now:yyyyMMddHH}", ct: ct);
                 break;
             default:
                 throw new ValidationException("action", "Choose approve, reject, comment, withdraw or remind.");
@@ -458,9 +459,26 @@ public class ApprovalService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private async Task NotifyTurnAsync(ApprovalRequest r, Guid approver, CancellationToken ct)
     {
         var who = (await NamesAsync([r.RequesterId], ct)).GetValueOrDefault(r.RequesterId) ?? "Someone";
+        var by = r.ExpiresAt is { } e ? await InZoneOfAsync(approver, e, ct) : null;
         await notifications.AddAsync(approver, NotificationType.Approval, $"{who} asks you to approve: {r.Title}",
-            $"{TypeLabel(r.Type)}{(r.Risk == "High" ? " · high risk" : "")}{(r.ExpiresAt is { } e ? $" · decide by {e:dd MMM HH:mm} UTC" : "")}",
+            $"{TypeLabel(r.Type)}{(r.Risk == "High" ? " · high risk" : "")}{(by is null ? "" : $" · decide by {by}")}",
             $"/approvals?open={r.Id}", $"approval:{r.Id:N}:turn:{approver:N}", ct: ct);
+    }
+
+    /// <summary>
+    /// A moment as the recipient reads it ("12 Nov 17:30 IST"): their own zone, else the workspace's, else the platform's - the same order
+    /// reminders use - so an approver in another region is not handed a UTC time in the bell or the e-mail.
+    /// </summary>
+    private async Task<string> InZoneOfAsync(Guid userId, DateTime utc, CancellationToken ct)
+    {
+        var tid = ctx.RequireTenantId();
+        var userZone = await db.Users.IgnoreQueryFilters().AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZone).FirstOrDefaultAsync(ct);
+        var settings = await db.ReminderSettings.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct);
+        var orgZone = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tid).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
+        var tz = ProjectManagement.Application.Features.Reminders.ZoneTime.Find(clock.ZoneIdFor(userZone, settings, orgZone));
+        var local = ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(utc, tz);
+        var abbr = tz.GetZoneInterval(NodaTime.Instant.FromDateTimeUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc))).Name;
+        return $"{local.ToString("dd MMM HH:mm", System.Globalization.CultureInfo.InvariantCulture)} {abbr}";
     }
 
     private static int RiskRank(string risk) => risk switch { "High" => 2, "Medium" => 1, _ => 0 };

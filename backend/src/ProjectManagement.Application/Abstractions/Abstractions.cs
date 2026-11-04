@@ -369,6 +369,18 @@ public interface IChangeFeed
     void Publish(IReadOnlyList<ChangeEvent> changes);
 }
 
+/// <summary>A notification row was just saved for someone: who, in which workspace, and what kind (nothing else leaves the server).</summary>
+public record NotificationAnnouncement(Guid TenantId, Guid UserId, Guid NotificationId, ProjectManagement.Domain.Enums.NotificationType Type, bool InApp);
+
+/// <summary>
+/// Tells the recipients' open tabs at once that a notification arrived, so the bell, the tab badges, the sound and the desktop notice do not
+/// wait for the next poll. Sent only after the row is committed (see AppDbContext.SaveChangesAsync).
+/// </summary>
+public interface INotificationFeed
+{
+    void Announce(IReadOnlyList<NotificationAnnouncement> created);
+}
+
 public interface ISecretProtector
 {
     string Protect(string plainText);

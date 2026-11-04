@@ -29,7 +29,7 @@ public static class NotificationCatalog
         new(NotificationType.Subscription, "Billing and subscription", "Plan changes, payment problems and expiry (sent to organization owners).", true, true, false, false),
         new(NotificationType.Issue, "Test issues", "A test issue is reported, assigned to you, fixed, reopened or resolved on a project you work on.", true, false, false, false),
         new(NotificationType.ReportReady, "Reports ready", "A report you asked for has been generated and can be downloaded.", true, false, true, false),
-        new(NotificationType.Approval, "Timesheet approvals", "A timesheet is waiting for you to approve it, or yours was approved or returned.", true, true, true, false),
+        new(NotificationType.Approval, "Approvals", "Someone asks you to approve something (a change, deployment, leave, expense or timesheet), or a request of yours was approved, rejected or expired.", true, true, true, false),
         new(NotificationType.TimesheetReminder, "Timesheet reminders", "A working day went by with no time logged, or last week's timesheet still needs submitting. Only in your working hours, and never on planned leave.", true, false, true, false),
         new(NotificationType.Document, "Documents", "A document is waiting for your review, was approved, sent back or published, or someone asks for or gets access.", true, true, true, false),
         new(NotificationType.Meeting, "Meetings", "You are invited to a Google Meet someone scheduled or started, or one you are in is rescheduled or cancelled.", true, true, true, false),

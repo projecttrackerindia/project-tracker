@@ -9,7 +9,6 @@ import { notificationApi } from '../api/endpoints';
 import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
 import { useAuth } from '../stores/auth';
 import { AccessWatcher } from './AccessWatcher';
-import { ChatRealtime } from '../features/chat/ChatRealtime';
 import { ProjectChatHost } from '../features/chat/ProjectChat';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { LensSync } from '../lib/teamLens';
@@ -35,9 +34,10 @@ import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
 import { IncomingCallHost } from '../features/calls/IncomingCall';
 import { isRingNotice } from '../features/calls/incomingCalls';
-import { ScheduleHost } from '../features/meet/ScheduleSheet';
-import { MeetTimePrompt } from '../features/meet/MeetTime';
-import { AuraKeys, GrootChatHost, CopilotHost, LiveBanners, NewSheetHost, PhoneBar, Rail, Toolbar } from '../components/v2';
+import { AuraKeys, CopilotHost, LiveBanners, PhoneBar, Rail, Toolbar, useNewSheet } from '../components/v2';
+import { useScheduleSheet } from '../features/meet/scheduleStore';
+import { useGroot } from '../components/groot/store';
+import { AfterFirstPaint, WhenFirstOpened } from '../lib/afterFirstPaint';
 import { Fab } from '../components/shell/Fab';
 import { ApprovalRequestHost } from '../features/approvals/host';
 import '../components/shell/shell.css';
@@ -51,6 +51,14 @@ import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
 const calmCreate = import.meta.glob<{ CalmCreateHost: ComponentType }>('../features/calm/createSheets.tsx');
 const calmCreateLoad = Object.values(calmCreate)[0];
 const CalmCreateHost = calmCreateLoad ? lazy(() => calmCreateLoad().then((m) => ({ default: m.CalmCreateHost }))) : null;
+
+// Sheets (their code arrives the first time they open) and background hosts (mounted once the page has painted): kept out of the
+// shell's first download so a phone on a slow network shows the page sooner. Each reads its state from a store, so nothing is missed.
+const NewSheetHost = lazy(() => import('../components/v2/NewSheet').then((m) => ({ default: m.NewSheetHost })));
+const ScheduleHost = lazy(() => import('../features/meet/ScheduleSheet').then((m) => ({ default: m.ScheduleHost })));
+const GrootChatHost = lazy(() => import('../components/groot/GrootChat').then((m) => ({ default: m.GrootChatHost })));
+const MeetTimePrompt = lazy(() => import('../features/meet/MeetTime').then((m) => ({ default: m.MeetTimePrompt })));
+const ChatRealtime = lazy(() => import('../features/chat/ChatRealtime').then((m) => ({ default: m.ChatRealtime })));
 
 const ReminderComposerHost = lazy(() => import('../features/reminders/Composer').then((m) => ({ default: m.ReminderComposerHost })));
 
@@ -133,6 +141,9 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  const newOpen = useNewSheet((s) => s.open);
+  const scheduleOpen = useScheduleSheet((s) => !!s.open);
+  const grootOpen = useGroot((s) => s.open);
   useEffect(() => { window.scrollTo({ top: 0, left: 0 }); }, [loc.pathname]);   // left too: a page never stays shifted sideways
   // Warm likely destinations on hover/focus; unopened features stay off the network.
   useEffect(() => { prefetchPages(); }, []);
@@ -173,10 +184,10 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <AuraKeys />}
       {!admin && <ApprovalRequestHost />}
       {!admin && CalmCreateHost && <Suspense fallback={null}><CalmCreateHost /></Suspense>}
-      {!admin && <NewSheetHost />}
-      {!admin && <ScheduleHost />}
-      {!admin && <MeetTimePrompt />}
-      {!admin && <GrootChatHost />}
+      {!admin && <WhenFirstOpened open={newOpen}><NewSheetHost /></WhenFirstOpened>}
+      {!admin && <WhenFirstOpened open={scheduleOpen}><ScheduleHost /></WhenFirstOpened>}
+      {!admin && <AfterFirstPaint><MeetTimePrompt /></AfterFirstPaint>}
+      {!admin && <WhenFirstOpened open={grootOpen}><GrootChatHost /></WhenFirstOpened>}
       {!admin && <CopilotHost />}
       <SignInIsland />
       <Suspense fallback={null}><SessionApprovalHost /></Suspense>
@@ -195,7 +206,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <AttendanceHost />}
       {!admin && <AuraWatcher />}
       {!admin && <ChangeUndoPrompt />}
-      {chatOn && <ChatRealtime />}
+      {chatOn && <AfterFirstPaint><ChatRealtime /></AfterFirstPaint>}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}
       {!admin && <BadgeSync />}

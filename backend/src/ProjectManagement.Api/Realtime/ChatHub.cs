@@ -48,6 +48,24 @@ public class SignalRChangeFeed(IHubContext<ChatHub> hub, ILogger<SignalRChangeFe
 }
 
 /// <summary>
+/// New notifications reach their recipients' open tabs at once (the "notification" event, the same one chat already sends): the bell and
+/// the tab badges recount, and the page plays the sound / shows the desktop notice, instead of waiting up to a minute for the next poll.
+/// Only ids and the kind are sent; each tab reads the notification itself through the API.
+/// </summary>
+public class SignalRNotificationFeed(IHubContext<ChatHub> hub, ILogger<SignalRNotificationFeed> log) : ProjectManagement.Application.Abstractions.INotificationFeed
+{
+    public void Announce(IReadOnlyList<ProjectManagement.Application.Abstractions.NotificationAnnouncement> created)
+    {
+        foreach (var person in created.Where(n => n.InApp).GroupBy(n => (n.TenantId, n.UserId)))
+        {
+            var payload = new { created = person.Select(n => n.NotificationId).ToList(), types = person.Select(n => n.Type.ToString()).Distinct().ToList() };
+            _ = hub.Clients.Group(ChatGroups.User(person.Key.TenantId, person.Key.UserId)).SendAsync("notification", payload).ContinueWith(
+                t => log.LogDebug(t.Exception, "Could not announce new notifications"), TaskContinuationOptions.OnlyOnFaulted);
+        }
+    }
+}
+
+/// <summary>
 /// Who has the app open, counted per connection (a person can have several tabs). "Online" flips at once, "offline" only after a short
 /// pause, so reloading a page does not make someone flicker offline. The counts live in <see cref="IPresenceStore"/>: in memory for one
 /// server, in Redis when several share the load (with the Redis backplane, the presence events also reach every server's clients).
