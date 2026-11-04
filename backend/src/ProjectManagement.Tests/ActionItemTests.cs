@@ -195,7 +195,7 @@ public class ActionItemTests(ApiFactory factory)
         var version = (await w.Owner.Get($"/api/v1/tasks/{task}")).Data!["task"]!["version"]!.GetValue<int>();
         var res = await w.Owner.Put($"/api/v1/tasks/{task}", new
         {
-            title = "Build login and SSO", priority = "Medium", statusId = todo, startDate = Iso(4), version, stageId = stages["Development"],
+            title = "Build login and SSO", priority = "Medium", statusId = todo, startDate = Iso(4), version, stageId = stages["Development"], extensionReason = "Waiting on the SSO vendor",
         });
         Assert.True(res.Ok, res.ToString());
         var activity = (await w.Owner.Get($"/api/v1/projects/{w.Project}/activity")).Data!["items"]!.AsArray().Select(a => a!["summary"]!.GetValue<string>()).ToArray();

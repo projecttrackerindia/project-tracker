@@ -88,6 +88,18 @@ public class WorkActivityService(IAppDbContext db, ICurrentContext ctx, ProjectA
                 : new ActivityEntryDto(e.Id, e.CreatedAt, Actor(e.ActorId), EventOf(e.Action), null, null, null, e.Summary));
         }
 
+        // Events kept only in the audit log (a reminder's created / deleted / restored: reminders are personal, so they stay out of the
+        // activity feed and its webhooks), unless the activity rows already have the same event.
+        var auditEvents = await db.AuditLogs.AsNoTracking().Where(a => a.TenantId == tid && a.EntityId == entityId
+                && (a.Action.EndsWith(".created") || a.Action.EndsWith(".deleted") || a.Action.EndsWith(".restored")))
+            .OrderByDescending(a => a.CreatedAt).Take(100).Select(a => new { a.Id, a.CreatedAt, a.UserId, a.Action }).ToListAsync(ct);
+        foreach (var e in auditEvents)
+        {
+            var what = EventOf(e.Action);
+            if (rows.Any(r => r.Action == what && Math.Abs((r.At - e.CreatedAt).TotalSeconds) < 60)) continue;
+            rows.Add(new ActivityEntryDto(e.Id, e.CreatedAt, Actor(e.UserId), what, null, null, null, $"{char.ToUpperInvariant(what[0])}{what[1..]}"));
+        }
+
         // 3. Dates that moved, with the reason given: they replace the plain field change of the same save.
         var dates = await DateChangesAsync(kind, entityId, ct);
         foreach (var d in dates)

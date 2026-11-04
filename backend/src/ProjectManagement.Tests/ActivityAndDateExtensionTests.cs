@@ -13,7 +13,7 @@ namespace ProjectManagement.Tests;
 [Collection("api")]
 public class ActivityAndDateExtensionTests(ApiFactory factory)
 {
-    private static string S(JsonNode? n) => n!.GetValue<string>();
+    private static string S(JsonNode? n) => n?.GetValue<string>()!;   // null for a JSON null (an event has no field)
     private static string Iso(int days) => AppDay.Today.AddDays(days).ToString("yyyy-MM-dd");
 
     private sealed record World(TestClient Lead, TestClient Dev, Guid Project);

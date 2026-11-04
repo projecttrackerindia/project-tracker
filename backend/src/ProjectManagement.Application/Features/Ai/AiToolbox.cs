@@ -773,6 +773,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                     throw new AiToolException("Moving a due date later needs a reason. Ask the person why, then pass it as 'reason'.");
                 changes.Add($"due {Day(t.DueDate)}{Hm(t.DueTime)} → {Day(due ?? t.DueDate)}{Hm(dueTime ?? t.DueTime)}");
             }
+            if (start is not null && DueDateHistory.IsLater(t.StartDate, start) && string.IsNullOrWhiteSpace(reason))
+                throw new AiToolException("Moving a start date later needs a reason. Ask the person why, then pass it as 'reason'.");
             if (priority is not null) changes.Add($"priority {t.Priority} → {priority}");
         }
         if (newTitle is not null) changes.Add($"title → “{newTitle}”");
@@ -823,6 +825,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var effectiveDue = schedule?.DueDate ?? newDue;
         if (effectiveDue is { } nd && cur.DueDate is { } od && nd > od && string.IsNullOrWhiteSpace(reason)) throw new AiToolException("Moving a project's due date later needs a reason. Ask the person why, then pass it as 'reason'.");
         DueDateHistory.Prepare(cur.DueDate, effectiveDue, reason, null);
+        if (start is not null && DueDateHistory.IsLater(cur.StartDate, start) && string.IsNullOrWhiteSpace(reason))
+            throw new AiToolException("Moving a project's start date later needs a reason. Ask the person why, then pass it as 'reason'.");
 
         var changes = new List<string>();
         if (name is not null) changes.Add($"name → “{name}”");

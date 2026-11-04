@@ -134,7 +134,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 
         db.Reminders.Add(r);
         if (r.Source == ReminderSource.Nudge) recorder.Audit("reminder.nudge", "Reminder", r.Id, null, new { to = forUser, target = target?.Key });
-        recorder.Activity("reminder.created", "Reminder", r.Id, $"Set a reminder: {r.Title}", r.TargetProjectId);
+        recorder.Audit("reminder.created", "Reminder", r.Id, null, new { r.Title });
         await db.SaveChangesAsync(ct);
         return Dto(r, await NamesAsync([r], ct));
     }
@@ -311,7 +311,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         {
             r.State = ReminderState.Cancelled; r.LockToken = ReminderSync.Deleted; r.LockedUntil = null; r.ActionTokenHash = null;
             r.UpdatedAt = clock.Now; r.UpdatedBy = uid;
-            recorder.Activity("reminder.deleted", "Reminder", r.Id, $"Deleted a reminder: {r.Title}", r.TargetProjectId);
+            recorder.Audit("reminder.deleted", "Reminder", r.Id, new { r.Title });
             await notices.TellAsync(Notice(r), "deleted", [r.UserId, r.CreatedBy], ct);
         }
         else { r.State = ReminderState.Cancelled; r.NextFireAt = null; r.ActionTokenHash = null; }
@@ -329,7 +329,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (r.NextFireAt is { } next && next > now) r.State = ReminderState.Scheduled;
         else { r.State = ReminderState.Fired; r.LastFiredAt ??= now; }
         r.UpdatedAt = now; r.UpdatedBy = uid;
-        recorder.Activity("reminder.restored", "Reminder", r.Id, $"Restored a reminder: {r.Title}", r.TargetProjectId);
+        recorder.Audit("reminder.restored", "Reminder", r.Id, null, new { r.Title });
         await notices.TellAsync(Notice(r), "restored", [r.UserId, r.CreatedBy], ct);
         await db.SaveChangesAsync(ct);
         return Dto(r, await NamesAsync([r], ct));
