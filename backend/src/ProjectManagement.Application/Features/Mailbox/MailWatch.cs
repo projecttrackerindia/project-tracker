@@ -155,16 +155,15 @@ public class MailWatchMonitor(IAppDbContext db, IMailHeaderSource source, IGraph
         var now = clock.Now;
         // Background: no signed-in workspace, so every mailbox is listed with its own workspace and owner; each alert goes only to that owner.
         var accounts = await db.MailAccounts.IgnoreQueryFilters().Where(a => a.ImapPort != PopPort && a.SecretProtected != "")
-            .OrderBy(a => a.LastSyncedAt).Take(MaxPerRun * 4).ToListAsync(ct);
+            .ToListAsync(ct);
         var keys = accounts.Select(a => KeyOf(a.Id)).ToList();
         var states = await db.UserUiPreferences.Where(p => keys.Contains(p.Key)).ToListAsync(ct);
         var alerts = 0; var polled = 0;
-        foreach (var a in accounts)
+        // The mailboxes that are due, the longest-waiting first, at most MaxPerRun of them.
+        var due = accounts.Select(a => (a, row: states.FirstOrDefault(s => s.Key == KeyOf(a.Id) && s.UserId == a.UserId)))
+            .Select(x => (x.a, x.row, state: Read(x.row))).Where(x => x.state.NextAt <= now).OrderBy(x => x.state.NextAt).Take(MaxPerRun).ToList();
+        foreach (var (a, row, state) in due)
         {
-            if (polled >= MaxPerRun) break;
-            var row = states.FirstOrDefault(s => s.Key == KeyOf(a.Id) && s.UserId == a.UserId);
-            var state = Read(row);
-            if (state.NextAt > now) continue;
             polled++;
             try
             {
@@ -187,7 +186,7 @@ public class MailWatchMonitor(IAppDbContext db, IMailHeaderSource source, IGraph
             }
             Write(row, a.Id, a.UserId, state);
         }
-        alerts += await OutlookAsync(now, MaxPerRun - polled, ct);
+        alerts += await OutlookAsync(now, MaxPerRun, ct);   // its own budget: busy IMAP mailboxes never starve Outlook ones
         await db.SaveChangesAsync(ct);
         return alerts;
     }
@@ -198,16 +197,14 @@ public class MailWatchMonitor(IAppDbContext db, IMailHeaderSource source, IGraph
         if (budget <= 0) return 0;
         // Background: every Outlook connection with inbox access, each with its own workspace and owner.
         var connections = await db.MicrosoftConnections.IgnoreQueryFilters().Where(c => c.Scopes.Contains("Mail.Read"))
-            .Select(c => new { c.Id, c.TenantId, c.UserId }).Take(budget * 4).ToListAsync(ct);
+            .Select(c => new { c.Id, c.TenantId, c.UserId }).ToListAsync(ct);
         var keys = connections.Select(c => KeyOf(c.Id)).ToList();
         var states = await db.UserUiPreferences.Where(p => keys.Contains(p.Key)).ToListAsync(ct);
         var alerts = 0; var polled = 0;
-        foreach (var c in connections)
+        var due = connections.Select(c => (c, row: states.FirstOrDefault(s => s.Key == KeyOf(c.Id) && s.UserId == c.UserId)))
+            .Select(x => (x.c, x.row, state: Read(x.row))).Where(x => x.state.NextAt <= now).OrderBy(x => x.state.NextAt).Take(budget).ToList();
+        foreach (var (c, row, state) in due)
         {
-            if (polled >= budget) break;
-            var row = states.FirstOrDefault(s => s.Key == KeyOf(c.Id) && s.UserId == c.UserId);
-            var state = Read(row);
-            if (state.NextAt > now) continue;
             polled++;
             try
             {
