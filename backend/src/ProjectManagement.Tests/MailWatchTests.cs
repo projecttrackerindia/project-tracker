@@ -34,9 +34,12 @@ public class MailWatchTests(ApiFactory factory)
     private sealed class FakeGraph : IGraphMailSource
     {
         public List<MailHeader> Inbox { get; } = [];
+        /// <summary>Whose mailbox this fake is: other people's connections (from other tests) see an empty inbox.</summary>
+        public Guid Owner;
         public int Seen;
         public Task<GraphPollResult> PollAsync(Guid tenantId, Guid userId, string? deltaLink, int max, CancellationToken ct)
         {
+            if (userId != Owner) return Task.FromResult(new GraphPollResult("https://graph.microsoft.com/v1.0/delta?token=other", []));
             if (deltaLink is null) { Seen = Inbox.Count; return Task.FromResult(new GraphPollResult("https://graph.microsoft.com/v1.0/delta?token=1", [])); }
             var fresh = Inbox.Skip(Seen).ToList(); Seen = Inbox.Count;
             return Task.FromResult(new GraphPollResult(deltaLink, fresh));
@@ -103,7 +106,7 @@ public class MailWatchTests(ApiFactory factory)
         await me.CreateOrgAsync();
         var conn = new MicrosoftConnection { TenantId = me.WorkspaceId, UserId = me.UserId, Email = "ola@example.test", Scopes = "User.Read Mail.Send Mail.Read", ConnectedAt = DateTime.UtcNow };
         factory.WithDb(db => { db.MicrosoftConnections.Add(conn); return db.SaveChanges(); });
-        var graph = new FakeGraph();
+        var graph = new FakeGraph { Owner = me.UserId };
         graph.Inbox.Add(new MailHeader(0, "<before@example.test>", "Earlier", "Before connecting", DateTimeOffset.UtcNow));
         var time = new FixedTime(DateTimeOffset.UtcNow);
         await Run(new FakeImap(), time, graph);                 // baseline
