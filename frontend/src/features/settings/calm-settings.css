@@ -52,7 +52,6 @@
 .cs-more > div > *:hover { background: var(--calm-fill); }
 .cs-find { position: absolute; top: 8px; right: 8px; }
 .cs-find > div { position: absolute; left: 0; top: 40px; z-index: 30; width: 300px; padding: 8px; border-radius: 14px; background: var(--calm-solid); box-shadow: var(--calm-sh-sheet); }
-.set-mac-nav.cs-nav { position: sticky; }
 .cs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
 .cs-f { display: grid; gap: 7px; font-size: 13px; color: var(--calm-ink2); min-width: 0; }
 .cs-f input, .cs-fv { height: 42px; border: 0; border-radius: 12px; background: var(--calm-fill); padding: 0 16px; font: inherit; font-size: 15px; color: var(--calm-ink); display: flex; align-items: center; text-decoration: none; min-width: 0; }
@@ -61,3 +60,29 @@
 @media (max-width: 700px) { .cs-grid { grid-template-columns: 1fr; } .cs-me-t b { font-size: 18px; } }
 .cs-pane:has(> .cs-profile) { min-height: calc(100vh - 150px); }
 .cs-pane > .cs-profile { flex: 1; }
+
+/* Phone (iOS Settings): /settings is a grouped list of rows with ›; a row pushes its section page, which has "‹ Settings" back.
+   The list is never sticky and nothing (setup nudges included) floats over it: nudges are one card inside the section page. */
+.set-mac.set-calm.cs-phone { display: block; padding: 4px 16px 110px; }
+.cs-phone-title { margin: 6px 4px 14px; font-size: 32px; font-weight: 700; letter-spacing: -.02em; }
+.cs-phone .set-mac-nav.cs-nav { position: static; max-height: none; overflow: visible; background: none; box-shadow: none; padding: 0; gap: 18px; }
+.cs-phone .cs-find-inline .set-search { margin: 0; }
+.cs-phone .cs-find-inline .set-search > .input { height: 40px; min-height: 40px; border-radius: 12px; background: var(--calm-fill); border: 0; box-shadow: none; font-size: 15px; padding-left: 34px; width: 100%; }
+.cs-phone .cs-grp { background: var(--calm-card); border-radius: 14px; box-shadow: var(--calm-sh); padding: 0; gap: 0; position: relative; }
+.cs-phone .cs-item:first-of-type { border-radius: 14px 14px 0 0; } .cs-phone .cs-item:last-child { border-radius: 0 0 14px 14px; }
+.cs-phone .cs-grp-t { position: absolute; top: -20px; left: 14px; padding: 0; font-size: 12.5px; text-transform: none; }
+.cs-phone .cs-grp { margin-top: 20px; }
+.cs-phone .cs-item { min-height: 48px; border-radius: 0; padding: 0 16px; font-size: 16px; justify-content: space-between; }
+.cs-phone .cs-item + .cs-item { box-shadow: inset 16px 1px 0 var(--calm-card), inset 0 1px 0 var(--calm-fill); }
+.cs-phone .cs-item::after { content: '›'; color: var(--calm-ink3-text); font-size: 20px; line-height: 1; }
+.cs-phone .cs-item:active { background: var(--calm-fill); }
+.cs-back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; margin: 0 0 6px; color: var(--calm-accent-text); font-size: 16px; text-decoration: none; }
+.cs-phone .set-mac-pane { padding: 0 0 24px; min-width: 0; }
+.cs-phone .set-mac-pane .seg, .cs-phone .set-mac-pane [role="tablist"] { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+/* Setup health inside General: one tidy card; each nudge's buttons sit under its text, never beside or over it. */
+@media (max-width: 768px) {
+  .health .health-item { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px 10px; align-items: start; }
+  .health .health-actions { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .health .health-actions .btn { min-height: 40px; }
+  .health .card-head { flex-wrap: wrap; }
+}

@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { ErrorState } from '../../components/ui';
+import { workItemsApi, type WorkItemDetail, type WorkItemPatch } from '../../api/workItemsApi';
+import { CalmPicker, type PickItem } from '../../components/calm';
+import { queryClient } from '../../stores/auth';
+import { refreshWork } from '../work/workUi';
+import { CalmWorkSheet } from '../tasks/CalmTaskSheet';
 import { PortfolioSkeleton } from './portfolioSkeleton';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
@@ -36,6 +41,8 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
 }) {
   const nav = useNavigate();
   const wid = useWorkspaceId();
+  const [opened, setOpened] = useState<ReviewItem | null>(null);
+  const pickPeople = useMemo<PickItem[]>(() => people.map((p) => ({ id: p.id, label: p.name })), [people]);
   const [ownGroup, setGroup] = useState<Group>('meeting');
   const group = groupBy ?? ownGroup;
   const [reviewing, setReviewing] = useState<number | null>(null);
@@ -43,7 +50,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
   const [reassign, setReassign] = useState<{ item: ReviewItem; anchor: HTMLElement | null } | null>(null);
   const [snoozeAt, setSnoozeAt] = useState<{ item: ReviewItem; anchor: HTMLElement | null } | null>(null);
   const d: Review | undefined = review.data;
-  const items = useMemo(() => (d?.items ?? []).filter((i) => (!colours.length || colours.includes(colourOfProject(i.projectId) ?? 'blue'))
+  const items = useMemo(() => dedupe(d?.items ?? []).filter((i) => (!colours.length || colours.includes(colourOfProject(i.projectId) ?? 'blue'))
     && (!text.trim() || `${i.title} ${i.key} ${i.owner?.name ?? ''} ${i.projectName ?? ''} ${i.sourceTitle ?? ''}`.toLowerCase().includes(text.trim().toLowerCase()))), [d, colours, text, colourOfProject]);
   const queue = items.filter((i) => needsReview(i));
   const groups = useMemo(() => {
@@ -95,11 +102,9 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
       <div key={i.id} className={`ai-row ${isDone(i) ? 'done' : ''} ${cur?.id === i.id ? 'sel' : ''}`} role="row">
         <button type="button" role="checkbox" aria-checked={i.state === 'done'} className={`cb ${i.state === 'done' ? 'on' : ''}`} aria-label={`Done: ${i.title}`} disabled={!i.canEdit || isDone(i)}
           onClick={() => void decide(i, 'done', {}, `${i.key} done`)}>{i.state === 'done' ? '✓' : ''}</button>
-        <button type="button" className="t" onClick={() => i.projectId && nav(`/work/projects/${i.projectId}?tab=work&kind=action&action=${i.id}`)}>{i.title}{needsReview(i) && <span className="rv">Needs review</span>}</button>
-        <span className="ps3-own">{i.owner ? <><Av id={i.owner.id} name={i.owner.name} />{i.owner.name}</> : <span className="ps3-dim">No owner</span>}</span>
-        <span className={`ps3-num ${i.isOverdue && !isDone(i) ? 'late' : ''}`}>{i.dueDate ? (i.dueDate === today ? 'Today' : dm(i.dueDate)) : <span className="ps3-dim">No date</span>}{i.dueDate && <i className="cg" aria-hidden="true" />}</span>
-        <span>{i.projectName && <span className={`pchip pc-${c ?? 'blue'}`}><b />{i.projectName}</span>}</span>
-        <span className="ps3-st"><span className={`ps3-gl ${dot(i)}`} aria-hidden="true" />{i.isOverdue && !isDone(i) ? 'Late' : STATE[i.state]}</span>
+        <button type="button" className="t" onClick={() => setOpened(i)}>{i.title}{needsReview(i) && <span className="rv">Needs review</span>}</button>
+        <ActionCells i={i} people={pickPeople} />
+        <span>{i.projectName && <span className={`pchip pc-${c ?? 'blue'}`}><b />{i.projectName}</span>}{today && null}</span>
       </div>
     );
   };
@@ -142,13 +147,13 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
                 <div className="pfa-h"><b className="pfa-dot" aria-hidden="true" />{g.title}{g.when && <span>{new Date(g.when).toLocaleDateString('en-GB', { weekday: 'short' })} {new Date(g.when).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>}</div>
                 <div className="pfa-sub">{open} open · {g.items.length} items{g.items[0]?.projectName && group !== 'project' ? ` · ${g.items[0].projectName}` : ''}</div>
                 <div className="pfa-rows">
+                  <div className="pfa-colh pfa-row5" aria-hidden="true"><span>Item</span><span>Owner</span><span>Start</span><span>Due</span><span>Status</span></div>
                   {g.items.slice(0, 6).map((i) => {
-                    const chip = isDone(i) ? ['Done', 'grey'] : i.decision ? ['Accepted', 'green'] : needsReview(i) ? ['New', 'blue'] : i.isOverdue ? ['Late', 'red'] : [STATE[i.state], 'grey'];
+                    const chip = isDone(i) ? null : i.decision ? ['Accepted', 'green'] : needsReview(i) ? ['New', 'blue'] : null;
                     return (
-                      <div key={i.id} className={`pfa-row ${cur?.id === i.id ? 'sel' : ''}`}>
-                        {i.owner ? <Av id={i.owner.id} name={i.owner.name} size={24} /> : <span className="pfa-noav" aria-hidden="true" />}
-                        <button type="button" className="pfa-t" onClick={() => i.projectId && nav(`/work/projects/${i.projectId}?tab=work&kind=action&action=${i.id}`)}>{i.title}<small>{i.owner?.name ?? 'No owner'}{i.dueDate ? ` · ${dm(i.dueDate)}` : ''}</small></button>
-                        <span className={`pfo-chip ${chip[1]}`}>{chip[0]}</span>
+                      <div key={i.id} className={`pfa-row pfa-row5 ${cur?.id === i.id ? 'sel' : ''}`}>
+                        <button type="button" className="pfa-t" onClick={() => setOpened(i)}>{i.title}{chip && <span className={`pfo-chip ${chip[1]}`}>{chip[0]}</span>}</button>
+                        <ActionCells i={i} people={pickPeople} />
                       </div>
                     );
                   })}
@@ -166,7 +171,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
         </div>
       ) : (
       <div className="ps4-aigrid">
-        <div className="colh ai" role="row"><span /><span>Action item</span><span>Owner</span><span>Due</span><span>Project</span><span>Status</span></div>
+        <div className="colh ai" role="row"><span /><span>Action item</span><span>Owner</span><span>Start</span><span>Due</span><span>Status</span><span>Project</span></div>
         {groups.length === 0 && <p className="ps3-empty">No action items{text || colours.length ? ' match the filter' : ' yet — those agreed in meetings show up here'}.</p>}
         {groups.map((g) => {
           const c = group === 'project' || group === 'meeting' ? colourOfProject(g.projectId) : null;
@@ -186,6 +191,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
         })}
       </div>
       )}
+      <CalmWorkSheet id={opened?.id ?? null} title={opened?.title} onClose={() => setOpened(null)} />
       {snoozeAt && <SnoozePicker item={snoozeAt.item} anchor={snoozeAt.anchor} onClose={() => setSnoozeAt(null)}
         onPick={(day) => { const it = snoozeAt.item; setSnoozeAt(null); void decide(it, 'replan', { dueDate: day }, `Snoozed ${it.key} to ${dm(day)}`); }} />}
       {reassign && (
@@ -216,5 +222,63 @@ function SnoozePicker({ item, anchor, onPick, onClose }: { item: ReviewItem; anc
         <button type="submit" className="ps3-qc pri">Snooze</button>
       </form>
     </Floating>
+  );
+}
+
+/** The same item listed twice (one row per meeting it came up in) shows once: the newest copy wins. Separate rows in the database are kept. */
+function dedupe(list: ReviewItem[]): ReviewItem[] {
+  const seen = new Map<string, ReviewItem>();
+  for (const i of list) { const had = seen.get(i.id); if (!had || (i.lastUpdateAt ?? i.createdAt) > (had.lastUpdateAt ?? had.createdAt)) seen.set(i.id, i); }
+  return [...seen.values()];
+}
+
+const ACTION_STATUSES = [{ id: 'Open', label: 'Open' }, { id: 'InProgress', label: 'In progress' }, { id: 'Completed', label: 'Completed' }];
+
+/**
+ * Owner, Start, Due and Status of one action item, edited in place like the Plan sheet: the change shows at once (the shared work-item cache
+ * the side panel reads too), then saves with the item's version; a failure puts it back. Everything that lists work refreshes after.
+ */
+function ActionCells({ i, people }: { i: ReviewItem; people: PickItem[] }) {
+  const wid = useWorkspaceId();
+  const key = [wid, 'work-items', 'item', i.id];
+  const q = useWsQuery(['work-items', 'item', i.id], () => workItemsApi.get(i.id), { staleTime: 60_000, retry: false });
+  const w = q.data;
+  const [saved, setSaved] = useState(false);
+  const can = i.canEdit && !!w;
+  const save = async (patch: Omit<WorkItemPatch, 'version'>, local: Partial<WorkItemDetail>) => {
+    if (!w) return;
+    const prev = queryClient.getQueryData<WorkItemDetail>(key);
+    queryClient.setQueryData<WorkItemDetail>(key, { ...w, ...local });
+    try {
+      const next = await workItemsApi.update(i.id, { ...patch, version: w.version });
+      queryClient.setQueryData(key, next);
+      setSaved(true); window.setTimeout(() => setSaved(false), 1600);
+      refreshWork(wid);
+    } catch (e) {
+      if (prev) queryClient.setQueryData(key, prev);
+      toast(e instanceof ApiError ? e.message : 'That could not be saved.', 'error');
+    }
+  };
+  const owner = w?.assignee ?? i.owner;
+  const due = w?.dueDate ?? i.dueDate;
+  const late = i.isOverdue && !isDone(i);
+  const statusId = w ? (w.category === 'Done' ? 'Completed' : w.category === 'Active' ? 'InProgress' : 'Open') : null;
+  return (
+    <>
+      <span className="pfa-c">{can
+        ? <CalmPicker label={`Owner of ${i.title}`} placeholder="No owner" className="pfa-pick" recentKey="people" items={people} value={owner?.id ?? null} allowClear
+            selected={owner ? { id: owner.id, label: owner.name } : null}
+            onChange={(v, it) => { if (v !== (owner?.id ?? null)) void save({ assigneeId: v }, { assignee: v ? { id: v, name: it?.label ?? '' } : null }); }} />
+        : <span className="ps3-dim">{owner?.name ?? 'No owner'}</span>}</span>
+      <span className="pfa-c"><input type="date" className="pfa-date" aria-label={`Start of ${i.title}`} disabled={!can} value={w?.startDate ?? ''}
+        onChange={(e) => void save({ startDate: e.target.value || null }, { startDate: e.target.value || null })} /></span>
+      <span className={`pfa-c ${late ? 'late' : ''}`}><input type="date" className="pfa-date" aria-label={`Due of ${i.title}`} disabled={!can} value={due ?? ''}
+        onChange={(e) => void save({ dueDate: e.target.value || null }, { dueDate: e.target.value || null })} /></span>
+      <span className="pfa-c">{can
+        ? <CalmPicker label={`Status of ${i.title}`} className="pfa-pick" value={statusId ?? 'Open'} items={ACTION_STATUSES.map((x) => ({ ...x, sub: late && x.id === statusId ? 'Late' : null }))}
+            onChange={(v) => { if (!v || v === statusId) return; void save({ status: v }, { category: v === 'Completed' ? 'Done' : v === 'InProgress' ? 'Active' : 'Todo', status: ACTION_STATUSES.find((x) => x.id === v)?.label ?? v }); }} />
+        : <span className="ps3-st"><span className={`ps3-gl ${dot(i)}`} aria-hidden="true" />{late ? 'Late' : STATE[i.state]}</span>}
+        {saved && <span className="ps3-saved" role="status">✓ Saved</span>}</span>
+    </>
   );
 }

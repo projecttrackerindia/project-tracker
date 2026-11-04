@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Select } from '../../components/Select';
 import { FromMeetingCard } from '../meet/MeetingWork';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, download, uploadFile } from '../../api/client';
@@ -70,7 +71,7 @@ const statusValue = (w: WorkItemDetail) => (w.kind === 'task' ? String((w.detail
  * a ticket's SLA, channel and resolution; the files; and one Activity stream of comments, time, files, field changes and AI actions, with
  * a comment box where "log 2h" logs time. Opened by a row, and by /work?item=<id>.
  */
-export function WorkItemPanel({ id, onClose }: { id: string; onClose: () => void }) {
+export function WorkItemPanel({ id, onClose, embedded = false }: { id: string; onClose: () => void; /** Inside another sheet (the calm task sheet): no panel chrome of its own. */ embedded?: boolean }) {
   const wid = useWorkspaceId();
   const key = useMemo(() => [wid, 'work-items', 'item', id], [wid, id]);
   const q = useWsQuery(['work-items', 'item', id], () => workItemsApi.get(id), { retry: (n, e) => !(e instanceof ApiError && (e.status === 404 || e.status === 403)) && n < 2 });
@@ -136,6 +137,25 @@ export function WorkItemPanel({ id, onClose }: { id: string; onClose: () => void
     ]} />
   ) : null;
 
+  const inner = q.isLoading ? <PageLoader /> : q.isError || !w ? (
+    <ErrorState error={q.error instanceof ApiError && q.error.status === 404 ? new ApiError(404, 'This item does not exist any more, or you cannot open it.', []) : q.error} retry={() => void q.refetch()} />
+  ) : <PanelBody w={w} save={save} conflict={conflict} onDismissConflict={() => setConflict(false)} refetch={() => void q.refetch()} />;
+  if (embedded) return (
+    <>
+      <div className="wkp-embed">
+        <div className="wkp-embed-h">
+          {w && <span className="wkp-eyebrow">{w.key} · {KIND_LONG[w.kind]}{w.projectName && w.kind !== 'ticket' ? ` · ${w.projectName}` : ''}</span>}
+          <span style={{ flex: 1 }} />{state === 'saved' && <span className="cp-saved on">✓ Saved</span>}{menu}
+        </div>
+        {w && <TitleEdit key={`${w.id}:${w.version}`} value={w.title} disabled={!canEditOf(w)} onSave={(title) => save({ title })} />}
+        {inner}
+      </div>
+      <Suspense fallback={null}>
+        {full && w?.kind === 'task' && <TaskModal taskId={w.id} onClose={() => { setFull(false); void q.refetch(); refreshWork(wid); }} />}
+        {full && w?.kind === 'ticket' && <WorkTaskModal taskId={w.id} onClose={() => { setFull(false); void q.refetch(); refreshWork(wid); }} />}
+      </Suspense>
+    </>
+  );
   return (
     <>
       <SidePanel docked width={520} onClose={onClose} state={state} label={w ? `${w.key} ${w.title}` : 'Work item'} actions={menu}
@@ -232,6 +252,11 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
         <Tile label="Due" value={<span data-testid="wkp-due">{dueValue}</span>} tone={w.isOverdue ? 'late' : undefined} disabled={!editable}>
           <input type="date" aria-label="Due date" value={w.dueDate ?? ''} disabled={!editable} onChange={(e) => setDue(e.target.value || null)} />
         </Tile>
+        {w.kind !== 'ticket' && (
+          <Tile label="Start" value={<span data-testid="wkp-start">{w.startDate ? formatDate(w.startDate).slice(0, 6) : 'No date'}</span>} disabled={!editable}>
+            <input type="date" aria-label="Start date" value={w.startDate ?? ''} disabled={!editable} onChange={(e) => void save({ startDate: e.target.value || null })} />
+          </Tile>
+        )}
       </div>
       {w.dueDate && editable && (
         <div className="wkp-duetime">
@@ -397,9 +422,9 @@ function TicketFields({ w, editable, save }: { w: WorkItemDetail; editable: bool
       </dd></div>
       <div><dt>Project</dt><dd className="wkp-inline">
         <span>{d.relatedProject?.name ?? 'None'}</span>
-        {editable && <select aria-label="Related project" value={d.relatedProject?.id ?? ''} onChange={(e) => void save({ projectId: e.target.value || null })}>
+        {editable && <Select aria-label="Related project" value={d.relatedProject?.id ?? ''} onChange={(e) => void save({ projectId: e.target.value || null })}>
           <option value="">None</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-        </select>}
+        </Select>}
       </dd></div>
       {w.loggedMinutes > 0 && <div><dt>Time logged</dt><dd>{formatMinutes(w.loggedMinutes)}</dd></div>}
       <div className="wkp-res"><dt>Resolution</dt><dd><Resolution id={w.id} done={w.category === 'Done'} /></dd></div>

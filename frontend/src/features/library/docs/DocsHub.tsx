@@ -127,8 +127,7 @@ export function DocsHub() {
               <div className="dx-sect-h"><h2>Spaces</h2><span className="dx-note">One space per project · health shows how complete its docs are</span></div>
               {catalog.isLoading ? <PageLoader /> : catalog.isError || !c ? <ErrorState error={catalog.error} retry={() => void catalog.refetch()} /> : c.projects.length === 0
                 ? <EmptyState icon="layers" title="No spaces yet" text="Every project gets a space of guides, API reference and architecture." />
-                : <ul className="dx-colls">{c.projects.map((p, i) => <CollectionCard key={pidOf(p)} p={p} i={i} cov={p.id ? coverage.get(p.id) : undefined} />)}
-                  <li className="dx-coll dx-space lib-vault-space"><Link to="/library/vault"><span className="dx-cover" aria-hidden="true" /><b>🔒 Vault</b><small>Passwords and secrets</small></Link></li></ul>}
+                : <ul className="dx-colls">{c.projects.map((p, i) => <CollectionCard key={pidOf(p)} p={p} i={i} cov={p.id ? coverage.get(p.id) : undefined} />)}</ul>}
               {(c?.teams?.length ?? 0) > 0 && (
                 <p className="dx-teams">Team spaces: {c!.teams!.map((t, i) => <span key={t.id}>{i > 0 && ' · '}<Link to={docsPath.project(null)}>{t.name}</Link> <small>{t.pages}</small></span>)}</p>
               )}

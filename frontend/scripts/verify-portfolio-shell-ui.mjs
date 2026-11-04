@@ -127,7 +127,8 @@ try {
     await page.evaluate(() => { window.__sameDocument = true; });
     await goTab(page, 'Plan sheet');
     // The calm Plan sheet; the full grid (with every editor) is ⋯ › Open the full sheet.
-    await page.getByRole('button', { name: /More on the plan sheet/ }).click(); await page.getByRole('menuitem', { name: /Open the full sheet/ }).click();
+    // (No menu entry any more: the full grid is kept for checks behind ?classic=1 only.)
+    { const u = new URL(page.url()); u.searchParams.set('classic', '1'); await page.goto(u.toString()); await page.evaluate(() => { window.__sameDocument = true; }); }
     await page.getByRole('grid', { name: 'Plan sheet' }).waitFor();
     // The calm head is taller, so UP-01 starts below the grid's fold: bring it into view first (the grid scrolls inside itself).
     { const td = page.locator(`td[data-cell="${T['UP-01']}:status"]`); await td.scrollIntoViewIfNeeded(); await page.waitForTimeout(250); await td.click();
