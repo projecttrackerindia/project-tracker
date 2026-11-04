@@ -1,0 +1,39 @@
+{
+  "appId": "in.projecttracker.app",
+  "appName": "Project Tracker",
+  "webDir": "www",
+  "server": {
+    "url": "https://projecttracker.in",
+    "cleartext": false,
+    "allowNavigation": [
+      "projecttracker.in",
+      "*.projecttracker.in",
+      "checkout.razorpay.com",
+      "api.razorpay.com",
+      "accounts.google.com",
+      "login.microsoftonline.com",
+      "github.com",
+      "appleid.apple.com"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 250,
+      "backgroundColor": "#f6f4fb",
+      "showSpinner": false
+    },
+    "PushNotifications": {},
+    "StatusBar": {
+      "style": "DEFAULT",
+      "overlaysWebView": true
+    }
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#f6f4fb",
+    "appendUserAgent": "ProjectTrackerApp",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}

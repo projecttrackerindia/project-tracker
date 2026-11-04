@@ -14,7 +14,7 @@ export const SITE = {
   phone: '+91 76750 41369',
   phoneHref: '+917675041369',
   securityEmail: 'support@projecttracker.in',
-  themeColor: '#7c3aed',
+  themeColor: '#8b6cf6',
 };
 
 export interface NavLink { label: string; href: string }

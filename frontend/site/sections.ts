@@ -324,7 +324,7 @@ const apps = () => `<div class="apps" ${reveal()}><div class="center"><p class="
 ${getTile('windows', LOGO.windows, 'win', 'Windows', 'Windows 10 and 11', dlLink(DOWNLOAD_FILES.windows), '', 0)}
 ${getTile('mac', LOGO.apple, '', 'macOS', 'Apple silicon and Intel', dlLink(DOWNLOAD_FILES.macArm), `Intel Mac? <a href="${dlLink(DOWNLOAD_FILES.macIntel)}">Download</a>`, 1)}
 ${getTile('ios', LOGO.appstore, 'as', 'iPhone and iPad', 'Add to your Home Screen', '/download/#iphone', '', 2)}
-${getTile('android', LOGO.android, 'droid', 'Android', process.env.SITE_ANDROID_APK === '1' ? 'Android 7 or later' : 'Install from Chrome', process.env.SITE_ANDROID_APK === '1' ? dlLink(DOWNLOAD_FILES.android) : '/download/#android', '', 3)}
+${getTile('android', LOGO.android, 'droid', 'Android', process.env.SITE_ANDROID_APK !== '0' ? 'Android 7 or later' : 'Install from Chrome', process.env.SITE_ANDROID_APK !== '0' ? dlLink(DOWNLOAD_FILES.android) : '/download/#android', '', 3)}
 </div><p class="note2 center" style="margin-top:22px">Linux and the browser app are on the <a href="/download/"><strong>download page</strong></a>.</p></div>`;
 
 const section = (inner: string, pad = true) => `<section class="block"${pad ? '' : ' style="padding-top:0"'}><div class="wrap">${inner}</div></section>`;
@@ -393,13 +393,12 @@ ${dlCard('mac', OS_ICONS.mac, 'macOS', 'macOS 11 or later', `<a class="btn btn-p
   '<details class="dnote"><summary>First time you open it</summary><p>Open the downloaded file and drag Project Tracker to Applications. If macOS says the app cannot be opened, <b>right-click it, choose Open</b>, then Open again. If it says the app is damaged, run <code>xattr -cr "/Applications/Project Tracker.app"</code> in Terminal once.</p></details>', 1)}
 ${dlCard('linux', OS_ICONS.linux, 'Linux', 'Most 64-bit distributions', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.linuxAppImage)}">AppImage</a><a class="btn btn-ghost" href="${dlLink(DOWNLOAD_FILES.linuxDeb)}">.deb (Ubuntu, Debian)</a>`,
   '<details class="dnote"><summary>How to run it</summary><p>AppImage: make it executable (<code>chmod +x ProjectTracker.AppImage</code>) and open it. Debian and Ubuntu: <code>sudo apt install ./ProjectTracker.deb</code>.</p></details>', 2)}
-${process.env.SITE_ANDROID_APK === '1'
-  ? `${dlCard('android', OS_ICONS.android, 'Android', 'Android 7 or later', `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.android)}">Download the app (APK)</a>`,
-  '<details class="dnote"><summary>How to install it</summary><p>Open the downloaded file. Android asks once to allow installs from your browser: allow it for this install only. Then sign in and turn on alerts in <b>Account, Mobile app</b>: reminders, mentions and sign-in requests reach you even when the app is closed.</p></details>', 3)}`
-  : `${dlCard('android', OS_ICONS.android, 'Android', 'Android 7 or later', '<a class="btn btn-primary" href="/login">Open in Chrome</a>',
-  '<details class="dnote" open><summary>Install it from Chrome</summary><p>Open the site in Chrome, tap the <b>menu</b> (three dots), then <b>Install app</b> (or <b>Add to Home screen</b>). It opens full-screen like an app, straight at sign-in, and can send alerts once you turn them on in <b>Account, Mobile app</b>.</p></details>', 3)}`}
+${dlCard('android', OS_ICONS.android, 'Android', 'Android 7 or later', process.env.SITE_ANDROID_APK !== '0'
+  ? `<a class="btn btn-primary" href="${dlLink(DOWNLOAD_FILES.android)}">Download the app (APK)</a><a class="btn btn-ghost" href="/login">Or install from Chrome</a>`
+  : '<a class="btn btn-primary" href="/login">Open in Chrome</a>',
+  '<details class="dnote" open><summary>How to install it</summary><p><b>APK:</b> open the downloaded file. Android asks once to allow installs from your browser: allow it for this install only. <b>From Chrome:</b> open the site, tap the <b>menu</b> (three dots), then <b>Install app</b>. Either way, sign in and turn on alerts in <b>Account, Mobile app</b>.</p></details>', 3)}
 ${dlCard('ios', OS_ICONS.ios, 'iPhone and iPad', 'iOS 16.4 or later', '<a class="btn btn-primary" href="/login">Open in Safari</a>',
-  '<details class="dnote" open><summary>Add it to your Home Screen</summary><p>In Safari tap <b>Share</b>, then <b>Add to Home Screen</b>. Open it from there to get full-screen use and alerts. Apple does not allow apps to be installed from a website, so this is the way to get it on an iPhone.</p></details>', 4)}
+  '<details class="dnote" open><summary>Add it to your Home Screen</summary><p>In Safari tap <b>Share</b>, then <b>Add to Home Screen</b>. Open it from there for full screen and alerts.</p></details><p class="dsub" style="margin-top:10px">The native iPhone app is coming through the App Store, with TestFlight first. Until then the Home Screen app is the full product.</p>', 4)}
 ${dlCard('web', OS_ICONS.web, 'In your browser', 'Nothing to install', '<a class="btn btn-ghost" href="/login">Sign in</a>',
   '<details class="dnote"><summary>Install from Chrome or Edge</summary><p>On a computer, Chrome and Edge show an install icon in the address bar. The result looks and works like the desktop app.</p></details>', 5)}
 </div>

@@ -1,6 +1,6 @@
 /* Project Tracker service worker: the app shell for offline start, push notifications, and opening them.
  * Data from the API is never cached here - it belongs to whoever is signed in. */
-const SHELL = 'pm-shell-v10';
+const SHELL = 'pm-shell-v11';
 
 /** The page and the scripts and styles it names, so the app can start without a connection. */
 async function cacheShell() {
