@@ -472,9 +472,9 @@ public class ApprovalService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     private async Task<string> InZoneOfAsync(Guid userId, DateTime utc, CancellationToken ct)
     {
         var tid = ctx.RequireTenantId();
-        var userZone = await db.Users.IgnoreQueryFilters().AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZone).FirstOrDefaultAsync(ct);
-        var settings = await db.ReminderSettings.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct);
-        var orgZone = await db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tid).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
+        var userZone = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZone).FirstOrDefaultAsync(ct);
+        var settings = await db.ReminderSettings.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct);
+        var orgZone = await db.Tenants.AsNoTracking().Where(t => t.Id == tid).Select(t => t.TimeZone).FirstOrDefaultAsync(ct);
         var tz = ProjectManagement.Application.Features.Reminders.ZoneTime.Find(clock.ZoneIdFor(userZone, settings, orgZone));
         var local = ProjectManagement.Application.Features.Reminders.ZoneTime.ToLocal(utc, tz);
         var abbr = tz.GetZoneInterval(NodaTime.Instant.FromDateTimeUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc))).Name;
