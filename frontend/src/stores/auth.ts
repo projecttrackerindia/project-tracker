@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { optimisticMutationCache } from '../lib/optimistic';
 import { create } from 'zustand';
-import { get as apiGet, refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
+import { get as apiGet, refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkDeletedHandler, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
 import { isApprovalStart, type ApprovalStart } from '../api/endpoints.sessionApproval';
 import { disableNativePush } from '../lib/native';
@@ -49,6 +49,7 @@ export const queryClient: QueryClient = new QueryClient({
     },
   },
 });
+setWorkDeletedHandler(() => void queryClient.invalidateQueries());
 
 interface AuthState {
   /** offline: started without a connection - the saved My work is shown until it is back. */
