@@ -437,7 +437,7 @@ __JS__ .in .path .curve,__JS__ .path.in .curve{animation:pt-draw 2.6s cubic-bezi
 
 /* ---- footer */
 footer{position:relative;overflow:hidden;background:#fff;border-top:1px solid var(--line);color:var(--muted);padding:60px 0 40px;font-size:14.5px}
-footer::after{content:"Project Tracker";position:absolute;left:50%;bottom:-.28em;transform:translateX(-50%);font:800 clamp(44px,10.6vw,170px)/1 var(--disp);letter-spacing:-.06em;white-space:nowrap;background:linear-gradient(180deg,#efeafc,#fff 85%);-webkit-background-clip:text;background-clip:text;color:transparent;pointer-events:none}
+footer::after{content:"ProjectTracker";position:absolute;left:50%;bottom:-.28em;transform:translateX(-50%);font:800 clamp(44px,10.6vw,170px)/1 var(--disp);letter-spacing:-.06em;white-space:nowrap;background:linear-gradient(180deg,#efeafc,#fff 85%);-webkit-background-clip:text;background-clip:text;color:transparent;pointer-events:none}
 footer .wrap{position:relative;z-index:1}
 footer .cols{display:grid;grid-template-columns:1.4fr repeat(3,1fr);gap:30px}footer h4{margin:0 0 12px;color:var(--ink);font-size:14px}
 footer ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}footer a{color:var(--muted)}footer a:hover{color:var(--brand)}

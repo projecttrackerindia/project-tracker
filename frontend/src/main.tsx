@@ -44,6 +44,7 @@ import { queryClient } from './stores/auth';
 import { useUi } from './stores/ui';
 import { ApiError } from './api/client';
 import './lib/pwa';
+import { InstallBanner } from './components/install/InstallBanner';
 import { startResponsiveTables } from './lib/responsiveTables';
 import { startNativeApp } from './lib/native';
 import { startDesktopApp } from './lib/desktop';
@@ -83,6 +84,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />
+      <InstallBanner />
     </QueryClientProvider>
   </StrictMode>,
 );

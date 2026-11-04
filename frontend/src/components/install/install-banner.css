@@ -1,0 +1,21 @@
+.pt-install {
+  position: fixed; left: 12px; right: 12px; z-index: 60;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); /* above the bottom tab bar and the floating + */
+  display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px;
+  background: var(--ds-surface); color: var(--ds-text);
+  border: 1px solid var(--ds-separator); border-radius: 18px;
+  box-shadow: var(--ds-e3);
+  animation: pt-install-in .42s cubic-bezier(.2,.9,.25,1.1) both;
+}
+.pt-install img { border-radius: 11px; flex: none; }
+.pt-install-text svg { display: inline; }
+.pt-install-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.35; }
+.pt-install-text b { font-size: 15px; font-weight: 600; }
+.pt-install-text span { color: var(--ds-text-2); }
+.pt-install-act { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.pt-install-act button { min-height: 44px; min-width: 72px; border-radius: 12px; font: 600 14px/1 inherit; border: 0; cursor: pointer; }
+.pt-install-go { background: var(--ds-accent); color: var(--ds-on-dark); }
+.pt-install-x { background: transparent; color: var(--ds-text-2); }
+.pt-install-act button + button { min-height: 32px; }
+@keyframes pt-install-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pt-install { animation: none; } }

@@ -3,3 +3,5 @@ android/
 *.keystore
 *.apk
 aligned.apk
+android/app/google-services.json
+*.aab

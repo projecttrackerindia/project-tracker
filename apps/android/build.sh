@@ -4,7 +4,7 @@
 #
 #   PT_APP_URL=https://your-site.example.com  ANDROID_KEYSTORE=./release.keystore  ANDROID_KEYSTORE_PASSWORD=...  ANDROID_KEY_ALIAS=projecttracker  bash build.sh
 #
-# Without a keystore the APK is built unsigned (it cannot be installed): see make-keystore.sh to create one.
+# Without a keystore a debug-signed APK is built (installable for testing): see make-keystore.sh to create one.
 set -euo pipefail
 cd "$(dirname "$0")"
 URL="${PT_APP_URL:-https://projecttracker.in}"
@@ -62,6 +62,9 @@ if [ -n "${ANDROID_KEYSTORE:-}" ] && [ -f "${ANDROID_KEYSTORE}" ]; then
     -signedjar ProjectTracker.aab android/app/build/outputs/bundle/release/app-release.aab "${ANDROID_KEY_ALIAS:-projecttracker}" >/dev/null
   jarsigner -verify ProjectTracker.aab >/dev/null && echo "Built and signed ProjectTracker.aab (for Google Play)"
 else
+  # No release keystore: a debug-signed APK, which installs fine for testing (switching to the release key later needs one reinstall).
   cp "$UNSIGNED" ProjectTracker-unsigned.apk
-  echo "No keystore given: built ProjectTracker-unsigned.apk (it cannot be installed until it is signed)."
+  (cd android && ./gradlew --no-daemon assembleDebug)
+  cp android/app/build/outputs/apk/debug/app-debug.apk ProjectTracker-debug.apk
+  echo "No keystore given: built ProjectTracker-debug.apk (debug-signed, installable) and ProjectTracker-unsigned.apk."
 fi
