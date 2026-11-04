@@ -450,3 +450,13 @@ html .talk-filters { display: none !important; }
   .talk-large-row { padding-right: 8px; }
   .talk-search-btn, .talk-large-row .v2-dots-btn, .talk-large-row .status-btn { width: 44px; height: 44px; border-radius: 22px; }
 }
+
+/* Phone: the composer never touches the tab bar, the home indicator or the floating + button (calm-polish). */
+@media (max-width: 760px) {
+  .talk-thread .composer, html .m-shell .talk-thread .composer { padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+  /* While the tab bar is on screen under a conversation, keep 14px of air between them and skip the inset (the bar carries it). */
+  html .m-shell.m-conversation:not(.m-thread) .talk-thread .composer { padding-bottom: 14px; }
+  html .m-shell.m-conversation:not(.m-thread) .v2-phone-bar.m-tabs { margin-top: 2px; box-shadow: 0 -1px 0 var(--calm-line, rgba(0,0,0,.06)); }
+  /* The floating + button stays out of a conversation: the composer has its own + for attachments. */
+  html body:has(.m-shell .talk-shell.is-open) .shell-fab { display: none; }
+}

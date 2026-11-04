@@ -334,3 +334,8 @@ html body .pf-present:not(.phone) .pf-slide { padding-left: 80px; }
 .ctl-now::before { content: ''; position: absolute; top: -3px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: inherit; }
 .ctl-popwrap { position: absolute; left: var(--ctl-name); right: 0; top: 0; z-index: 10; }
 .ctl-aura { display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.ctl .ptl-bar.ctl-hit { top: 14px; bottom: 14px; height: auto; border: 0; box-shadow: none; background: transparent; overflow: visible; }
+.ctl .ptl-bar.ctl-hit.drag { box-shadow: 0 0 0 2px color-mix(in srgb, var(--pc) 40%, transparent); }
+.ctl-seg.late, .ctl-seg.risk { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 30%, transparent); }
+.ctl-seg.late::after { content: ''; position: absolute; right: 6px; top: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--calm-red, #ff3b30); }
+.ctl-seg + .ctl-seg { border-left: 2px solid var(--calm-card); }

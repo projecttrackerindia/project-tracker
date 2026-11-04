@@ -83,7 +83,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
           : url.mode === 'timeline' ? <PortfolioTimeline filter={url.filter} />
           : url.mode === 'capacity' ? <CapacityPlanView />
           : url.mode === 'board' ? <PortfolioTaskBoard />
-          : <PortfolioOverview ai={ai} more={params.get('classic') === '1' ? <BoardTab ai={ai} /> : null} />}</Suspense>}
+          : <PortfolioOverview ai={ai} more={params.get('classic') === '1' || url.mode === 'present' ? <BoardTab ai={ai} /> : null} />}</Suspense>}
       </PortfolioShell>
     </div>
   );
