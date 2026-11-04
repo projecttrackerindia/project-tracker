@@ -848,6 +848,27 @@ public partial class AppDbContext
             e.Property(x => x.PublicKey).HasMaxLength(1000);
             e.Property(x => x.Label).HasMaxLength(80);
         });
+        b.Entity<TaskRecurrence>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.IsActive });
+            e.Property(x => x.Frequency).HasMaxLength(16);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Description).HasMaxLength(20000);
+            e.Property(x => x.DaysOfWeek).HasMaxLength(20);
+            e.Property(x => x.SkippedDates).HasMaxLength(4000);
+        });
+        b.Entity<TaskOccurrence>(e =>
+        {
+            e.HasIndex(x => new { x.RecurrenceId, x.Index }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.TaskId });
+        });
+        b.Entity<WorkTemplate>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Kind });
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Description).HasMaxLength(500);
+        });
         b.Entity<ChatKeyBackup>(e =>
         {
             e.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();

@@ -313,6 +313,10 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderSuggestionService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderEngine>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.PortfolioDigestService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.RecurrenceService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.RecurrenceJob>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.TemplateService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.ManagerDigestService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderPlanner>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderSync>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderActionService>();
