@@ -65,6 +65,18 @@ public class TimelineTests(ApiFactory factory)
     private static JsonArray Events(ApiResult r) => r.Data!["events"]!.AsArray();
 
     [Fact]
+    public async Task Open_work_due_carries_its_assignee_so_the_calendar_can_lay_the_team_out_by_person()
+    {
+        var w = await Setup();
+        var due = TodayIst.AddDays(2);
+        var open = Guid.Parse(S((await w.Owner.CreateTaskAsync(w.Project, "Rotate the keys", new { title = "Rotate the keys", priority = "Medium", assigneeId = w.Owner.UserId, dueDate = Iso(due) }))["id"]));
+        var res = await w.Owner.Get($"/api/v1/timeline?from={Iso(due)}&to={Iso(due)}&scope=me");
+        Assert.True(res.Ok, res.ToString());
+        var ev = Events(res).Single(e => S(e!["type"]) == "due" && S(e["sourceId"]) == open.ToString());
+        Assert.Equal(w.Owner.UserId.ToString(), S(ev!["userId"]));
+    }
+
+    [Fact]
     public async Task A_day_carries_done_work_calls_time_attendance_and_reminders_on_the_persons_own_day()
     {
         var w = await Setup();

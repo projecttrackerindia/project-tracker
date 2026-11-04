@@ -320,7 +320,7 @@ try {
   await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2); await page.mouse.down();
   for (let i = 1; i <= 8; i++) await page.mouse.move(fb.x + (thuH.x + thuH.width / 2 - fb.x) * i / 8, fb.y + 10);
   await page.mouse.up();
-  const ask = page.getByRole('dialog', { name: 'Why it needs more time' });
+  const ask = page.getByRole('dialog', { name: 'Reason for extending' });
   await ask.waitFor();
   await shot('due-reason-1440');
   await ask.getByLabel('Reason').fill('Bracket supplier is out of stock');
