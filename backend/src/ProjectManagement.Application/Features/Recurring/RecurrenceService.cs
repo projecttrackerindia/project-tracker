@@ -280,7 +280,12 @@ public class RecurrenceService(IAppDbContext db, ICurrentContext ctx, AppClock c
         catch (DbUpdateException)
         {
             // Another run made it at the same moment (the occurrence number is unique per series), or took the task number: leave it for the next run.
-            foreach (var e in db.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).ToList()) e.State = EntityState.Detached;
+            db.Tasks.Entry(task).State = EntityState.Detached;
+            foreach (var occ in db.TaskOccurrences.Local.Where(x => db.TaskOccurrences.Entry(x).State == EntityState.Added).ToList()) db.TaskOccurrences.Entry(occ).State = EntityState.Detached;
+            foreach (var tl in db.TaskLabels.Local.Where(x => db.TaskLabels.Entry(x).State == EntityState.Added).ToList()) db.TaskLabels.Entry(tl).State = EntityState.Detached;
+            foreach (var ci in db.ChecklistItems.Local.Where(x => db.ChecklistItems.Entry(x).State == EntityState.Added).ToList()) db.ChecklistItems.Entry(ci).State = EntityState.Detached;
+            foreach (var act in db.Activities.Local.Where(x => db.Activities.Entry(x).State == EntityState.Added).ToList()) db.Activities.Entry(act).State = EntityState.Detached;
+            foreach (var note in db.Notifications.Local.Where(x => db.Notifications.Entry(x).State == EntityState.Added).ToList()) db.Notifications.Entry(note).State = EntityState.Detached;
             return false;
         }
     }

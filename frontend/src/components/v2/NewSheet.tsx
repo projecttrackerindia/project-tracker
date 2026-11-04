@@ -19,6 +19,7 @@ import { guessType, useNewSheet, type NewType } from './state';
 import { openScheduleFromWords } from '../../features/meet/openFromWords';
 import './v2.css';
 
+const TemplatePicker = lazy(() => import('../../features/recurring/TemplatePicker').then((m) => ({ default: m.TemplatePicker })));
 const ProjectFormModal = lazy(() => import('../../features/projects/ProjectFormModal').then((m) => ({ default: m.ProjectFormModal })));
 
 /** The eight kind tiles of the design (apple/s-new): glyph, colour, and the sidebar place each one lands in. Time stays reachable by words. */
@@ -64,12 +65,13 @@ const spell = (min: number) => {
 /** The sheet itself; mounted once in the layout. */
 export function NewSheetHost() {
   const open = useNewSheet((s) => s.open);
-  const [making, setMaking] = useState<'project' | null>(null);
+  const [making, setMaking] = useState<'project' | 'template' | null>(null);
   const nav = useNavigate();
   return (
     <>
-      {open && <NewSheet onProject={() => setMaking('project')} />}
+      {open && <NewSheet onProject={() => setMaking('project')} onTemplate={() => setMaking('template')} />}
       <Suspense fallback={null}>
+        {making === 'template' && <TemplatePicker onClose={() => setMaking(null)} onCreated={(r) => { setMaking(null); if (r.projectId) nav(`/work/projects/${r.projectId}`); }} />}
         {making === 'project' && <ProjectFormModal onClose={() => setMaking(null)} onSaved={(id: string) => { setMaking(null); nav(`/work/projects/${id}`); }} />}
       </Suspense>
     </>
@@ -83,7 +85,7 @@ export function NewSheetHost() {
  * the sheet shrinks into the matching sidebar item, whose badge bumps, and the item opens in the Work side panel. The other kinds open
  * where they are written, with the words carried over.
  */
-function NewSheet({ onProject }: { onProject: () => void }) {
+function NewSheet({ onProject, onTemplate }: { onProject: () => void; onTemplate: () => void }) {
   const { type: presetType, text: presetText, project: inProject, close } = useNewSheet();
   const still = useReducedMotion();
   const nav = useNavigate();
@@ -363,6 +365,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
               </button>
             </>
           )}
+          <button type="button" className="v2-new-btn sm" data-testid="new-from-template" onClick={() => { close(); onTemplate(); }}>From template…</button>
           <span className="v2-new-sp" />
           <button type="button" className="v2-new-btn" onClick={close}>Cancel</button>
           <button type="button" className="v2-new-create" disabled={blocked} onClick={() => void createIt()}>

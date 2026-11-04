@@ -11,6 +11,7 @@ import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { refreshWork } from '../work/workUi';
 import { shortDay } from '../calm/createSheets';
+import { RepeatField } from '../recurring/RepeatField';
 import '../calm/calm-pages.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -75,6 +76,7 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
             <div className="ts-meta">
               <span>Owner</span><span>{t.assignee ? <><CalmAv name={t.assignee.name} size={22} />{t.assignee.name}</> : 'Nobody yet'}</span>
               <span>Dates</span><span>{t.startDate ? shortDay(t.startDate) : '—'} → {t.dueDate ? shortDay(t.dueDate) : 'no due date'}{t.isOverdue && <b style={{ color: 'var(--calm-red-text)' }}>overdue</b>}</span>
+              {!t.parentTaskId && <><span>Repeat</span><span><RepeatField taskId={t.id} dueDate={t.dueDate} canEdit={t.canEdit} /></span></>}
               <span>Status</span><span><span className={`ts-chip ${status}`}>{t.statusName}</span></span>
               {blocks.length > 0 && <><span>Blocks</span><span>{blocks.map((b) => b.task.title).join(' · ')}</span></>}
               <span>Time</span><span>{hm(loggedMin)} logged{estMin ? ` of ${hm(estMin)}` : ''} · <button type="button" className="cp-lk bl" onClick={() => void timer()}>{isRunning ? 'Stop timer' : 'Start timer'}</button></span>

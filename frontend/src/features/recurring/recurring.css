@@ -1,0 +1,57 @@
+/* Repeat field (task sheet) and the "From template" picker. Tokens only, so light and dark both follow the design system. */
+.rp-field { position: relative; display: inline-flex; min-width: 0; max-width: 100%; }
+.rp-value { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 2px 8px; margin: -2px -8px; border: 0; border-radius: var(--ds-r-pill, 999px);
+  background: transparent; color: var(--ds-text-2); font: inherit; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-value:hover:not(:disabled) { background: var(--ds-fill); }
+.rp-value.on { color: var(--ds-text); }
+.rp-value:disabled { cursor: default; }
+.rp-glyph { color: var(--ds-accent); font-weight: 600; }
+.rp-pop { position: absolute; z-index: 40; top: calc(100% + 8px); left: -8px; width: 320px; max-width: calc(100vw - 32px); padding: 14px; display: grid; gap: 10px;
+  background: var(--ds-surface); color: var(--ds-text); border: 1px solid var(--ds-line); border-radius: var(--ds-r-card, 14px); box-shadow: var(--ds-e3, 0 12px 32px rgba(0,0,0,.16)); }
+.rp-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 10px; font-size: 13px; }
+.rp-row > span:first-child { color: var(--ds-text-3); }
+.rp-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rp-inline em { font-style: normal; color: var(--ds-text-3); }
+.rp-pop select, .rp-pop input, .tp-body select, .tp-body input { min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--ds-line); border-radius: 9px; background: var(--ds-surface-2, var(--ds-fill));
+  color: var(--ds-text); font: inherit; font-size: 13px; }
+.rp-pop input[type="number"] { width: 64px; }
+.rp-pop select:focus-visible, .rp-pop input:focus-visible, .tp-body input:focus-visible, .tp-body select:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.rp-days { display: flex; gap: 6px; padding-left: 74px; }
+.rp-days button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--ds-line); background: transparent; color: var(--ds-text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.rp-days button.on { background: var(--ds-accent); border-color: var(--ds-accent); color: #fff; }
+.rp-next { margin: 0; font-size: 12px; color: var(--ds-text-3); }
+.rp-acts, .tp-acts { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.rp-sp { flex: 1; }
+.rp-lk { border: 0; background: none; padding: 0; color: var(--ds-accent); font: inherit; font-size: 13px; cursor: pointer; }
+.rp-btn { height: 32px; padding: 0 14px; border-radius: var(--ds-r-pill, 999px); border: 1px solid var(--ds-line); background: var(--ds-surface); color: var(--ds-text); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.rp-btn.primary { background: var(--ds-accent); border-color: var(--ds-accent); color: #fff; }
+.rp-btn:disabled, .rp-lk:disabled { opacity: .5; cursor: default; }
+
+.tp-body { display: grid; gap: 12px; }
+.tp-seg { display: inline-flex; justify-self: start; padding: 2px; border-radius: 9px; background: var(--ds-fill); }
+.tp-seg button { height: 28px; padding: 0 14px; border: 0; border-radius: 7px; background: transparent; color: var(--ds-text-2); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.tp-seg button.on { background: var(--ds-surface); color: var(--ds-text); box-shadow: var(--ds-e1, 0 1px 2px rgba(0,0,0,.12)); }
+.tp-body .tp-search { height: 36px; width: 100%; }
+.tp-list { display: grid; gap: 2px; }
+.tp-item, .tp-picked { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 12px; width: 100%; padding: 10px; border: 0; border-radius: 12px; background: transparent;
+  color: var(--ds-text); font: inherit; text-align: left; cursor: pointer; }
+.tp-item:hover, .tp-item:focus-visible { background: var(--ds-fill); outline: none; }
+.tp-picked { cursor: default; background: var(--ds-fill); }
+.tp-tile { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #fff; font-size: 15px; background: #5856d6; }
+.tp-tile.task { background: #ff9500; }
+.tp-text { display: grid; min-width: 0; }
+.tp-text b { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-text small { color: var(--ds-text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-chev { color: var(--ds-text-4, var(--ds-text-3)); font-size: 18px; }
+.tp-empty { margin: 8px 0; color: var(--ds-text-3); font-size: 13px; }
+.tp-form { display: grid; gap: 12px; }
+.tp-back { justify-self: start; border: 0; background: none; padding: 0; color: var(--ds-accent); font: inherit; font-size: 13px; cursor: pointer; }
+.tp-field { display: grid; gap: 6px; font-size: 13px; }
+.tp-field > span { color: var(--ds-text-3); }
+.tp-body .tp-field input, .tp-body .tp-field select { height: 38px; width: 100%; }
+.tp-acts { justify-content: flex-end; }
+@media (max-width: 600px) {
+  .rp-pop { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; width: auto; max-width: none; }
+  .rp-days { padding-left: 0; justify-content: space-between; }
+  .tp-acts .rp-btn { flex: 1; height: 40px; }
+}

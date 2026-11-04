@@ -34,7 +34,7 @@ export type NotificationSection = 'inbox' | 'preferences' | 'devices' | 'schedul
 
 type Category = 'work' | 'operations' | 'reminders' | 'messages' | 'account';
 const CATEGORY: Record<Category, { label: string; icon: IconName; types: NotificationType[] }> = {
-  work: { label: 'Work', icon: 'kanban', types: ['TaskAssigned', 'TaskUpdated', 'Comment', 'Issue', 'Approval', 'ProjectUpdated', 'Document', 'Meeting', 'ReportReady', 'AgentAlert', 'AgentDigest', 'TimesheetReminder'] },
+  work: { label: 'Work', icon: 'kanban', types: ['TaskAssigned', 'TaskUpdated', 'Comment', 'Issue', 'Approval', 'ProjectUpdated', 'Document', 'Meeting', 'ReportReady', 'AgentAlert', 'AgentDigest', 'ManagerDigest', 'TimesheetReminder'] },
   operations: { label: 'Operations & support', icon: 'bolt', types: ['ServiceLevel', 'Support'] },
   reminders: { label: 'Reminders & due dates', icon: 'alarm', types: ['DueSoon', 'Overdue', 'Reminder', 'Nudge', 'Briefing', 'PortfolioDigest', 'CertificationExpiry'] },
   messages: { label: 'Messages, mentions & calls', icon: 'message', types: ['Message', 'Mention', 'Call'] },
@@ -49,7 +49,7 @@ const TYPE_ICON: Partial<Record<NotificationType, IconName>> = {
   TaskAssigned: 'userPlus', TaskUpdated: 'edit', Comment: 'message', Mention: 'message', Message: 'message', DueSoon: 'clock', Overdue: 'alert',
   Reminder: 'alarm', Nudge: 'alarm', Briefing: 'sun', PortfolioDigest: 'chart', Invitation: 'mail', Subscription: 'card', Security: 'lock',
   ReportReady: 'download', Issue: 'bug', Approval: 'checks', ServiceLevel: 'gauge', Document: 'note', Meeting: 'video', ProjectUpdated: 'folder',
-  CertificationExpiry: 'star', Support: 'message', AgentAlert: 'radar', AgentDigest: 'sparkle', TimesheetReminder: 'timer', Call: 'video',
+  CertificationExpiry: 'star', Support: 'message', AgentAlert: 'radar', AgentDigest: 'sparkle', ManagerDigest: 'chart', TimesheetReminder: 'timer', Call: 'video',
 };
 
 // ------------------------------------------------------------------ page
@@ -123,6 +123,7 @@ const WHY: Record<NotificationType, string> = {
   CertificationExpiry: 'A certification you hold or manage is about to expire.',
   AgentAlert: 'An AI agent you set up found something.',
   AgentDigest: 'A summary from an AI agent you set up.',
+  ManagerDigest: 'Your Monday e-mail: progress, slipped dates and what is due this week on the projects you own.',
   TimesheetReminder: 'Your timesheet for the week is not submitted yet.',
   Support: 'A support conversation you are part of has a reply.',
 };
