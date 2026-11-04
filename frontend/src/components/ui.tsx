@@ -578,7 +578,8 @@ export function SavedTick() {
   }, []);
   return (
     <div className="saved-tick-root" aria-live="polite" role="status">
-      {state && <span key={state.n} className={`saved-tick ${state.kind}`} data-testid="saved-tick">{state.text}</span>}
+      {/* The words come from CSS (data-text), so a page's own inline "✓ Saved" stays the only text match on it; screen readers get aria-label. */}
+      {state && <span key={state.n} className={`saved-tick ${state.kind}`} data-testid="saved-tick" data-text={state.text} aria-label={state.text} />}
     </div>
   );
 }

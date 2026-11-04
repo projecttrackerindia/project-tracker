@@ -1227,3 +1227,4 @@ tr.row-deleted .td-title { font-style: italic; }
 @media (max-width: 768px) { .e2e-banner { margin: 6px 12px 0; } .e2e-banner .btn { min-height: 44px; width: 100%; } }
 /* Above the phone Details sheet it can be opened from. */
 .modal-overlay.e2e-modal { z-index: 1300; }
+.saved-tick::after { content: attr(data-text); }
