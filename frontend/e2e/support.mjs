@@ -47,8 +47,9 @@ export async function dismissStartup(page) {
   if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Not now', exact: true }).click();
 }
 export async function go(session, path = '') {
-  await session.page.goto(`${BASE}/${session.slug}${path}`);
-  await session.page.locator('.v2-shell').waitFor();
+  // The shell is the readiness signal; the window load event can wait on slow lazy chunks and media that the journeys never use.
+  await session.page.goto(`${BASE}/${session.slug}${path}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await session.page.locator('.v2-shell').waitFor({ timeout: 60000 });
   await dismissStartup(session.page);
 }
 export async function business(session) {

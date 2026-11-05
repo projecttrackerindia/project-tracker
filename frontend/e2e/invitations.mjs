@@ -19,7 +19,10 @@ async function emailLink(email, path) {
   return mail.text.match(/https?:\/\/[^\s"<>]+/)[0];
 }
 const ownerEmail = `invite-owner-${randomUUID()}@example.com`;
-await api('/auth/register', { email: ownerEmail, displayName: 'Nora Owner', password, acceptedTerms: true });
+// Sign-up needs a form token from the sign-up form, submitted no faster than a person could (the signup guard).
+const form = await api('/auth/signup-form');
+await new Promise((r) => setTimeout(r, (form.minSubmitSeconds + 0.5) * 1000));
+await api('/auth/register', { email: ownerEmail, displayName: 'Nora Owner', password, acceptedTerms: true, formToken: form.formToken });
 await api('/auth/verify-email', { token: new URL(await emailLink(ownerEmail, '/verify-email?')).searchParams.get('token') });
 let owner = (await api('/auth/login', { email: ownerEmail, password })).accessToken;
 const org = await api('/workspaces', { name: `Invitation test ${randomUUID()}` }, owner);
@@ -40,6 +43,7 @@ try {
   await page.locator('input[name=password]').fill(password);
   await page.locator('input[name=confirm]').fill(password);
   await page.locator('input[name=acceptedTerms]').check();
+  await page.waitForTimeout((form.minSubmitSeconds + 0.5) * 1000); // a person-speed submit, as the signup guard requires
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await page.getByRole('heading', { name: 'Check your email' }).waitFor({ timeout: 20000 });
   // The email must carry the return path even when verification opens on another device.

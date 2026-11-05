@@ -67,6 +67,7 @@ jobs:
               failed=1
               detail=$( (grep -E "^FAIL|Error:|waiting for|at .*e2e/" "$RUNNER_TEMP/$s.log" | head -n 14; echo ---; tail -n 4 "$RUNNER_TEMP/$s.log") | tr -d '\r' | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
               echo "::error title=Smoke test e2e/$s.mjs failed::$detail"
+              echo "::group::e2e/$s.mjs full output"; tail -n 80 "$RUNNER_TEMP/$s.log"; echo "::endgroup::"
             fi
             tail -n 5 "$RUNNER_TEMP/$s.log"
           done
