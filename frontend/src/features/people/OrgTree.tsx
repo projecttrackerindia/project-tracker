@@ -98,15 +98,16 @@ function allNodes(roots: TNode[]): TNode[] {
 /** People › Organization: reporting lines or teams as an accessible tree, and the older canvas chart. */
 export function OrgTreePage() {
   const [params, setParams] = useSearchParams();
-  const view = (['lines', 'teams', 'canvas'].includes(params.get('view') ?? '') ? params.get('view') : 'lines') as View;
+  // Teams has its own People tab, so the org chart shows reporting lines (and the canvas); an old ?view=teams link lands on lines.
+  const view = (params.get('view') === 'canvas' ? 'canvas' : 'lines') as View;
   const setView = (v: View) => { const n = new URLSearchParams(params); if (v === 'lines') n.delete('view'); else n.set('view', v); setParams(n, { replace: true }); };
   const canCanvas = useOrgStructure().isSuccess;
   return (
     <div className="pr-org">
-      <div className="pr-org-head">
+      {canCanvas && <div className="pr-org-head">
         <Segmented label="Organization view" value={view} onChange={setView}
-          options={[{ id: 'lines', label: 'Reporting lines' }, { id: 'teams', label: 'Teams' }, ...(canCanvas ? [{ id: 'canvas' as View, label: 'Canvas' }] : [])]} />
-      </div>
+          options={[{ id: 'lines', label: 'Reporting lines' }, ...(canCanvas ? [{ id: 'canvas' as View, label: 'Canvas' }] : [])]} />
+      </div>}
       {view === 'canvas' ? <OrgPage /> : <OrgTree mode={view} />}
     </div>
   );
