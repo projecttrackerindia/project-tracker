@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
-export interface ToastAction { label: string; onClick: () => void }
+export interface ToastAction { label: string; onClick: () => void; ms?: number }
 interface ToastItem { id: number; message: string; type: ToastType; action?: ToastAction }
 interface ConfirmState { title: string; message: string; confirmText: string; danger: boolean; alertOnly?: boolean; resolve: (ok: boolean) => void }
 
@@ -119,7 +119,7 @@ export const useUi = create<UiState>((set, get) => ({
   pushToast: (message, type, action) => {
     const id = ++toastId;
     set((s) => ({ toasts: [...s.toasts, { id, message, type, action }] }));
-    setTimeout(() => get().dismissToast(id), action ? 8000 : type === 'error' ? 5000 : 3200);
+    setTimeout(() => get().dismissToast(id), action ? action.ms ?? 8000 : type === 'error' ? 5000 : 3200);
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   confirm: null,

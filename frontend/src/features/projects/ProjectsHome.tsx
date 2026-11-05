@@ -27,6 +27,8 @@ import { useClassic } from '../calm/classic';
 import { dayMonth, errText, HEALTH, HealthPill, isFinished, passGradient, passStatus, useAllProjects } from './projectParts';
 import './projects.css';
 import './projectsHome.css';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 type Place = 'projects' | 'portfolio';
 
@@ -159,9 +161,9 @@ function ProjectsView() {
     void Promise.race([ready, new Promise((r) => setTimeout(r, 900))]).finally(() => open(id));
   };
   const remove = async (p: Project) => {
-    if (!(await confirmDialog({ title: 'Delete project?', message: `Deleting “${p.name}” will also remove all of its tasks.` }))) return;
-    try { await projectApi.remove(p.id); toast('Project deleted.', 'warning'); void invalidateWorkspace(wid, 'projects'); }
-    catch (e) { toast(errText(e, 'Could not delete the project.'), 'error'); }
+    // Undo for 10 s instead of a confirm: the project and its tasks come back with Restore.
+    await deleteWithUndo({ what: 'Project', remove: () => projectApi.remove(p.id), restore: () => restoreApi.project(p.id),
+      onRemoved: () => void invalidateWorkspace(wid, 'projects'), onRestored: () => void invalidateWorkspace(wid) });
   };
 
   return (

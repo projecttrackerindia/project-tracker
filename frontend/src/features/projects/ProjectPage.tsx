@@ -45,6 +45,8 @@ import '../agent/agent.css';
 import './projects.css';
 import './projectsHome.css';
 import './projectPage.css';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 export type ProjectTab = 'overview' | 'work' | 'docs' | 'time' | 'activity';
 const TABS: ProjectTab[] = ['overview', 'work', 'docs', 'time', 'activity'];
@@ -151,9 +153,8 @@ export function ProjectPage() {
   const drop = (key: string) => setParams((x) => { const n = new URLSearchParams(x); n.delete(key); return n; }, { replace: true });
   const addWork = canCreate && seeTasks && !archived;
   const remove = async () => {
-    if (!(await confirmDialog({ title: 'Delete project?', message: `Deleting “${p.name}” will also remove all of its tasks.` }))) return;
-    try { await projectApi.remove(p.id); toast('Project deleted.', 'warning'); await invalidateWorkspace(wid); nav('/work/projects'); }
-    catch (e) { toast(errText(e, 'Could not delete the project.'), 'error'); }
+    await deleteWithUndo({ what: 'Project', remove: () => projectApi.remove(p.id), restore: () => restoreApi.project(p.id),
+      onRemoved: () => { void invalidateWorkspace(wid); nav('/work/projects'); }, onRestored: () => { void invalidateWorkspace(wid); nav(`/work/projects/${p.id}`); } });
   };
   const group = p.projectGroupName ?? p.teamName;
   const grad = passGradient(p);
