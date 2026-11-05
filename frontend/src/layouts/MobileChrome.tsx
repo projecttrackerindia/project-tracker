@@ -3,17 +3,14 @@ import { NotificationBell } from '../features/notifications/centre/NotificationC
 import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { Sheet } from '../components/Sheet';
-import { openPalette } from '../components/paletteLink';
 import { AuraPhoneOrb, AvatarMenu } from '../components/v2';
-import { initials } from '../lib/format';
 import { haptic } from '../lib/mobile';
-import { useTeamLens } from '../lib/teamLens';
+import { TeamSwitcher } from '../components/shell/TeamSwitcher';
 import { useAuth } from '../stores/auth';
 import { toast } from '../stores/ui';
 import { AttendanceCapsule } from '../features/attendance/AttendanceCapsule';
 import { CreateOrganizationModal } from './parts';
 
-const hue = (name: string) => { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 
 // ------------------------------------------------------------------ the top bar
 
@@ -25,35 +22,28 @@ export function MobileTopBar() {
   const ctx = useAuth((s) => s.ctx)!;
   const admin = ctx.user.isPlatformAdmin;
   const [scrolled, setScrolled] = useState(false);
-  const [sheet, setSheet] = useState<'org' | 'lens' | null>(null);
-  const { teams, team, ready } = useTeamLens();
+  const [sheet, setSheet] = useState<'org' | null>(null);
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 4);
     on(); window.addEventListener('scroll', on, { passive: true });
     return () => window.removeEventListener('scroll', on);
   }, []);
-  const cur = ctx.current;
+  // The approved header (header-options-2): logo + workspace ▾ with "Role · Team" (the team switcher), then only Aura (search and ask in
+  // one), the bell and the avatar on the right. The check-in is a small ring next to the workspace; tapping it opens the day sheet.
   return (
-    <header className={`m-top ${scrolled ? 'scrolled' : ''}`}>
-      <button type="button" className="m-org" onClick={() => { haptic(); setSheet('org'); }} aria-label="Switch workspace">
-        <span className="m-org-mark"><Logo size={30} /></span>
-        <span className="m-org-text"><b>{admin ? 'Platform' : cur?.name ?? 'Workspace'}</b><small>{admin ? 'Administration' : cur?.type === 'Personal' ? 'Personal' : cur?.role}</small></span>
-        {!admin && <Icon name="chevronD" size={14} />}
-      </button>
+    <header className={`m-top m-top-r4 ${scrolled ? 'scrolled' : ''}`}>
+      {admin ? (
+        <button type="button" className="m-org" onClick={() => { haptic(); setSheet('org'); }} aria-label="Platform">
+          <span className="m-org-mark"><Logo size={30} /></span>
+          <span className="m-org-text"><b>Platform</b><small>Administration</small></span>
+        </button>
+      ) : <div className="m-top-left"><TeamSwitcher /><AttendanceCapsule ring /></div>}
       <div className="m-top-actions">
-        {!admin && ready && teams.length > 0 && (
-          <button type="button" className={`m-icon ${team ? 'on' : ''}`} onClick={() => { haptic(); setSheet('lens'); }} aria-label={team ? `Team view: ${team.name}` : 'Team view: all teams'}>
-            {team ? <span className="lens-chip" style={{ '--h': hue(team.name) } as React.CSSProperties}>{initials(team.name)}</span> : <Icon name="users" size={21} />}
-          </button>
-        )}
         {!admin && <AuraPhoneOrb />}
-        <button type="button" className="m-icon" onClick={() => { haptic(); openPalette(); }} aria-label="Search"><Icon name="search" size={21} /></button>
-        {!admin && <AttendanceCapsule compact />}
         {!admin && <NotificationBell variant="phone" />}
         <AvatarMenu />
       </div>
-      {sheet === 'org' && !admin && <OrgSheet onClose={() => setSheet(null)} />}
-      {sheet === 'lens' && <LensSheet onClose={() => setSheet(null)} />}
+      {sheet === 'org' && admin && <OrgSheet onClose={() => setSheet(null)} />}
     </header>
   );
 }
@@ -85,26 +75,5 @@ function OrgSheet({ onClose }: { onClose: () => void }) {
       </Sheet>
       {creating && <CreateOrganizationModal onClose={() => { setCreating(false); onClose(); }} />}
     </>
-  );
-}
-
-function LensSheet({ onClose }: { onClose: () => void }) {
-  const { teams, teamId, setTeam } = useTeamLens();
-  const choose = (id: string | null) => { haptic(); setTeam(id); onClose(); };
-  return (
-    <Sheet title="Team view" onClose={onClose}>
-      <p className="m-hint">Everything you see follows this choice: the dashboard, projects, reports and the assistant.</p>
-      <ul className="m-list">
-        <li><button type="button" className={`m-row ${!teamId ? 'on' : ''}`} onClick={() => choose(null)}>
-          <span className="m-row-ico"><Icon name="layers" size={18} /></span><span className="m-row-main"><b>All teams</b><small>Everything you can see</small></span>{!teamId && <Icon name="tick" size={18} />}
-        </button></li>
-        {teams.map((t) => (
-          <li key={t.id}><button type="button" className={`m-row ${teamId === t.id ? 'on' : ''}`} onClick={() => choose(t.id)}>
-            <span className="lens-chip lg" style={{ '--h': hue(t.name) } as React.CSSProperties}>{initials(t.name)}</span>
-            <span className="m-row-main"><b>{t.name}</b><small>{t.projects} project{t.projects === 1 ? '' : 's'} · {t.members} {t.members === 1 ? 'person' : 'people'}</small></span>{teamId === t.id && <Icon name="tick" size={18} />}
-          </button></li>
-        ))}
-      </ul>
-    </Sheet>
   );
 }

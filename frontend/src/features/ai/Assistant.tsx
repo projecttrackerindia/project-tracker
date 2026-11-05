@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { create } from 'zustand';
 import { ApiError, get, post, put } from '../../api/client';
 import { actionItemApi } from '../../api/endpoints';
@@ -88,7 +89,7 @@ function Sparkle({ size = 16 }: { size?: number }) {
 export { Sparkle };
 
 function Thinking({ label }: { label: string }) {
-  return <div className="asst-thinking"><span className="asst-orb" /><span>{label}</span></div>;
+  return <div className="asst-thinking"><SiriOrb className="asst-orb" /><span>{label}</span></div>;
 }
 
 // ------------------------------------------------------------------ contextual features
@@ -203,7 +204,7 @@ export function TriageButton({ title, description, onApply }: { title: string; d
   return (
     <div className="asst-triage">
       <button type="button" className="btn btn-ghost btn-sm asst-ghost" disabled={busy || title.trim().length < 3} onClick={() => void run()}>
-        {busy ? <span className="asst-orb small" /> : <Sparkle size={14} />} Suggest type, priority and person
+        {busy ? <SiriOrb className="asst-orb small" /> : <Sparkle size={14} />} Suggest type, priority and person
       </button>
       {last && <span className="asst-triage-why" title={last.reason}>{last.workType ?? '—'} · {last.priority ? <PriorityBadge priority={last.priority} /> : '—'} · {last.assignee ?? 'no one in particular'}</span>}
     </div>

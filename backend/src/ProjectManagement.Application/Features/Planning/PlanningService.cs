@@ -14,7 +14,7 @@ public record MilestoneDto(Guid Id, Guid ProjectId, string Name, string? Descrip
     StageStatus Status, UserRefDto? Owner, int SortOrder, DateTime? CompletedAt, int TaskTotal, int TaskDone, int Progress, bool IsOverdue,
     Guid? StageId = null, string? StageName = null);
 public record UpsertMilestoneRequest(string Name, string? Description, DateOnly? StartDate, DateOnly? DueDate, StageStatus Status, Guid? OwnerId, int? SortOrder,
-    Guid? StageId = null);
+    Guid? StageId = null, string? ExtensionReason = null);
 
 public record DependencyTaskDto(Guid Id, string Key, string Title, StatusCategory Category, string StatusName, DateOnly? DueDate);
 public record DependencyDto(Guid Id, DependencyType Type, DependencyTaskDto Task, bool Satisfied);
@@ -54,7 +54,8 @@ public static class DependencyRules
 
 /// <summary>Milestones and task dependencies. Everything is checked against the caller's project access first.</summary>
 public class PlanningService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder,
-    PermissionService permissions, ProjectAccess access)
+    PermissionService permissions, ProjectAccess access, ProjectManagement.Application.Features.Projects.DueDateHistory dueHistory,
+    ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices notices)
 {
     private const int MaxMilestones = 100;
     private const int MaxDependencies = 25;
@@ -137,10 +138,21 @@ public class PlanningService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         EnsureDatesMakeSense(req);
 
         var was = milestone.Status;
+        // A milestone's dates moving later need a reason (kept in the date history, told to its owner and the project's manager).
+        var startWhy = dueHistory.Require("milestone's start date", milestone.StartDate, req.StartDate, req.ExtensionReason);
+        var dueWhy = dueHistory.Require("milestone's due date", milestone.DueDate, req.DueDate, req.ExtensionReason);
+        var (wasStart, wasDue) = (milestone.StartDate, milestone.DueDate);
         milestone.Name = req.Name.Trim();
         milestone.Description = req.Description?.Trim();
         milestone.StartDate = req.StartDate;
         milestone.DueDate = req.DueDate;
+        if (wasStart is not null)
+            dueHistory.RecordDate(milestone.TenantId, projectId, ProjectManagement.Application.Features.Projects.DateKinds.Milestone, milestone.Id, ProjectManagement.Application.Features.Projects.DateKinds.Start, wasStart, milestone.StartDate, startWhy);
+        if (wasDue is not null)
+            dueHistory.RecordDate(milestone.TenantId, projectId, ProjectManagement.Application.Features.Projects.DateKinds.Milestone, milestone.Id, null, wasDue, milestone.DueDate, dueWhy);
+        if (ProjectManagement.Application.Features.Projects.DueDateHistory.NeedsReason(wasDue, milestone.DueDate))
+            await notices.ExtendedAsync(new ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget(projectId, $"Milestone {milestone.Name}", $"/projects/{projectId}?tab=timeline",
+                ProjectManagement.Domain.Enums.NotificationType.ProjectUpdated), projectId, "Due date", wasDue, milestone.DueDate, dueWhy, [milestone.OwnerId], ct);
         milestone.Status = req.Status;
         milestone.OwnerId = await ResolveOwnerAsync(req.OwnerId, ct);
         milestone.StageId = await ResolveStageAsync(projectId, req.StageId, ct);

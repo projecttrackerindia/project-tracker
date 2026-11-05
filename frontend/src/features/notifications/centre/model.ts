@@ -59,6 +59,8 @@ export const conversationOf = (link: string | null | undefined) => /^\/chat\/([0
  */
 export function sourceOf(n: AppNotification): { key: string; label: string } {
   const cat = categoryOf(n);
+  // The server names what it is about (smart grouping): a project's real name, so a burst reads "6 updates on CIBIL Integration".
+  if (n.groupKey && n.groupLabel) return { key: n.groupKey, label: n.groupLabel };
   const conv = conversationOf(n.link);
   if (conv) {
     const inName = / in (.+)$/.exec(n.title)?.[1];
@@ -71,19 +73,32 @@ export function sourceOf(n: AppNotification): { key: string; label: string } {
 }
 
 export interface Stack { key: string; label: string; items: AppNotification[]; unread: number }
+
+/** What a stack says about itself: "6 updates on CIBIL Integration" for a group the server named, else "3 more from …" as before. */
+export const groupTitle = (s: Stack) => `${s.items.length} update${s.items.length === 1 ? '' : 's'} on ${s.label}`;
+export const isNamedGroup = (s: Stack) => s.items.length > 1 && !!s.items[0].groupKey && s.items[0].groupLabel === s.label;
 export interface Section { id: 'today' | 'earlier'; label: string; stacks: Stack[] }
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const when = (n: AppNotification) => Date.parse(n.shownAt ?? n.createdAt);
 
 /** Today and Earlier, each made of stacks by source, newest first (a stack sits where its newest notification is). */
-export function arrange(items: AppNotification[], today = startOfToday()): Section[] {
+export function arrange(items: AppNotification[], today = startOfToday(), windowMinutes?: number): Section[] {
   const sections: Section[] = [{ id: 'today', label: 'Today', stacks: [] }, { id: 'earlier', label: 'Earlier', stacks: [] }];
   const index = new Map<string, Stack>();
+  const span = windowMinutes && windowMinutes > 0 ? windowMinutes * 60_000 : 0;
+  const part = new Map<string, number>();
   for (const n of [...items].sort((a, b) => when(b) - when(a))) {
     const sec = when(n) >= today ? sections[0] : sections[1];
     const src = sourceOf(n);
-    const k = `${sec.id}|${src.key}`;
+    // Smart grouping: updates about one thing make one group while they come within the window of each other; a later lull starts a new one.
+    let k = `${sec.id}|${src.key}`;
+    if (span && n.groupKey) {
+      const prev = index.get(`${k}#${part.get(k) ?? 0}`);
+      const oldest = prev?.items[prev.items.length - 1];
+      if (prev && oldest && when(oldest) - when(n) > span) part.set(k, (part.get(k) ?? 0) + 1);
+      k = `${k}#${part.get(k) ?? 0}`;
+    }
     let s = index.get(k);
     if (!s) { s = { key: k, label: src.label, items: [], unread: 0 }; index.set(k, s); sec.stacks.push(s); }
     s.items.push(n);

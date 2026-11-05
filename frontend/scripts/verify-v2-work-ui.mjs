@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { invokeAura, openCreate } from './lib/aura.mjs';
 import { fitsPhone } from './lib/phone.mjs';
@@ -69,6 +70,7 @@ const detailOf = (w) => {
 
 const errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+await shimSelect(browser);
 /** A browser context over the built app with this run's synthetic server. `state.bump` makes the next PATCH meet someone else's change. */
 const make = async (theme, state) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });

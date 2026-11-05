@@ -82,6 +82,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Integrations/IncomingWebhookService.cs", // anonymous incoming webhook: the address is found by the token in its URL (and its secret, when set); everything after runs in that workspace as the member who set it up
         "ProjectManagement.Application/Features/Chat/ChatService.Upgrades.cs", // scheduled send: finds due rows (ids, workspace and sender only), then sends each as its sender inside that workspace
         "ProjectManagement.Application/Features/Issues/IssueService.cs",
+        "ProjectManagement.Application/Features/Notes/NoteService.cs", // Undo of a delete: the signed-in owner's own deleted note, by id, current tenant id and owner id named
         "ProjectManagement.Application/Features/Notifications/NotificationService.cs", // the e-mail worker (no signed-in workspace): pending notices, and for a Plan sheet change notice its kept change, task, project and statuses, each looked up by id with the notice's own tenant id named
         "ProjectManagement.Application/Features/Notifications/PushService.cs",
         "ProjectManagement.Application/Features/Organization/AccessService.cs",
@@ -104,6 +105,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Quality/QualityService.cs", // next TC-n number: max over this workspace's own cases (tenant id named explicitly), including deleted ones so keys are never reused
         "ProjectManagement.Application/Features/Projects/ActionItemService.cs", // restoring an action item from the bin (deleted rows are filtered out otherwise), checked against its project and tenant
         "ProjectManagement.Application/Features/Reminders/PortfolioDigestService.cs",
+        "ProjectManagement.Application/Features/Recurring/RecurrenceService.cs", // the background job lists active series across workspaces, then works inside each one's scope; task numbers count deleted tasks, as TaskService does
+        "ProjectManagement.Application/Features/Recurring/ManagerDigestService.cs", // the Monday e-mail (no signed-in workspace): every query names the tenant and the owner explicitly
         "ProjectManagement.Application/Features/Reminders/ReminderEngine.cs",
         "ProjectManagement.Application/Features/Reminders/DueReminderRules.cs", // the reminder engine (no signed-in workspace): whether the reminded person touched one item, by its id and their id only (existence checks)
         "ProjectManagement.Application/Features/Reminders/ReminderService.cs", // the signed-in person's own organization zone, by the current tenant id only

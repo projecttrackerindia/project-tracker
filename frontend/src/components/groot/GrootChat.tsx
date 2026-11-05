@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SiriOrb } from '../aura/SiriOrb';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -243,7 +244,7 @@ function GrootChat() {
       {!phone && !card && !float && <div className="gc-resize" role="separator" aria-orientation="vertical" aria-label="Resize Aura" onPointerDown={startResize} />}
       {phone && <span className="gc-grab" aria-hidden="true" />}
       <header className="gc-head">
-        {float || phone ? <span className="calm-orb gc-orb" aria-hidden="true" /> : <GrootAvatar state={state} size={34} />}
+        {float || phone ? <SiriOrb className="calm-orb gc-orb" /> : <GrootAvatar state={state} size={34} />}
         <div className="gc-title"><b>Aura</b><small aria-live="polite">{status}</small></div>
         {!phone && <kbd className="gc-kbd" aria-hidden="true">{/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K'}</kbd>}
         {turns.length > 0 && tab === 'chat' && <button type="button" className="gc-icon" title="New chat" aria-label="New chat" onClick={() => { abort.current?.abort(); reset(); setFlash('greeting'); }}><Icon name="plus" size={16} /></button>}

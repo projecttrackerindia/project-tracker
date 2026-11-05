@@ -1,0 +1,61 @@
+name: Staging
+
+# Puts a build on staging.projecttracker.in (fictional demo data, noindex, its own database; see docs/ops.md › Staging):
+#   - every push to the release branches (release-*),
+#   - a pull request from this repository when it carries the label "staging" (and each later push to it),
+#   - by hand: Actions › Staging › Run workflow (any branch).
+# Images are tagged s-<commit> and "staging"; production's "latest" is never touched. Until deploy/gcp/github-deploy-setup.sh has
+# been run with STAGING=1 and GCP_STAGING_WIF_PROVIDER is set, this does nothing.
+on:
+  push:
+    branches: ["release-*"]
+  pull_request:
+    types: [labeled, synchronize, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: staging
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  staging:
+    name: Release to staging
+    if: >-
+      vars.GCP_STAGING_WIF_PROVIDER != '' && (
+        github.event_name != 'pull_request' || (
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          contains(github.event.pull_request.labels.*.name, 'staging')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: staging
+      url: https://staging.projecttracker.in
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_STAGING_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_STAGING_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and release to staging
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          TARGET: staging
+          STAGING_VM: ${{ vars.STAGING_VM || 'pt-staging' }}
+        run: |
+          mkdir -p "$HOME/.pt-gcp" && : > "$HOME/.pt-gcp/railway-web.env"
+          ./deploy/gcp/update.sh
+      - name: Staging answers, and asks not to be indexed
+        run: |
+          for i in $(seq 30); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' https://staging.projecttracker.in/health/ready || true)" = 200 ] && break
+            sleep 10
+          done
+          curl -sfI https://staging.projecttracker.in/ | grep -i '^x-robots-tag: noindex'
+          curl -sf https://staging.projecttracker.in/robots.txt | grep -q 'Disallow: /'

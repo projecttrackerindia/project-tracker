@@ -126,7 +126,7 @@ public partial class ChatService
         var perConversation = await (from msg in db.ChatMessages.AsNoTracking()
                                      join m in db.ConversationMembers.AsNoTracking() on msg.ConversationId equals m.ConversationId
                                      join c in db.Conversations.AsNoTracking() on msg.ConversationId equals c.Id
-                                     where c.Type != ConversationType.Project && m.UserId == me && msg.CreatedAt > m.LastReadAt && msg.CreatedAt >= m.CreatedAt
+                                     where c.Type != ConversationType.Project && !c.IsPrivate && m.UserId == me && msg.CreatedAt > m.LastReadAt && msg.CreatedAt >= m.CreatedAt
                                            && msg.Kind == ChatMessageKind.User && msg.SenderId != me && msg.DeletedAt == null && msg.ThreadRootId == null
                                      group msg by new { msg.ConversationId, m.IsMuted } into g
                                      select new { g.Key.ConversationId, g.Key.IsMuted, Count = g.Count() }).ToListAsync(ct);
@@ -161,7 +161,7 @@ public partial class ChatService
         var hits = await (from msg in db.ChatMessages.AsNoTracking()
                           join m in db.ConversationMembers.AsNoTracking() on msg.ConversationId equals m.ConversationId
                           join c in db.Conversations.AsNoTracking() on msg.ConversationId equals c.Id
-                          where c.Type != ConversationType.Project && m.UserId == me && msg.CreatedAt >= m.CreatedAt && msg.Kind == ChatMessageKind.User && msg.DeletedAt == null && EF.Functions.Like(msg.Body.ToLower(), SearchText.Pattern(q), SearchText.Escape)
+                          where c.Type != ConversationType.Project && !c.IsPrivate && m.UserId == me && msg.CreatedAt >= m.CreatedAt && msg.Kind == ChatMessageKind.User && msg.DeletedAt == null && EF.Functions.Like(msg.Body.ToLower(), SearchText.Pattern(q), SearchText.Escape)
                           orderby msg.CreatedAt descending
                           select new { msg.Id, msg.ConversationId, msg.SenderId, msg.Body, msg.CreatedAt }).Take(30).ToListAsync(ct);
         if (hits.Count == 0) return [];

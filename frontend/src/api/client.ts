@@ -117,6 +117,14 @@ export const refreshWasRefused = () => lastRefreshRefused;
 export const transientStatus = (status: number) => status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The refresh index.html started for a signed-in visit, handed out once (later refreshes are the app's own). */
+function takeEarlyRefresh(): Promise<Response | null> | null {
+  const w = typeof window !== 'undefined' ? (window as Window & { __ptRefresh?: Promise<Response | null> }) : null;
+  const p = w?.__ptRefresh ?? null;
+  if (w) delete w.__ptRefresh;
+  return p;
+}
+
 // One in-flight refresh shared by every caller (page bootstrap, parallel 401s, React StrictMode double-invoke).
 let refreshing: Promise<AuthResponse | null> | null = null;
 export function refreshSession(): Promise<AuthResponse | null> {
@@ -130,7 +138,9 @@ export function refreshSession(): Promise<AuthResponse | null> {
         // A refresh that is not answered is tried again a couple of times before giving up (without signing out).
         for (let attempt = 0; ; attempt++) {
           let res: Response | null = null;
-          try { res = await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers }); } catch { res = null; }
+          // The page's first refresh may already be in flight from index.html (started before the scripts loaded): use that answer once.
+          const early = attempt === 0 && !BASE ? takeEarlyRefresh() : null;
+          try { res = early ? await early : await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers }); } catch { res = null; }
           if (res && !transientStatus(res.status)) {
             const { data, error } = await parse(res);
             if (error || !data) {
@@ -222,6 +232,18 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
     return data as T;
   }
 
+  // A date moved later without a reason: the shared "Reason for extending" sheet asks for one and the same request is sent again with it.
+  // One place for every surface (task and plan sheets, action items, timeline and calendar drags, quick-add, Aura).
+  if (error.status === 422 && error.code === 'DATE_EXTENSION_REASON_REQUIRED' && onExtensionReason && (body === undefined || (body !== null && typeof body === 'object' && !Array.isArray(body)))) {
+    const b = (body ?? {}) as Record<string, unknown>;
+    if (!b.extensionReason) {
+      const reason = await onExtensionReason({ message: error.message, method, path, body: b });
+      if (reason) return send<T>(method, path, { ...b, extensionReason: reason, ...(b.dueDateReason ? {} : { dueDateReason: reason }) }, opts, idempotencyKey);
+      error.message = 'The date was not moved.';
+      (error as ApiError & { cancelled?: boolean }).cancelled = true;
+    }
+  }
+
   if (error.status === 401 && auth && retry && !path.startsWith('/auth/')) {
     const renewed = await refreshSession();
     if (renewed) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey);
@@ -230,6 +252,12 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   }
   throw error;
 }
+
+/** What the reason sheet is told about a refused date change. */
+export interface ExtensionAsk { message: string; method: string; path: string; body: Record<string, unknown> }
+let onExtensionReason: ((ask: ExtensionAsk) => Promise<string | null>) | null = null;
+/** Set by the app shell: shows the "Reason for extending" sheet and resolves with the reason (null when cancelled). */
+export const setExtensionReasonHandler = (fn: ((ask: ExtensionAsk) => Promise<string | null>) | null) => { onExtensionReason = fn; };
 
 type QueuedHandler = (method: string, path: string, body: unknown, workspaceId: string | null, tempId?: string) => unknown;
 let onQueued: QueuedHandler | null = null;

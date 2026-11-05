@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -37,6 +38,7 @@ const wav = (() => { const b = Buffer.alloc(44 + 1600); b.write('RIFF', 0); b.wr
 let myStatus = { emoji: null, text: null, clearAt: null, dndUntil: null, dnd: false };
 const writes = [], errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+await shimSelect(browser);
 try {
   const make = async (opts = {}) => {
     const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', ...opts });

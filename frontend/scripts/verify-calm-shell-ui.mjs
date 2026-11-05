@@ -144,26 +144,27 @@ try {
     assert.equal(Math.round((await page.locator('.shell-side').boundingBox()).width), 236);
     const on = page.locator('.shell-side .v2-rail-item.on'); assert.equal(await on.count(), 1); assert.equal((await on.innerText()).split('\n')[0].trim(), 'Today');
     assert.equal(await on.evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)', 'selected: white pill');
-    // the header: check-in · bell · orb · avatar, in that order, top right
+    // the header (approved round 4a mockup): check-in ring · Aura orb · bell · avatar, in that order, top right
     const head = await page.locator('.shell-head > *:not(.v2-tb-sp)').evaluateAll((els) => els.map((e) => e.className.toString()));
     assert.ok(/ncx-bell/.test(head.join(' ')) && /shell-orb/.test(head.join(' ')) && /acct-icon/.test(head.join(' ')), `header: ${head}`);
-    assert.ok(head.findIndex((x) => /ncx-bell/.test(x)) < head.findIndex((x) => /shell-orb/.test(x)) && head.findIndex((x) => /shell-orb/.test(x)) < head.findIndex((x) => /acct-icon/.test(x)), 'bell, orb, avatar order');
+    assert.ok(head.findIndex((x) => /shell-orb/.test(x)) < head.findIndex((x) => /ncx-bell/.test(x)) && head.findIndex((x) => /ncx-bell/.test(x)) < head.findIndex((x) => /acct-icon/.test(x)), 'orb, bell, avatar order');
     assert.equal(await page.locator('[data-testid="aura-dock"], .aura-siri, form.v2-ask, .aura-hint').count(), 0, 'no bottom Aura capsule');
     await snap(page, 'shell-today-1440-light'); checks.push('sidebar+header');
     // the bell's popover: grouped, Mark all read, settings
     await page.locator('.shell-head .ncx-bell').click(); await page.waitForTimeout(400); await page.locator('.ncx-pop').waitFor();
     assert.ok(await page.getByRole('button', { name: 'Mark all read' }).isVisible()); assert.ok(await page.getByRole('button', { name: 'Notification settings' }).isVisible());
     await snap(page, 'shell-bell-1440-light'); await page.keyboard.press('Escape'); await page.waitForTimeout(300); checks.push('bell');
-    // the Aura panel: the orb opens it (grows from the corner), four tabs, ⌘K toggles it
-    await page.locator('.shell-head .shell-orb').click(); const panel = page.locator('.groot-chat.float'); await panel.waitFor(); await page.waitForTimeout(600);
+    // Aura = search (round 4a): the orb and ⌘K open the search sheet; an "Ask Aura" line there opens the Aura panel (four tabs)
+    await page.locator('.shell-head .shell-orb').click(); await page.getByTestId('aura-search').waitFor();
+    await page.locator('.aura-s-row.ask').first().click(); const panel = page.locator('.groot-chat.float'); await panel.waitFor(); await page.waitForTimeout(600);
     assert.deepEqual(await panel.locator('.gc-tabs [role="tab"]').allTextContents(), ['Chat', 'Recent', 'Automations', 'Activity']);
     const pb = await panel.boundingBox(); assert.ok(pb.x + pb.width <= 1440 - 20 && pb.y >= 50, `panel at the top right: ${JSON.stringify(pb)}`);
     await snap(page, 'shell-aura-1440-light');
     await panel.getByRole('tab', { name: 'Recent' }).click(); await panel.getByText('All conversations ›').waitFor();
     await panel.getByRole('tab', { name: 'Automations' }).click(); await panel.getByText('All automations ›').waitFor();
     await panel.getByRole('tab', { name: 'Activity' }).click(); await panel.getByText('Full audit trail ›').waitFor();
-    await page.keyboard.press('Control+k'); await panel.waitFor({ state: 'detached' });
-    await page.keyboard.press('Control+k'); await panel.waitFor(); await page.keyboard.press('Control+k'); await panel.waitFor({ state: 'detached' });
+    await page.keyboard.press('Escape'); await panel.waitFor({ state: 'detached' }).catch(() => {});
+    await page.keyboard.press('Control+k'); await page.getByTestId('aura-search').waitFor(); await page.keyboard.press('Control+k'); await page.getByTestId('aura-search').waitFor({ state: 'detached' });
     await page.keyboard.press('Control+Shift+k'); await page.locator('.cmdk').waitFor(); await page.waitForTimeout(200); await page.keyboard.press('Escape'); await page.locator('.cmdk-overlay').waitFor({ state: 'detached' }); checks.push('aura-panel');
     // the + button: + turns to ×, the page blurs, five items; New task opens the create sheet
     const fab = page.getByTestId('fab'); const fb = await fab.locator('.shell-fab-btn').boundingBox();
@@ -186,9 +187,9 @@ try {
     await snap(page, 'shell-rail-1440-light');
     await page.getByRole('button', { name: 'Expand sidebar' }).click(); await page.waitForTimeout(500);
     assert.equal(Math.round((await page.locator('.shell-side').boundingBox()).width), 236); checks.push('collapse');
-    // the workspace switcher
-    await page.locator('.shell-ws-btn').click(); await page.locator('.shell-ws-menu').waitFor();
-    assert.ok((await page.locator('.shell-ws-menu').innerText()).includes('Second Org')); await page.keyboard.press('Escape'); checks.push('switcher');
+    // the workspace and team switcher (round 4a)
+    await page.locator('.shell-ws-btn').click(); await page.locator('[data-testid="team-switcher-sheet"]').waitFor();
+    assert.ok((await page.locator('[data-testid="team-switcher-sheet"]').innerText()).includes('Second Org')); await page.keyboard.press('Escape'); checks.push('switcher');
     // routes
     for (const [from, to] of [['/inbox', '/approvals'], ['/calls', '/meetings'], ['/reminders', '/reminders'], ['/notes', '/notes']]) {
       await go(page, from); for (let i = 0; i < 30 && at(page) !== to; i++) await page.waitForTimeout(100); assert.equal(at(page), to, `${from} → ${to}`);
@@ -233,7 +234,8 @@ try {
     assert.ok(fb.width >= 44 && fb.height >= 44, '+ is a 44px target');
     await page.locator('.shell-fab-btn').click(); await page.waitForTimeout(500); await snap(page, 'phone-fab-390-light');
     await page.locator('.shell-fab-btn').click(); await page.waitForTimeout(300);
-    await page.locator('.m-top .m-aura-orb').click(); const sheet = page.locator('.groot-chat.phone'); await sheet.waitFor(); await page.waitForTimeout(500);
+    await page.locator('.m-top .m-aura-orb').click(); await page.getByTestId('aura-search').waitFor();
+    await page.locator('.aura-s-row.ask').first().click(); const sheet = page.locator('.groot-chat.phone'); await sheet.waitFor(); await page.waitForTimeout(500);
     assert.deepEqual(await sheet.locator('.gc-tabs [role="tab"]').allTextContents(), ['Chat', 'Recent', 'Automations', 'Activity']);
     // pinned to the bottom: the sheet reaches the screen's foot and its field sits just above it (no extra page padding pushes it up)
     const sb = await sheet.boundingBox(), cb = await sheet.locator('.gc-compose').boundingBox();

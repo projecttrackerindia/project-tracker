@@ -26,6 +26,10 @@ public class NotesController(NoteService notes) : ApiControllerBase
     [HttpPut("{id:guid}/sharing")]
     public async Task<IActionResult> Share(Guid id, [FromBody] ShareNoteRequest req, CancellationToken ct) => Ok(await notes.ShareAsync(id, req, ct));
 
+    /// <summary>Undo of a delete (the note's owner).</summary>
+    [HttpPost("{id:guid}/restore")]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken ct) => Ok(await notes.RestoreAsync(id, ct));
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { await notes.DeleteAsync(id, ct); return NoContent(); }
 }

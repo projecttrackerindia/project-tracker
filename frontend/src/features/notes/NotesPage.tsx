@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -13,6 +14,8 @@ import { toast } from '../../stores/ui';
 import { newBlock, notesApi, type Note, type NoteBlock, type NoteList, type NoteSharing, type NoteSummary, type NoteView } from './api';
 import { NoteEditor } from './NoteEditor';
 import './notes.css';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 /** "09:40" today, "Mon" this week, "Oct 28" before. */
 function short(iso: string) {
@@ -227,8 +230,8 @@ function NotePane({ note, phone, onBack, onSummary, onGone, onNav }: {
       </CalmSheet>
       <CalmSheet open={sheet === 'more'} onClose={() => setSheet(null)} title={cur.title || 'Untitled note'} width={480}>
         <MoreForm note={cur} projects={projects.data?.items ?? []} onSave={(b, m) => void meta(b, m)} onDelete={async () => {
-          try { await notesApi.remove(note.id); setSheet(null); toast('Note deleted.', 'success'); onGone(); }
-          catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete it.', 'error'); }
+          await deleteWithUndo({ what: 'Note', remove: () => notesApi.remove(note.id), restore: () => restoreApi.note(note.id),
+            onRemoved: () => { setSheet(null); onGone(); }, onRestored: () => void invalidateWorkspace(wid, 'notes') });
         }} />
       </CalmSheet>
     </>
@@ -286,7 +289,7 @@ function TaskForm({ note, projects, onDone }: { note: Note; projects: { id: stri
     <div className="nt-form">
       <label className="nt-field"><span>Task</span><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} /></label>
       <label className="nt-field"><span>Project</span>
-        <select value={project} onChange={(e) => setProject(e.target.value)}><option value="">Choose a project</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        <Select value={project} onChange={(e) => setProject(e.target.value)}><option value="">Choose a project</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
       </label>
       {note.links.length > 0 && <p className="nt-hint">Already linked: {note.links.map((l) => l.label).join(', ')}</p>}
       <div className="nt-form-foot"><CalmGo onClick={() => void go()} disabled={busy || !project || !title.trim()}>Create task</CalmGo></div>
@@ -305,9 +308,9 @@ function MoreForm({ note, projects, onSave, onDelete }: { note: Note; projects: 
         onBlur={() => onSave({ tags: tags.split(/[\s,]+/).map((t) => t.replace(/^#/, '')).filter(Boolean) }, '✓ Tags saved')} /></label>
       {note.mine && (
         <label className="nt-field"><span>Project (keeps its images and files)</span>
-          <select value={note.projectId ?? ''} onChange={(e) => onSave(e.target.value ? { projectId: e.target.value } : { clearProject: true }, '✓ Saved')}>
+          <Select value={note.projectId ?? ''} onChange={(e) => onSave(e.target.value ? { projectId: e.target.value } : { clearProject: true }, '✓ Saved')}>
             <option value="">No project</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          </Select>
         </label>
       )}
       {note.links.length > 0 && <div className="nt-field"><span>Linked work</span><div className="nt-links">{note.links.map((l) => <a key={l.id} className="nt-lch" href={l.href ?? '#'}>{l.label}</a>)}</div></div>}

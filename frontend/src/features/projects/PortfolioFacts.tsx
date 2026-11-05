@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -124,10 +125,10 @@ export function ProjectFacts({ projectId, active }: { projectId: string; active:
         <h3>Agree a follow-up</h3>
         <input tabIndex={tab} value={follow.title} onChange={(e) => setFollow((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Confirm the bank sandbox date" aria-label="Follow-up" onKeyDown={(e) => e.stopPropagation()} />
         <div className="pf-follow-row">
-          <select tabIndex={tab} value={follow.owner} onChange={(e) => setFollow((f) => ({ ...f, owner: e.target.value }))} aria-label="Owner">
+          <Select tabIndex={tab} value={follow.owner} onChange={(e) => setFollow((f) => ({ ...f, owner: e.target.value }))} aria-label="Owner">
             <option value="">Owner…</option>
             {members.map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
-          </select>
+          </Select>
           <input tabIndex={tab} type="date" value={follow.due} onChange={(e) => setFollow((f) => ({ ...f, due: e.target.value }))} aria-label="Due date" onKeyDown={(e) => e.stopPropagation()} />
           <button type="submit" tabIndex={tab} className="pf-mini pri" disabled={!follow.title.trim() || busy !== null}>{busy === 'follow' ? 'Adding…' : 'Add'}</button>
         </div>

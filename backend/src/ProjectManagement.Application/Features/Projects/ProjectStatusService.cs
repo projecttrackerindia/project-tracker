@@ -73,7 +73,7 @@ public class ProjectStatusService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var taskInfo = rows.ToDictionary(r => r.Id);
 
         // The history of every date in this project, oldest first.
-        var history = await db.DueDateChanges.AsNoTracking().Where(c => c.ProjectId == projectId).OrderBy(c => c.CreatedAt).ThenBy(c => c.Id).ToListAsync(ct);
+        var history = await db.DueDateChanges.AsNoTracking().Where(c => c.EntityType == null && c.Field == null && c.ProjectId == projectId).OrderBy(c => c.CreatedAt).ThenBy(c => c.Id).ToListAsync(ct);
         history = history.Where(c => c.TaskId is null || taskInfo.ContainsKey(c.TaskId.Value)).ToList();   // a task the caller cannot see, or that was deleted, stays out
         DateOnly? Baseline(Guid? taskId) => history.Where(c => c.TaskId == taskId).Select(c => c.Previous ?? c.Revised).FirstOrDefault();
         static int Late(DateOnly? original, DateOnly? current) => original is { } o && current is { } c && c > o ? c.DayNumber - o.DayNumber : 0;

@@ -9,9 +9,11 @@ import { formatDate, formatDateTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { refreshWork } from '../work/workUi';
 import { useCan, useWorkspaceId } from '../../stores/auth';
-import { confirmDialog, toast } from '../../stores/ui';
+import { toast } from '../../stores/ui';
 import { NotesToActionsButton } from '../ai/Assistant';
 import { RemindMeButton } from '../reminders/RemindMe';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 const SLIDE_MS = 260;
 const STATUS_LABEL: Record<ActionItemStatus, string> = { Open: 'Open', InProgress: 'In progress', Completed: 'Completed' };
@@ -166,9 +168,8 @@ function ItemRow({ item, people, projectId, highlight, onChanged }: { item: Acti
     finally { setBusy(false); }
   };
   const remove = async () => {
-    if (!(await confirmDialog({ title: 'Delete action item?', message: `“${item.title}” will be deleted.`, confirmText: 'Delete' }))) return;
-    try { await actionItemApi.remove(projectId, item.id); toast('Action item deleted.', 'warning'); onChanged(); }
-    catch (e) { toast(errText(e, 'Could not delete the action item.'), 'error'); }
+    await deleteWithUndo({ what: 'Action item', remove: () => actionItemApi.remove(projectId, item.id), restore: () => restoreApi.actionItem(projectId, item.id),
+      onRemoved: onChanged, onRestored: onChanged });
   };
 
   if (editing) return <ItemForm item={item} people={people} projectId={projectId} onDone={() => { setEditing(false); onChanged(); }} onCancel={() => setEditing(false)} onDelete={item.can.delete ? remove : undefined} />;

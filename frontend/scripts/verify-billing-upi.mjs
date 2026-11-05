@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { cutOff, fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -25,6 +26,7 @@ const overview=()=>({plan:{code:planCode,name:planCode==='FREE'?'Free':'Business
  trialAvailable:false,plans:plans.map(p=>({...p,isCurrent:p.code===planCode})),canManage:true,paymentProvider:'upi',payment:null,seats:{perSeat:planCode!=='FREE',purchased:2,inUse:2,period:'monthly',renewal:null},policy:null,upi});
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
+await shimSelect(browser);
 try{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
  await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme','light');});

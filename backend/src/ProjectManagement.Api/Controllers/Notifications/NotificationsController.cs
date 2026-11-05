@@ -8,8 +8,26 @@ using ProjectManagement.Domain;
 namespace ProjectManagement.Api.Controllers.Notifications;
 
 [Route("api/v1/notifications")]
-public class NotificationsController(NotificationService notifications, NotificationActionService actions) : ApiControllerBase
+public class NotificationsController(NotificationService notifications, NotificationActionService actions, SmartNotificationService smart) : ApiControllerBase
 {
+    /// <summary>Smart notifications: grouping, priority per kind (urgent rings, normal stays a quiet badge) and what you muted.</summary>
+    [HttpGet("smart")]
+    public async Task<IActionResult> Smart(CancellationToken ct) => Ok(await smart.GetAsync(ct));
+
+    [HttpPut("smart")]
+    public async Task<IActionResult> SaveSmart([FromBody] SaveSmartSettingsRequest req, CancellationToken ct) => Ok(await smart.SaveAsync(req, ct));
+
+    /// <summary>Mutes a project or a thread: its notifications stay in the centre but never ring, pop up, push or e-mail.</summary>
+    [HttpPost("mutes")]
+    public async Task<IActionResult> Mute([FromBody] MuteRequest req, CancellationToken ct) => Ok(await smart.MuteAsync(req, ct));
+
+    [HttpDelete("mutes/{id:guid}")]
+    public async Task<IActionResult> Unmute(Guid id, CancellationToken ct) { await smart.UnmuteAsync(id, ct); return NoContent(); }
+
+    /// <summary>Mutes what this notification is about: its project or its thread.</summary>
+    [HttpPost("{id:guid}/mute")]
+    public async Task<IActionResult> MuteFrom(Guid id, [FromBody] MuteFromNotificationRequest req, CancellationToken ct) => Ok(await smart.MuteFromNotificationAsync(id, req, ct));
+
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] bool unreadOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] string? lane = null,
         [FromQuery] bool archived = false, [FromQuery] string? category = null, CancellationToken ct = default) =>

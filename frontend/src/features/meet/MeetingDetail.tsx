@@ -1,4 +1,6 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { delegateApi, meetingApi } from '../../api/endpoints';
@@ -164,10 +166,10 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
             </ul>
             {canManage && kind === 'project' && base.status === 'Scheduled' && (eligible.data ?? []).some((e) => e.userId && !people.some((x) => x.userId === e.userId)) && (
               <div className="mt-row mt-row-start">
-                <select className="select" aria-label="Invite someone" value={addingId} onChange={(e) => setAddingId(e.target.value)}>
+                <Select className="select" aria-label="Invite someone" value={addingId} onChange={(e) => setAddingId(e.target.value)}>
                   <option value="">Invite someone…</option>
                   {(eligible.data ?? []).filter((e) => e.userId && !people.some((x) => x.userId === e.userId)).map((e) => <option key={e.userId} value={e.userId!}>{e.name}</option>)}
-                </select>
+                </Select>
                 <button type="button" className="btn btn-ghost btn-sm" disabled={!addingId || busy === 'add'} onClick={() => void run('add', () => meetingApi.addParticipant(id, addingId), 'Invited.').then(() => setAddingId(''))}>Invite</button>
               </div>
             )}
@@ -261,7 +263,7 @@ export function MoveForm({ kind, id, start, end, zone, onDone, onCancel }: { kin
       <div className="gm-time-grid">
         <Field label="Date"><input className="input" type="date" aria-label="New date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         <Field label="Start"><input className="input" type="time" aria-label="New start" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
-        <Field label="Duration"><select className="select" aria-label="New duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>{[15, 30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select></Field>
+        <Field label="Duration"><Select className="select" aria-label="New duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>{[15, 30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}</Select></Field>
       </div>
       <p className="mt-hint">In {zone}, the zone it was scheduled in.</p>
       <div className="mt-row"><button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Keep the time</button><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void save()}>{busy && <span className="spinner" />}Save new time</button></div>
@@ -284,7 +286,7 @@ function MeetingItemsCard({ meetingRef, at }: { meetingRef: string; at: string |
           ))}
         </ul>
       )}
-      {noOwner > 0 && <p className="mz-aura"><span className="calm-orb" aria-hidden="true" />{noOwner === 1 ? 'One item has' : `${noOwner} items have`} no owner yet.</p>}
+      {noOwner > 0 && <p className="mz-aura"><SiriOrb className="calm-orb" />{noOwner === 1 ? 'One item has' : `${noOwner} items have`} no owner yet.</p>}
     </CalmCard>
   );
 }

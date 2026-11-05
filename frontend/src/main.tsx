@@ -2,6 +2,7 @@ import './lib/trustedTypesInit';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { installStableTabs } from './lib/stableTabs';
+import { installCapture } from './features/feedback/capture';
 import { installKeyboardViewport } from './lib/keyboardViewport';
 import { QueryClientProvider } from '@tanstack/react-query';
 import '@fontsource-variable/inter';
@@ -48,10 +49,12 @@ import { InstallBanner } from './components/install/InstallBanner';
 import { startResponsiveTables } from './lib/responsiveTables';
 import { startNativeApp } from './lib/native';
 import { startDesktopApp } from './lib/desktop';
+import { startTelemetry } from './lib/telemetry';
 import { startUpdateWatch, watchServiceWorker } from './lib/updateWatch';
 
 startNativeApp();
 startDesktopApp();
+startTelemetry();
 
 document.documentElement.setAttribute('data-theme', useUi.getState().theme);
 
@@ -79,6 +82,7 @@ window.addEventListener('unhandledrejection', (e) => {
 if (document.documentElement.classList.contains('app')) document.getElementById('site')?.remove();
 
 installStableTabs();
+installCapture();
 installKeyboardViewport();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -235,19 +235,19 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
       {w.source?.meetingRef && <FromMeetingCard source={w.source} createdBy={w.reporter?.name} />}
       <div className="wkp-tiles">
         <Tile label="Status" value={w.status} tone={w.category === 'Done' ? 'done' : w.category === 'Active' ? 'active' : undefined} disabled={!editable}>
-          <select aria-label="Status" value={current} onChange={(e) => setStatus(e.target.value)} disabled={!editable}>
+          <Select aria-label="Status" value={current} onChange={(e) => setStatus(e.target.value)} disabled={!editable}>
             {statusOptions.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
+          </Select>
         </Tile>
         <Tile label="Priority" value={<><span className={`wk-dot p-${w.priority}`} aria-hidden="true" />{w.priority}</>} disabled={!editable}>
-          <select aria-label="Priority" value={w.priority} onChange={(e) => void save({ priority: e.target.value as Priority })} disabled={!editable}><PriorityOptions /></select>
+          <Select aria-label="Priority" value={w.priority} onChange={(e) => void save({ priority: e.target.value as Priority })} disabled={!editable}><PriorityOptions /></Select>
         </Tile>
         <Tile label="Owner" value={w.assignee ? (w.assignee.id === me?.id ? `${w.assignee.name.split(' ')[0]} (you)` : w.assignee.name) : 'Nobody yet'} disabled={!editable}>
-          <select aria-label="Owner" value={w.assignee?.id ?? ''} onChange={(e) => void save({ assigneeId: e.target.value || null })} disabled={!editable}>
+          <Select aria-label="Owner" value={w.assignee?.id ?? ''} onChange={(e) => void save({ assigneeId: e.target.value || null })} disabled={!editable}>
             <option value="">Nobody yet</option>
             {w.assignee && !people.some((p) => p.userId === w.assignee!.id) && <option value={w.assignee.id}>{w.assignee.name}</option>}
             {people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}{m.userId === me?.id ? ' (you)' : ''}</option>)}
-          </select>
+          </Select>
         </Tile>
         <Tile label="Due" value={<span data-testid="wkp-due">{dueValue}</span>} tone={w.isOverdue ? 'late' : undefined} disabled={!editable}>
           <input type="date" aria-label="Due date" value={w.dueDate ?? ''} disabled={!editable} onChange={(e) => setDue(e.target.value || null)} />
@@ -416,9 +416,9 @@ function TicketFields({ w, editable, save }: { w: WorkItemDetail; editable: bool
       <div><dt>Channel</dt><dd><span className={`wkp-channel c-${channel}`}>{CHANNEL_LABEL[channel] ?? channel}</span></dd></div>
       <div><dt>Type</dt><dd className="wkp-inline">
         <span>{d.workType ?? '—'}</span>
-        {editable && <select aria-label="Work type" value={d.workTypeId ?? ''} onChange={(e) => void save({ workTypeId: e.target.value })}>
+        {editable && <Select aria-label="Work type" value={d.workTypeId ?? ''} onChange={(e) => void save({ workTypeId: e.target.value })}>
           {(types.data ?? []).filter((t) => t.isActive || t.id === d.workTypeId).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>}
+        </Select>}
       </dd></div>
       <div><dt>Project</dt><dd className="wkp-inline">
         <span>{d.relatedProject?.name ?? 'None'}</span>

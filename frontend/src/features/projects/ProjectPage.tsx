@@ -1,4 +1,5 @@
 import { useQueries } from '@tanstack/react-query';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { CalmJourney, calmStepPos, type CalmStep } from '../../components/calm';
 import { openSchedule } from '../meet/scheduleStore';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -21,6 +22,7 @@ import { RiskModal, useAi, useAssistant } from '../ai/Assistant';
 import { useChatEnabled } from '../chat/ProjectChat';
 import { useProjectChat } from '../chat/projectChatStore';
 import { ImportModal } from '../import/ImportModal';
+import { templateApi } from '../recurring/api';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
 import { CalmProject } from './CalmProject';
@@ -44,6 +46,8 @@ import '../agent/agent.css';
 import './projects.css';
 import './projectsHome.css';
 import './projectPage.css';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 export type ProjectTab = 'overview' | 'work' | 'docs' | 'time' | 'activity';
 const TABS: ProjectTab[] = ['overview', 'work', 'docs', 'time', 'activity'];
@@ -150,9 +154,12 @@ export function ProjectPage() {
   const drop = (key: string) => setParams((x) => { const n = new URLSearchParams(x); n.delete(key); return n; }, { replace: true });
   const addWork = canCreate && seeTasks && !archived;
   const remove = async () => {
-    if (!(await confirmDialog({ title: 'Delete project?', message: `Deleting “${p.name}” will also remove all of its tasks.` }))) return;
-    try { await projectApi.remove(p.id); toast('Project deleted.', 'warning'); await invalidateWorkspace(wid); nav('/work/projects'); }
-    catch (e) { toast(errText(e, 'Could not delete the project.'), 'error'); }
+    await deleteWithUndo({ what: 'Project', remove: () => projectApi.remove(p.id), restore: () => restoreApi.project(p.id),
+      onRemoved: () => { void invalidateWorkspace(wid); nav('/work/projects'); }, onRestored: () => { void invalidateWorkspace(wid); nav(`/work/projects/${p.id}`); } });
+  };
+  const saveTemplate = async () => {
+    try { await templateApi.saveProject(p.id); toast('Saved as a template. Find it in + New › From template…'); await invalidateWorkspace(wid, 'templates'); }
+    catch (e) { toast(errText(e, 'Could not save the template.'), 'error'); }
   };
   const group = p.projectGroupName ?? p.teamName;
   const grad = passGradient(p);
@@ -174,6 +181,7 @@ export function ProjectPage() {
             { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
             { label: 'Edit details', icon: 'edit', hint: 'Every field: priority, status, group, type, delivery', hidden: !canEdit, onSelect: () => setEditing(true) },
             { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
+            { label: 'Save as template', icon: 'copy', hint: 'Sections, tasks, checklists and owners, with dates relative to the start', hidden: !canEdit, onSelect: () => void saveTemplate() },
             { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
             { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },
             pinItem(pins, p.id),
@@ -458,7 +466,7 @@ function AiLine({ detail }: { detail: ProjectDetail }) {
   const ask = (q: string) => useAssistant.getState().ask(q);
   return (
     <div className="pp-ai" role="note" aria-label="From the assistant">
-      <span className="pa-orb" aria-hidden="true" />
+      <SiriOrb className="pa-orb" />
       <span className="pp-ai-text">{text}</span>
       {ai && (gap
         ? <button type="button" className="pa-btn sm" onClick={() => ask(`Draft a short message asking for the ${plural(pending, 'pending sign-off')} on project ${p.name} (${p.key}), stage by stage, with who signs each.`)}>Request {plural(pending, 'sign-off')}</button>

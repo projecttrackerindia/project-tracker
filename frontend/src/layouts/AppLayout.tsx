@@ -23,7 +23,7 @@ import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
 import { AlertsSetup } from '../features/notifications/AlertsSetup';
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
 import { firstTime, kindForType } from '../lib/attention';
-import { announce } from '../features/notifications/centre/announce';
+import { announce, isQuiet } from '../features/notifications/centre/announce';
 import { getAlertPrefs, isMuted } from '../features/notifications/centre/prefs';
 import { BadgeSync, NotificationCentreHost } from '../features/notifications/centre/NotificationCentre';
 import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
@@ -42,6 +42,8 @@ import '../components/shell/shell.css';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
+import { AuraSearchHost } from '../components/aura/AuraSearch';
+import { ExtensionReasonHost } from '../features/dates/ExtensionReason';
 import { OfflineSync } from '../features/offline/OfflineSync';
 import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
 
@@ -114,7 +116,7 @@ function DesktopNotifier() {
         const times = page.items.map(deliveryTime).filter((at) => Number.isFinite(at) && at <= now);
         const last = read() || openedAt;
         const newest = Math.max(last, ...times, 0);
-        const fresh = page.items.filter((x) => x.browser && deliveryTime(x) > last && deliveryTime(x) <= now && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
+        const fresh = page.items.filter((x) => x.browser && !isQuiet(x) && deliveryTime(x) > last && deliveryTime(x) <= now && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
           const played = announce(n);
@@ -207,6 +209,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {/* The floating + (bottom right; above the tab bar on a phone) and ⌘K for the Aura panel (the header orb). No bottom Aura capsule. */}
       {!admin && !(phone && conversation) && <Fab />}
       {!admin && <AuraKeys />}
+      {!admin && <AuraSearchHost />}
+      <ExtensionReasonHost />
       {!admin && <ApprovalRequestHost />}
       {!admin && CalmCreateHost && <Suspense fallback={null}><CalmCreateHost /></Suspense>}
       {!admin && <WhenFirstOpened open={newOpen}><NewSheetHost /></WhenFirstOpened>}

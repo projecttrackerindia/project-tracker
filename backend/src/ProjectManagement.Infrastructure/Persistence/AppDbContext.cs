@@ -15,6 +15,10 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
 {
     public DbSet<PlannedLeave> PlannedLeaves => Set<PlannedLeave>();
     public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+    public DbSet<NotificationTuning> NotificationTunings => Set<NotificationTuning>();
+    public DbSet<NotificationMute> NotificationMutes => Set<NotificationMute>();
+    public DbSet<ProblemReport> ProblemReports => Set<ProblemReport>();
+    public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<ApprovalRequestStep> ApprovalRequestSteps => Set<ApprovalRequestStep>();
     public DbSet<ApprovalRequestEvent> ApprovalRequestEvents => Set<ApprovalRequestEvent>();
     public DbSet<ApprovalPolicy> ApprovalPolicies => Set<ApprovalPolicy>();
@@ -229,6 +233,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<ChatPollVote> ChatPollVotes => Set<ChatPollVote>();
     public DbSet<ChatDeviceKey> ChatDeviceKeys => Set<ChatDeviceKey>();
     public DbSet<ChatKeyBackup> ChatKeyBackups => Set<ChatKeyBackup>();
+    public DbSet<TaskRecurrence> TaskRecurrences => Set<TaskRecurrence>();
+    public DbSet<TaskOccurrence> TaskOccurrences => Set<TaskOccurrence>();
+    public DbSet<WorkTemplate> WorkTemplates => Set<WorkTemplate>();
     public DbSet<ChatUserStatus> ChatUserStatuses => Set<ChatUserStatus>();
     public DbSet<AiUserProfile> AiUserProfiles => Set<AiUserProfile>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
@@ -371,6 +378,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigurePlatformViews(b);
         ConfigureAttendance(b);
         ConfigureApprovalsAndNotes(b);
+        ConfigureNotifySmart(b);
         ApplyQueryFilters(b);
     }
 }

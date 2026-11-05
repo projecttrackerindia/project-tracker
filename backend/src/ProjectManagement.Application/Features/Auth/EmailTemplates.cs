@@ -38,8 +38,9 @@ public static class EmailTemplates
         Render(title, greeting, $"<p class=\"tx2\" style=\"margin:0 0 22px;font-size:15px;line-height:25px;color:#4a4268\">{Enc(body)}</p>", cta, link, footer, preheader, unsubscribeUrl, kind, details);
 
     /// <summary>A message whose body the caller has already built as HTML (every value in it encoded by the caller).</summary>
-    public static string Rich(string title, string greeting, string bodyHtml, string cta, string link, string? footer = null, string? preheader = null, EmailKind kind = EmailKind.Update) =>
-        Render(title, greeting, bodyHtml, cta, link, footer, preheader, null, kind, null);
+    public static string Rich(string title, string greeting, string bodyHtml, string cta, string link, string? footer = null, string? preheader = null, EmailKind kind = EmailKind.Update,
+        string? unsubscribeUrl = null) =>
+        Render(title, greeting, bodyHtml, cta, link, footer, preheader, unsubscribeUrl, kind, null);
 
     /// <summary>Several short updates in one message, each with its own link: used instead of many separate e-mails.</summary>
     public static string Digest(string title, string greeting, IReadOnlyList<(string Title, string? Body, string Link)> items, string cta, string link, string? footer, string? preheader, string? unsubscribeUrl)

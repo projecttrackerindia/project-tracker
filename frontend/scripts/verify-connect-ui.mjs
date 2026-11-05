@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { appCsp } from './lib/csp.mjs';
+import { darkPopups } from './lib/popups.mjs';
 
 // Connected apps: the consent page an assistant (Claude, ChatGPT) sends people to, read-only versus changes, the return to the app, a
 // refusal for an unregistered return address, and Settings › Connected apps with disconnect. Built frontend with synthetic API fixtures only.
@@ -85,6 +86,16 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
   await page.screenshot({ path: path.join(out, 'consent-390.png') });
   checks.push('phone');
+  // Round 4: the calm consent card at 1440, 1920 and 390, light and dark; the workspace picker is themed (no white popup in dark).
+  const r4 = path.resolve('test-results/calm-round4b'); await fs.mkdir(r4, { recursive: true });
+  for (const theme of ['light', 'dark']) for (const [w, h] of [[1440, 900], [1920, 1080], [390, 844]]) {
+    page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message)); await page.addInitScript((t) => localStorage.setItem('pm_theme', t), theme);
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto(`${origin}/preview-org/connect?${q}`); await page.getByRole('button', { name: 'Allow and connect' }).waitFor();
+    assert.equal(await page.locator('main select:visible, .cn-card select:visible').count(), 0, 'no native select');
+    await page.waitForTimeout(400); await page.screenshot({ path: path.join(r4, `connect-${w}-${theme}.png`) });
+    if (theme === 'dark' && w === 1440) checks.push(`connect dark: ${await darkPopups(page, 'connect dark', assert)} popups, none white`);
+  }
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ checks, errors }));
 } finally { await browser.close(); }

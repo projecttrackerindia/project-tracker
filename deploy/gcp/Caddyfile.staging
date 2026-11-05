@@ -1,0 +1,27 @@
+# Staging: same as production's Caddyfile, but every response says "do not index" and robots.txt disallows everything,
+# so search engines never list staging.projecttracker.in.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	header {
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		-Server
+	}
+	handle /robots.txt {
+		respond "User-agent: *
+Disallow: /
+" 200
+	}
+	request_body {
+		max_size 520MB
+	}
+	reverse_proxy web:80 {
+		flush_interval -1
+		header_up X-Forwarded-Proto {scheme}
+		# The web image's own headers (including its robots meta for public pages) are overridden to noindex.
+		header_down X-Robots-Tag "noindex, nofollow, noarchive"
+	}
+}

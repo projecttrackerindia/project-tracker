@@ -100,3 +100,23 @@
 .cdq-work .dq-inc .dq-war { background: var(--calm-red); color: #fff; }
 .cdq-work .dq-inc .dq-live { background: var(--calm-red); }
 .cdq-dl dd > .dq-own-av { flex: 0 0 22px; max-width: 22px; min-width: 22px; padding: 0; overflow: hidden; font-size: 9px; }
+
+/* Round 4 (demo 07): Mine / Team / Unassigned tabs with counts, the SLA chip by the title, Aura's summary box under it. */
+.cdq-work .dq-seg button { display: inline-flex; align-items: center; gap: 6px; }
+.cdq-work .dq-seg button.quiet:not(.on) { color: var(--calm-ink3-text); }
+.dq-tabn { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--calm-ink3-text); }
+.dq-seg button.on .dq-tabn { color: inherit; }
+.cdq-titlerow { gap: 10px; align-items: flex-start; }
+.cdq-titlerow .dq-title { flex: 1; min-width: 0; }
+.cdq-sla { flex: none; margin-top: 3px; padding: 3px 10px; border-radius: 99px; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; background: var(--calm-fill); color: var(--calm-ink2); }
+.cdq-sla.warn { background: color-mix(in srgb, var(--calm-orange, #ff9f0a) 16%, transparent); color: var(--calm-orange-text, #b25e00); }
+.cdq-sla.late { background: color-mix(in srgb, var(--calm-red) 14%, transparent); color: var(--calm-red-text); }
+.cdq-aura { display: flex; gap: 10px; align-items: flex-start; margin: 0 18px 6px; padding: 12px 14px; border-radius: 14px; background: var(--calm-accent-soft); color: var(--calm-ink); }
+.cdq-aura p { margin: 0; font-size: 14px; line-height: 1.45; }
+.cdq-aura .dq-orb { flex: none; margin-top: 2px; }
+/* The incident card sits in the flow above the panes and the panes take what is left of the screen, so the page itself never scrolls
+   at desktop sizes and nothing slides under the header. */
+.cdq-work .dq-inc { position: relative; z-index: 0; }
+.cdq-work .dq-cols { height: calc(100vh - 256px); }
+.cdq-work.has-inc .dq-cols { height: calc(100vh - 320px); }
+@media (max-width: 1180px) { .cdq-work.has-inc .dq-cols { height: auto; } }

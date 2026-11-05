@@ -11,7 +11,10 @@ import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { refreshWork } from '../work/workUi';
 import { shortDay } from '../calm/createSheets';
+import { RepeatField } from '../recurring/RepeatField';
+import { templateApi } from '../recurring/api';
 import { WorkItemPanel } from '../work/WorkItemPanel';
+import { ActivityHistory, PanelTabs } from '../dates/ActivityHistory';
 import '../calm/calm-pages.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -32,6 +35,7 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
   const running = useWsQuery(['timer'], () => timeApi.running(), { enabled: on, staleTime: 30_000, retry: false });
   const [saved, setSaved] = useState(false);
   const [item, setItem] = useState('');
+  const [tab, setTab] = useState<'details' | 'activity'>('details');
   const flash = () => { setSaved(true); window.setTimeout(() => setSaved(false), 1600); };
   const t = q.data?.task;
   const key = [wid, 'task', taskId, 'checklist'];
@@ -75,6 +79,10 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
             <WorkItemPanel id={t.id} onClose={onClose} embedded />
           </div>
           <div className="ts-col">
+            {!t.parentTaskId && <div className="ts-repeat"><span>Repeat</span><span><RepeatField taskId={t.id} dueDate={t.dueDate} canEdit={t.canEdit} /></span></div>}
+            {!t.parentTaskId && <div className="ts-tpl"><button type="button" className="cp-lk bl" data-testid="save-task-template" onClick={() => void templateApi.saveTask(t.id).then(() => toast('Saved as a task template.'), () => toast('Could not save the template.', 'error'))}>Save as template</button></div>}
+            <PanelTabs tab={tab} setTab={setTab} />
+            {tab === 'activity' ? <ActivityHistory type="task" id={t.id} /> : <>
             <div className="ts-lab" style={{ marginTop: 0 }}>Checklist · {cl.data?.done ?? 0} of {cl.data?.total ?? items.length}</div>
             {items.length === 0 && <p className="calm-week-note">No checklist yet.</p>}
             {items.map((i) => (
@@ -100,6 +108,7 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
               </Link>
             ))}
             {left != null && t.statusCategory !== 'Done' && <div className="ts-aura"><CalmOrb /><span>{left > 0 ? `About ${hm(left)} left${t.dueDate ? `, due ${shortDay(t.dueDate)}` : ''}.` : `${hm(loggedMin - estMin)} over the ${hm(estMin)} estimate.`}</span></div>}
+            </>}
           </div>
         </div>
       )}
@@ -112,10 +121,14 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
  * Work panel (status, owner, dates, priority, comments, history), every field edited in place and saved optimistically. A save refreshes
  * the shared work, plan sheet and action item queries, so the change shows everywhere at once.
  */
-export function CalmWorkSheet({ id, title, onClose }: { id: string | null; title?: string; onClose: () => void }) {
+export function CalmWorkSheet({ id, title, onClose, kind = 'task' }: { id: string | null; title?: string; onClose: () => void; kind?: 'task' | 'actionitem' }) {
+  const [tab, setTab] = useState<'details' | 'activity'>('details');
   return (
-    <CalmSheet open={!!id} onClose={onClose} width={720} label="Work item" title={title ?? 'Details'}>
-      {id && <div className="cws-body" data-testid="calm-work-sheet"><WorkItemPanel id={id} onClose={onClose} embedded /></div>}
+    <CalmSheet open={!!id} onClose={() => { setTab('details'); onClose(); }} width={720} label="Work item" title={title ?? 'Details'}>
+      {id && <div className="cws-body" data-testid="calm-work-sheet">
+        <PanelTabs tab={tab} setTab={setTab} />
+        {tab === 'activity' ? <ActivityHistory type={kind} id={id} /> : <WorkItemPanel id={id} onClose={onClose} embedded />}
+      </div>}
     </CalmSheet>
   );
 }

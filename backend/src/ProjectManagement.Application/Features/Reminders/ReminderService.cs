@@ -56,8 +56,10 @@ public record ReminderTargetInfo(ReminderTarget Type, Guid Id, string Key, strin
 /// else; see what is coming and what needs them now; snooze, finish, restore. The scheduler (<see cref="ReminderEngine"/>) does the firing.
 /// </summary>
 public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, EntitlementService entitlements,
-    PermissionService permissions, ProjectAccess access)
+    PermissionService permissions, ProjectAccess access, ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices notices)
 {
+    private static ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget Notice(Reminder r) =>
+        new(r.Id, $"Reminder “{(r.Title.Length > 60 ? r.Title[..60] + "…" : r.Title)}”", "/reminders", NotificationType.Reminder);
     public const int FreeOpenLimit = 50, FreeRecurringLimit = 5;
     private static readonly ReminderSource[] Automatic = [ReminderSource.DueDate, ReminderSource.Overdue, ReminderSource.Escalation];
 
@@ -132,6 +134,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
 
         db.Reminders.Add(r);
         if (r.Source == ReminderSource.Nudge) recorder.Audit("reminder.nudge", "Reminder", r.Id, null, new { to = forUser, target = target?.Key });
+        recorder.Audit("reminder.created", "Reminder", r.Id, null, new { r.Title });
         await db.SaveChangesAsync(ct);
         return Dto(r, await NamesAsync([r], ct));
     }
@@ -142,6 +145,7 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         if (Automatic.Contains(r.Source)) throw new ConflictException("Automatic reminders follow the work's due date. Snooze or dismiss them instead.", "REMINDER_AUTOMATIC");
         if (r.Source == ReminderSource.Meeting) throw new ConflictException("Meeting reminders follow the meeting. Snooze or dismiss them instead.", "REMINDER_AUTOMATIC");
         var target = r.TargetType != ReminderTarget.None && r.TargetId is { } t ? await ResolveTargetAsync(r.TargetType, t, ct) : null;
+        var (oldTitle, oldNote, oldAt, oldRule) = (r.Title, r.Note, r.NextFireAt, r.Recurrence);
         r.Title = Clean(req.Title, 200) ?? r.Title;
         r.Note = Clean(req.Note, 1000);
         if (req.OnlyIfOpen is { } o) r.OnlyIfOpen = o;
@@ -154,6 +158,11 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
             if (!wasRecurring && r.Recurrence is not null) await EnsureWithinLimitsAsync(ctx.RequireUserId(), true, ct, excluding: r.Id);
         }
         r.UpdatedAt = clock.Now; r.UpdatedBy = ctx.UserId;
+        // History: what this save changed, old → new.
+        new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Title", oldTitle, r.Title).Add("Note", oldNote, r.Note, 60)
+            .Add("When", oldAt?.ToString("yyyy-MM-dd HH:mm 'UTC'"), r.NextFireAt?.ToString("yyyy-MM-dd HH:mm 'UTC'")).Add("Repeats", oldRule, r.Recurrence)
+            .Record(recorder, "reminder", "Reminder", r.Id);
+        if (oldAt != r.NextFireAt) await notices.TellAsync(Notice(r), "time changed", [r.UserId, r.CreatedBy], ct);
         await db.SaveChangesAsync(ct);
         return Dto(r, await NamesAsync([r], ct));
     }
@@ -297,9 +306,33 @@ public class ReminderService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     {
         var uid = ctx.RequireUserId();
         var r = await db.Reminders.FirstOrDefaultAsync(x => x.Id == id && (x.UserId == uid || x.CreatedBy == uid), ct) ?? throw new NotFoundException("Reminder not found.");
-        if (r.Source == ReminderSource.Personal || r.CreatedBy == uid && r.UserId != uid && r.State == ReminderState.Scheduled) db.Reminders.Remove(r);
+        // A person's own reminder (or one they set for someone else that has not gone off) is deleted softly, so Undo can bring it back.
+        if (r.Source == ReminderSource.Personal || r.CreatedBy == uid && r.UserId != uid && r.State == ReminderState.Scheduled)
+        {
+            r.State = ReminderState.Cancelled; r.LockToken = ReminderSync.Deleted; r.LockedUntil = null; r.ActionTokenHash = null;
+            r.UpdatedAt = clock.Now; r.UpdatedBy = uid;
+            recorder.Audit("reminder.deleted", "Reminder", r.Id, new { r.Title });
+            await notices.TellAsync(Notice(r), "deleted", [r.UserId, r.CreatedBy], ct);
+        }
         else { r.State = ReminderState.Cancelled; r.NextFireAt = null; r.ActionTokenHash = null; }
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Undo of a delete: the reminder runs again (or waits for the person, when its time passed meanwhile).</summary>
+    public async Task<ReminderDto> RestoreAsync(Guid id, CancellationToken ct = default)
+    {
+        var uid = ctx.RequireUserId();
+        var r = await db.Reminders.FirstOrDefaultAsync(x => x.Id == id && (x.UserId == uid || x.CreatedBy == uid) && x.State == ReminderState.Cancelled && x.LockToken == ReminderSync.Deleted, ct)
+            ?? throw new NotFoundException("Reminder not found.");
+        var now = clock.Now;
+        r.LockToken = null;
+        if (r.NextFireAt is { } next && next > now) r.State = ReminderState.Scheduled;
+        else { r.State = ReminderState.Fired; r.LastFiredAt ??= now; }
+        r.UpdatedAt = now; r.UpdatedBy = uid;
+        recorder.Audit("reminder.restored", "Reminder", r.Id, null, new { r.Title });
+        await notices.TellAsync(Notice(r), "restored", [r.UserId, r.CreatedBy], ct);
+        await db.SaveChangesAsync(ct);
+        return Dto(r, await NamesAsync([r], ct));
     }
 
     // ------------------------------------------------------------------ scheduling

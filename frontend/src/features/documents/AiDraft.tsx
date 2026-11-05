@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { Icon, type IconName } from '../../components/Icon';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
@@ -146,24 +147,24 @@ export function AiDraftDialog({ projects, projectId: initialProject, onUse, onCl
 
           {(source === 'meeting' || source === 'tasks' || source === 'template') && projects.length > 0 && (
             <label className="field"><span>Project{source === 'template' ? ' (optional: its work fills the sections)' : ''}</span>
-              <select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setMeetingId(''); }}>
+              <Select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setMeetingId(''); }}>
                 {source === 'template' && <option value="">No project</option>}
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select></label>
+              </Select></label>
           )}
           {source === 'meeting' && (
             <label className="field"><span>Meeting</span>
-              <select className="input" value={meetingId} onChange={(e) => setMeetingId(e.target.value)} disabled={meetings.isLoading}>
+              <Select className="input" value={meetingId} onChange={(e) => setMeetingId(e.target.value)} disabled={meetings.isLoading}>
                 <option value="">{meetings.isLoading ? 'Loading meetings…' : pastMeetings.length ? 'Choose a meeting' : 'No meetings in this project'}</option>
                 {pastMeetings.map((m) => <option key={m.id} value={m.id}>{m.title} · {formatDateTime(m.startTime)}</option>)}
-              </select></label>
+              </Select></label>
           )}
           {source === 'template' && (
             <label className="field"><span>Template</span>
-              <select className="input" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+              <Select className="input" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
                 <option value="">Choose a template</option>
                 {templates.map((t) => <option key={t.id} value={t.id}>{t.icon} {t.name} · {t.sections.length} sections</option>)}
-              </select></label>
+              </Select></label>
           )}
           {source === 'files' && (
             <div className="field"><span>Files (up to 5)</span>
@@ -177,7 +178,7 @@ export function AiDraftDialog({ projects, projectId: initialProject, onUse, onCl
             <textarea className="input" rows={source === 'prompt' ? 4 : 2} maxLength={2000} value={prompt} onChange={(e) => setPrompt(e.target.value)} autoFocus={source === 'prompt'}
               placeholder={source === 'prompt' ? 'e.g. How we hand over a finished site to the customer: checks, documents, sign-off, who does what' : 'e.g. Keep it to one page; it is for the customer'} /></label>
           <label className="field aid-lang"><span>Write in</span>
-            <select className="input" value={language} onChange={(e) => setLanguage(e.target.value as AiLanguage)}>{LANGUAGES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+            <Select className="input" value={language} onChange={(e) => setLanguage(e.target.value as AiLanguage)}>{LANGUAGES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</Select></label>
         </div>
       )}
     </Modal>

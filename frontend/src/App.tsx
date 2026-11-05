@@ -104,10 +104,12 @@ const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
 const UnsubscribePage = page(() => import('./features/auth/UnsubscribePage'), 'UnsubscribePage');
 const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePage');
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
+const MiniWindow = lazy(() => import('./features/desktop/MiniWindow'));
 const SecretLinkPage = page(() => import('./features/vault/SecretLinkPage'), 'SecretLinkPage');
 const PublicStatusPage = page(() => import('./features/platform/PublicStatusPage'), 'PublicStatusPage');
 /** The public landing page: "/" for someone signed out, and /welcome for anyone. */
 const LandingPage = lazy(() => import('./features/landing/LandingPage'));
+const FeedbackSheets = lazy(() => import('./features/feedback/Feedback'));
 const landingFallback = <div style={{ minHeight: '100vh', background: '#000' }} />;
 const Landing = () => <Suspense fallback={landingFallback}><LandingPage /></Suspense>;
 /** "Try it free" on the website: the sign-up page, with whatever the link carried. */
@@ -432,6 +434,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       <Route path="/privacy" element={<LegalPage type="privacy" />} />
       {/* Done / snooze from a reminder e-mail or push notification: the link's one-time key stands in for signing in. */}
       <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><ReminderActionPage /></Suspense>} />
+      <Route path="/mini" element={<Suspense fallback={null}><MiniWindow /></Suspense>} />
       {/* A one-time secret from the vault: opened without signing in; the key is in the link's #fragment and never reaches a server. */}
       <Route path="/s/:token" element={<Suspense fallback={<PageLoader />}><SecretLinkPage /></Suspense>} />
       {/* A workspace's public API status page: no account needed. */}
@@ -615,6 +618,8 @@ export default function App() {
       {/* Outside the router and the error screen: a newer release is worth knowing about everywhere, signed in or not, and most of all when
           a page of the old one fails to load. */}
       <UpdateBanner />
+      {/* Report a problem and What's new: sheets opened from anywhere (the ⋯ menu, Settings, a shake), loaded after the page. */}
+      <Suspense fallback={null}><FeedbackSheets /></Suspense>
     </>
   );
 }

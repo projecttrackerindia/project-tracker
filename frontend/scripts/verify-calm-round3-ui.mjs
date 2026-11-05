@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
+import { darkPopups } from './lib/popups.mjs';
 
 // The calm build of Today, My work and Projects (demo shots 01-03, 05, 08-10, 33-36, 40, 42): Today in its morning, afternoon and evening
 // states with Start → timer, the insight sheet and Reminders · N today ticked in place; My work's grouped list and right panel; Projects
@@ -84,7 +85,7 @@ const docs = { items: [{ id: g(960), key: 'DOC-1', number: 1, title: 'Atlas paym
 
 const errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
-const ALLOWED = [/^POST \/api\/v1\/tasks\/[^/]+\/timer\/start$/, /^POST \/api\/v1\/timer\/stop$/, /^POST \/api\/v1\/reminders\/[^/]+\/done$/, /^PATCH \/api\/v1\/work-items\/[^/]+$/, /^POST \/api\/v1\/work-items$/, /^POST \/api\/v1\/projects$/, /^PUT \/api\/v1\/tasks\/[^/]+\/checklist\/[^/]+$/, /^PATCH \/api\/v1\/tasks\/[^/]+\/move$/, /^POST \/api\/v1\/me\/attendance\/check-in$/, /^POST \/api\/v1\/tasks\/[^/]+\/checklist$/];
+const ALLOWED = [/^PUT \/api\/v1\/tasks\/[^/]+\/recurrence$/, /^POST \/api\/v1\/tasks\/[^/]+\/timer\/start$/, /^POST \/api\/v1\/timer\/stop$/, /^POST \/api\/v1\/reminders\/[^/]+\/done$/, /^PATCH \/api\/v1\/work-items\/[^/]+$/, /^POST \/api\/v1\/work-items$/, /^POST \/api\/v1\/projects$/, /^PUT \/api\/v1\/tasks\/[^/]+\/checklist\/[^/]+$/, /^PATCH \/api\/v1\/tasks\/[^/]+\/move$/, /^POST \/api\/v1\/me\/attendance\/check-in$/, /^POST \/api\/v1\/tasks\/[^/]+\/checklist$/];
 const make = async (theme, writes, opts = {}) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
   await ctx.clock.setFixedTime(new Date(at(today, opts.hh ?? 13, opts.mm ?? 52)));
@@ -174,6 +175,7 @@ try {
       assert.equal(await page.getByRole('button', { name: /More on Today/ }).count(), 0, 'no ⋯ bubble on Today');
       assert.equal(await page.locator('a[href*="classic=1"]').count(), 0, `${p}: no link to a classic view`);
       if (phone) await fitsPhoneX(page, `${p} ${tag}`);
+      if (theme === 'dark' && width === 1440) checks.push(`${p} dark: ${await darkPopups(page, `${p} dark`, assert)} popups, none white`);
       await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `${p === '/' ? 'today' : 'mywork'}-${tag}.png`) });
     }
     checks.push(`${tag}: Today and My work rails, no ⋯ bubble, no classic links`);
@@ -214,7 +216,7 @@ try {
     if (theme === 'light') {
       await ts.getByLabel('Title').fill('Refund webhook retries v2'); await ts.getByLabel('Title').press('Enter'); await ts.getByLabel('Title').blur();
       await page.waitForTimeout(400);
-      await ts.getByLabel('Priority').selectOption('Low', { force: true });
+      await ts.getByRole('combobox', { name: 'Priority' }).click(); await page.getByRole('option', { name: 'Low', exact: true }).click();
       await ts.getByLabel('Start date').fill(day(-2));
       await ts.getByLabel('Due date').fill(day(-1));
       await page.waitForTimeout(500);
@@ -227,6 +229,24 @@ try {
     }
     if (phone) await fitsPhoneX(page, `task sheet ${tag}`);
     await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `task-sheet-${tag}.png`) });
+    // Repeat: the isolated RepeatField in the task sheet opens a small editor (weekly on days, ends after N) that saves through PUT /recurrence.
+    {
+      const rep = page.getByTestId('repeat-field'); await rep.scrollIntoViewIfNeeded(); await rep.click();
+      await page.getByLabel('How often').selectOption('weekly');
+      await page.getByRole('group', { name: 'On these days' }).getByRole('button', { name: 'Thu' }).click();
+      await page.getByLabel('Ends').selectOption('after');
+      const recurDir = path.resolve('test-results/recurring'); await fs.mkdir(recurDir, { recursive: true });
+      if (phone) await fitsPhoneX(page, `repeat ${tag}`);
+      await page.waitForTimeout(1200); await page.screenshot({ path: path.join(recurDir, `repeat-field-${tag}.png`), animations: 'disabled' });
+      await page.getByRole('dialog', { name: 'Repeat' }).getByRole('button', { name: 'Done' }).click(); await page.waitForTimeout(400);
+      const put = writes.find((x) => /^PUT \/api\/v1\/tasks\/[^/]+\/recurrence$/.test(x.w));
+      assert.ok(put, `${tag}: repeat saves through PUT /recurrence`);
+      assert.equal(put.body.rule.frequency, 'weekly'); assert.equal(put.body.rule.endAfter, 10);
+      writes.length = 0;
+      checks.push(`${tag}: Repeat field sets a weekly rule that ends after N`);
+    }
+    // Dark sweep last: its Escape presses can close the task sheet.
+    if (theme === 'dark' && width === 1440) checks.push(`task sheet dark: ${await darkPopups(page, 'task sheet dark', assert)} popups, none white`);
     await ctx.close();
   }
 } finally { await browser.close(); }

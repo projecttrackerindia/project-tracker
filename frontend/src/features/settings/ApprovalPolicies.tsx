@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { CalmCard } from '../../components/calm';
@@ -42,7 +43,7 @@ export function ApprovalPoliciesPane() {
           </ol>
           <label className="cs-add">
             <span className="sr-only">Add an approver for {label(p.type)}</span>
-            <select value="" onChange={(e) => {
+            <Select value="" onChange={(e) => {
               const v = e.target.value; if (!v) return;
               const m = v.startsWith('person:') ? members.data?.find((x) => x.userId === v.slice(7)) : null;
               void setSteps(p, [...p.steps, m ? { role: m.displayName, userId: m.userId } : { role: v.slice(5) }]);
@@ -50,7 +51,7 @@ export function ApprovalPoliciesPane() {
               <option value="">+ Add a step</option>
               <optgroup label="By role">{ROLES.map((r) => <option key={r} value={`role:${r}`}>{r}</option>)}</optgroup>
               <optgroup label="A person">{(members.data ?? []).map((m) => <option key={m.userId} value={`person:${m.userId}`}>{m.displayName}</option>)}</optgroup>
-            </select>
+            </Select>
           </label>
         </CalmCard>
       ))}

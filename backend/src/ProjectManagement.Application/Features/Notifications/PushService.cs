@@ -275,6 +275,7 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
                 PushService.SubjectOf(sp.GetRequiredService<IOptions<PushOptions>>().Value, sp.GetRequiredService<IOptions<AppOptions>>().Value), ct);
             var sender = sp.GetRequiredService<IWebPushSender>();
             var now = DateTime.UtcNow;
+            var tokens = sp.GetRequiredService<ITokenService>();
             var tenantIds = pending.Select(n => n.TenantId).Distinct().ToList();
             var slugs = await db.Tenants.IgnoreQueryFilters().Where(t => tenantIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Slug, ct);
             // The app icon's badge: what is unread for the person in that workspace, so an installed app shows it with no window open.
@@ -288,7 +289,10 @@ public class PushDispatcher(IServiceScopeFactory scopes, ILogger<PushDispatcher>
                 // A ring that waited (the worker was busy, or do-not-disturb held it) is not pushed any more: the call is no longer ringing.
                 var ring = IsRing(n);
                 if (ring && deliverableAt - n.CreatedAt > RingFor) continue;
-                var payload = JsonSerializer.Serialize(new { title = n.Title, body = ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body), link = NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link), tag = ring ? $"call-{CallIdOf(n)}" : n.Id.ToString(), type = n.Type.ToString(), token,
+                // Buttons that work with the app closed: a signed, single-use key for this one notice (QuickActionService), and which buttons.
+                var quick = QuickActions.For(n.Type, n.Link, n.Title);
+                var qa = quick.Count > 0 ? QuickActionService.Issue(tokens, n.Id, n.UserId, n.TenantId) : null;
+                var payload = JsonSerializer.Serialize(new { title = n.Title, qa, actions = quick, id = n.Id, body = ProjectManagement.Application.Features.Reminders.DueReminderRules.ForChannel(n.Body), link = NotificationEmailService.OrgLink(slugs.GetValueOrDefault(n.TenantId), n.Link), tag = ring ? $"call-{CallIdOf(n)}" : n.Id.ToString(), type = n.Type.ToString(), token,
                     call = ring ? CallIdOf(n) : null, badge = badges.FirstOrDefault(b => b.UserId == n.UserId && b.TenantId == n.TenantId)?.Count ?? 0,
                     category = NotificationCategories.Of(n.Type, n.Link) }, Json);
                 foreach (var s in subs.Where(s => s.UserId == n.UserId && s.Failures < 20))

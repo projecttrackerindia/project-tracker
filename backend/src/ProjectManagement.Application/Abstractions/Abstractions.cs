@@ -9,6 +9,10 @@ namespace ProjectManagement.Application.Abstractions;
 public interface IAppDbContext
 {
     DbSet<PlannedLeave> PlannedLeaves { get; }
+    DbSet<NotificationTuning> NotificationTunings { get; }
+    DbSet<NotificationMute> NotificationMutes { get; }
+    DbSet<ProblemReport> ProblemReports { get; }
+    DbSet<FeatureFlag> FeatureFlags { get; }
     DbSet<ApprovalRequest> ApprovalRequests { get; }
     DbSet<ApprovalRequestStep> ApprovalRequestSteps { get; }
     DbSet<ApprovalRequestEvent> ApprovalRequestEvents { get; }
@@ -250,6 +254,9 @@ public interface IAppDbContext
     DbSet<ChatPollVote> ChatPollVotes { get; }
     DbSet<ChatDeviceKey> ChatDeviceKeys { get; }
     DbSet<ChatKeyBackup> ChatKeyBackups { get; }
+    DbSet<TaskRecurrence> TaskRecurrences { get; }
+    DbSet<TaskOccurrence> TaskOccurrences { get; }
+    DbSet<WorkTemplate> WorkTemplates { get; }
     DbSet<ChatUserStatus> ChatUserStatuses { get; }
     DbSet<AiUserProfile> AiUserProfiles { get; }
     DbSet<ReminderSettings> ReminderSettings { get; }
@@ -353,6 +360,10 @@ public interface ITokenService
     string CreateChallenge(Guid userId, TimeSpan lifetime);
     /// <summary>The user a valid, unexpired challenge was issued for, otherwise null.</summary>
     Guid? ReadChallenge(string token);
+    /// <summary>Signs <paramref name="payload"/> (no '|' in it) for one purpose with a key derived from the signing key, valid for <paramref name="lifetime"/>.</summary>
+    string Seal(string purpose, string payload, TimeSpan lifetime);
+    /// <summary>The payload of a token <see cref="Seal"/> made for this purpose, or null when it is forged, for another purpose, or expired.</summary>
+    string? Unseal(string purpose, string token);
 }
 
 /// <summary>Encrypts secrets that must be recoverable (for example authenticator-app secrets) before they reach the database.</summary>

@@ -8,7 +8,7 @@ export type StatusCategory = 'Todo' | 'Active' | 'Done' | 'Cancelled';
 export type StageStatus = 'Pending' | 'InProgress' | 'Completed' | 'Delayed';
 export type ProjectHealth = 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed' | 'Cancelled' | 'Archived';
 export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Expired';
-export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry' | 'AgentAlert' | 'AgentDigest' | 'TimesheetReminder' | 'Support' | 'Call';
+export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry' | 'AgentAlert' | 'AgentDigest' | 'TimesheetReminder' | 'Support' | 'Call' | 'ManagerDigest';
 
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }
@@ -222,7 +222,10 @@ export interface AppNotification { id: string; type: NotificationType; title: st
   /** A meeting's start (UTC) and where to join it, for meeting reminders. */ startsAt?: string | null; joinLink?: string | null;
   /** Why a reminder came, in a few words ("Due today · no time set"). */ reason?: string | null;
   /** It was (or is about to be) e-mailed too. */ emailed?: boolean;
-  /** A Plan sheet change notice whose change still stands: Undo puts the task back. */ canUndo?: boolean }
+  /** A Plan sheet change notice whose change still stands: Undo puts the task back. */ canUndo?: boolean;
+  /** Urgent rings and pops up; normal only adds to the quiet badge (older servers send nothing: treated as before). */ priority?: 'urgent' | 'normal';
+  /** What it is about ("project:{id}", "chat:{id}", "item:{id}") and that thing's name, for grouping updates. */ groupKey?: string | null; groupLabel?: string | null;
+  /** About a project or thread the person muted: it stays in the centre but never rings. */ muted?: boolean }
 export type NotificationCategory = 'messages' | 'reminders' | 'meetings' | 'work';
 export type NotificationAction = 'done' | 'take' | 'reply' | 'approve' | 'reject' | 'snooze';
 /** Unread overall and in each lane of the inbox. */

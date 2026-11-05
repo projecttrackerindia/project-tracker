@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { ApiError } from '../../api/client';
 import { resourcesApi } from '../../api/endpoints';
 import { registerPaletteCommands } from '../../components/paletteRegistry';
@@ -26,6 +27,7 @@ import { PortfolioSkeleton, ShellPresence, ShellTools, usePortfolio, useShellMen
 import { patchPortfolio, refreshPortfolio } from './portfolioShared';
 import './planSheet.css';
 import './planSheetTabs.css';
+import { ExtendedBadge, WasDate } from '../dates/ExtendedDate';
 
 type Layout = 'sheet' | 'split' | 'timeline';
 type ColId = 'task' | 'owner' | 'dates' | 'due' | 'status' | 'progress' | 'notes' | 'gantt';
@@ -567,9 +569,9 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
       case 'owner': return <Owner id={r.ownerId} name={r.owner} />;
       case 'dates': {
         const s = slipDays(r, today);
-        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{r.due ? <CalendarDate r={r} calendar={calendar} late={k === 'late'} /> : <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}{tick(r.id, 'date')}</span>;
+        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{r.due && <WasDate r={r} />}{r.due ? <CalendarDate r={r} calendar={calendar} late={k === 'late'} /> : <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}<ExtendedBadge r={r} />{tick(r.id, 'date')}</span>;
       }
-      case 'due': { const s = slipDays(r, today); return <><span className="ps3-num" style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || '—'}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}{tick(r.id, 'date')}</>; }
+      case 'due': { const s = slipDays(r, today); return <><WasDate r={r} /><span className="ps3-num" style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || '—'}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}<ExtendedBadge r={r} />{tick(r.id, 'date')}</>; }
       case 'status': return <Status r={r} />;
       case 'progress': {
         const pv = smart && smart.targets.some((t) => t.id === r.id) ? smartValue(r) : fill?.col === 'progress' && fill.to.includes(r.id) ? rows.find((x) => x.id === fill.src)?.progress ?? r.progress : r.progress;
@@ -662,7 +664,7 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
 
       {smart && (
         <Floating anchor={smart.anchor} onClose={() => setSmart(null)} width={400} label="Smart fill" style={{ padding: '14px 16px' }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><span className="ps3-orb sm" aria-hidden="true" /><b>Fill progress from status?</b></div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><SiriOrb className="ps3-orb sm" /><b>Fill progress from status?</b></div>
           <div className="ps3-dim" style={{ fontSize: 12, lineHeight: 1.5, margin: '8px 0 10px' }}>
             You’re dragging {smart.src.progress}% down {smart.targets.length + 1} rows. {listKeys(smart.targets.filter((t) => smartValue(t) !== 100).map((t) => t.key))} {smart.targets.filter((t) => smartValue(t) !== 100).length === 1 ? 'isn’t' : 'aren’t'} done — Aura can fill from each task’s checklist instead.</div>
           <div style={{ fontSize: 12.5, lineHeight: 1.8 }}>

@@ -215,6 +215,8 @@ public static class DependencyInjection
         services.AddScoped<AccessService>();
         services.AddScoped<ProjectService>();
         services.AddScoped<DueDateHistory>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkHistory.WorkActivityService>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices>();
         services.AddScoped<ProjectGroupService>();
         services.AddScoped<ProjectStatusService>();
         services.AddScoped<WeeklyReportService>();
@@ -225,6 +227,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Platform.HistoryService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.SavedViewService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.HolidayService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.ProblemReportService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.FeatureFlagService>();
         services.AddScoped<ProjectManagement.Application.Features.Attendance.AttendanceService>();
         services.AddScoped<ProjectManagement.Application.Features.Attendance.AttendanceMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.StatusPageService>();
@@ -316,6 +320,10 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderSuggestionService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderEngine>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.PortfolioDigestService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.RecurrenceService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.RecurrenceJob>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.TemplateService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.ManagerDigestService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderPlanner>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderSync>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderActionService>();
@@ -352,8 +360,10 @@ public static class DependencyInjection
         services.AddScoped<AttachmentService>();
         services.AddScoped<AttachmentJanitor>();
         services.AddScoped<NotificationRouter>();
+        services.AddScoped<SmartNotificationService>();
         services.AddScoped<NotificationService>();
         services.AddScoped<NotificationActionService>();
+        services.AddScoped<QuickActionService>();
         services.AddScoped<NotificationPreferenceService>();
         services.AddScoped<NotificationEmailService>();
         services.AddScoped<ActivityService>();

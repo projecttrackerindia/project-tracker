@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
@@ -220,10 +221,10 @@ export function AiOwnKeyCard() {
               <div className="own-key-route" role="row" key={r.k}>
                 <div role="cell" className="own-key-route-what"><label htmlFor={`own-key-${r.k}`}><b>{r.label}</b></label><small>{r.hint}</small></div>
                 <div role="cell" className="own-key-route-pills"><span className="own-key-chip">{r.speed}</span><span className="own-key-chip cost" title="Relative cost">{r.cost}</span></div>
-                <div role="cell"><select id={`own-key-${r.k}`} className="input" value={models[r.k]} onChange={(e) => setModels((m) => ({ ...m, [r.k]: e.target.value }))}>
+                <div role="cell"><Select id={`own-key-${r.k}`} className="input" value={models[r.k]} onChange={(e) => setModels((m) => ({ ...m, [r.k]: e.target.value }))}>
                   {!models[r.k] && <option value="">Choose a model</option>}
                   {list.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select></div>
+                </Select></div>
               </div>
             ))}
           </div>

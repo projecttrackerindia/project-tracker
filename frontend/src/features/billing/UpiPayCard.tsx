@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { ApiError } from '../../api/client';
@@ -100,7 +101,7 @@ export function UpiPayCard({ pay, onChanged }: { pay: UpiPayment; onChanged: () 
           ) : (
             <div className="upi-fail">
               <label className="field"><span>What happened?</span>
-                <select className="input" value={reason} onChange={(e) => setReason(e.target.value)}>{REASONS.map((r) => <option key={r}>{r}</option>)}</select>
+                <Select className="input" value={reason} onChange={(e) => setReason(e.target.value)}>{REASONS.map((r) => <option key={r}>{r}</option>)}</Select>
               </label>
               <p className="muted" style={{ fontSize: 12 }}>Only if no money left your account. {pay.otherQrAvailable ? 'You get the QR of another bank account for the same amount.' : 'We show the QR again; you can retry in a little while.'}</p>
               <div className="row" style={{ gap: 8 }}>

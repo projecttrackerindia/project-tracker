@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useMemo, useState } from 'react';
 import { meetingApi, workspaceApi } from '../../api/endpoints';
 import { Face } from '../../components/Face';
@@ -98,9 +99,9 @@ export function QuickCreate({ day: day0, start: start0, end: end0, title: title0
           <input type="date" aria-label="Date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} /><em aria-hidden="true">{longDay(day)}</em></label>
         <div className="qc-times">
           <label className="qc-field"><Icon name="clock" size={14} /><span className="sr-only">Starts</span>
-            <select aria-label="Starts" value={start} onChange={(e) => setS(Number(e.target.value))}>{SLOTS.map((h) => <option key={h} value={h}>{hm(h)}</option>)}</select></label>
+            <Select aria-label="Starts" value={start} onChange={(e) => setS(Number(e.target.value))}>{SLOTS.map((h) => <option key={h} value={h}>{hm(h)}</option>)}</Select></label>
           <label className="qc-field"><span className="sr-only">Ends</span>
-            <select aria-label="Ends" value={end} onChange={(e) => setEnd(Number(e.target.value))}>{SLOTS.filter((h) => h > start).concat(24).map((h) => <option key={h} value={h}>{h === 24 ? '24:00' : hm(h)}</option>)}</select></label>
+            <Select aria-label="Ends" value={end} onChange={(e) => setEnd(Number(e.target.value))}>{SLOTS.filter((h) => h > start).concat(24).map((h) => <option key={h} value={h}>{h === 24 ? '24:00' : hm(h)}</option>)}</Select></label>
           <span className="qc-len">{fmtMins(Math.round((end - start) * 60))}</span>
         </div>
       </div>

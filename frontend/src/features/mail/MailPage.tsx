@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DotsMenu } from '../talk/DotsMenu';
 import { projectApi, taskApi } from '../../api/endpoints';
@@ -230,7 +231,7 @@ export function MailPage() {
         )}
         {data.errors.map(({ account: a, error }) => <div key={a.key} className="ml-banner" role="alert"><Icon name="alert" size={13} /> {a.label}: {errText(error, 'Could not sync this mailbox.')}</div>)}
         {!query && box === 'inbox' && nudges.map((r) => (
-          <div key={r.key} className="ml-nudge" data-testid="ml-nudge"><span className="ml-orb" aria-hidden="true" />
+          <div key={r.key} className="ml-nudge" data-testid="ml-nudge"><SiriOrb className="ml-orb" />
             <span>No reply from <b>{displayName(r.to).split(',')[0]}</b> in {daysSince(r.date, now)} days — remind?</span>
             <button type="button" className="btn btn-sm" onClick={() => setSelected(r.key)}>Open</button></div>
         ))}
@@ -270,7 +271,7 @@ export function MailPage() {
             onCompose={(c) => setCompose({ ...c, account: row.account })} />
         ) : (
           <div className="ml-reader-empty"><Icon name="mail" size={34} /><p>Select a message to read it.</p>
-            {agent && <small><span className="ml-orb" aria-hidden="true" /> The assistant summarises each conversation, finds the action items and drafts replies.</small>}</div>
+            {agent && <small><SiriOrb className="ml-orb" /> The assistant summarises each conversation, finds the action items and drafts replies.</small>}</div>
         )}
       </section>
 
@@ -350,10 +351,10 @@ function MailReader({ row, account, agent, projects, linkedProject, archived, sn
       </header>
       <div className="ml-read-body">
         <section className="ml-ai" aria-label="Assistant" data-testid="ml-ai">
-          {agent && (assist.isLoading ? <p className="ml-ai-line"><span className="ml-orb spin" aria-hidden="true" /> Reading the conversation…</p>
-            : assist.isError ? <p className="ml-ai-line muted"><span className="ml-orb" aria-hidden="true" /> {errText(assist.error, 'No summary right now.')} <button type="button" className="link-btn" onClick={() => void assist.refetch()}>Try again</button></p>
+          {agent && (assist.isLoading ? <p className="ml-ai-line"><SiriOrb className="ml-orb spin" /> Reading the conversation…</p>
+            : assist.isError ? <p className="ml-ai-line muted"><SiriOrb className="ml-orb" /> {errText(assist.error, 'No summary right now.')} <button type="button" className="link-btn" onClick={() => void assist.refetch()}>Try again</button></p>
             : a && <>
-              <p className="ml-ai-line" data-testid="ml-summary"><span className="ml-orb" aria-hidden="true" /><span>{a.summary}</span>
+              <p className="ml-ai-line" data-testid="ml-summary"><SiriOrb className="ml-orb" /><span>{a.summary}</span>
                 {a.urgency === 'high' && <span className="ml-tag t-escalation">Urgent</span>}</p>
               {a.actionItems.length > 0 && <div className="ml-acts" role="list" aria-label="Action items" data-testid="ml-actions"><p className="ml-acts-h">Action items</p>
                 {a.actionItems.slice(0, 4).map((x, i) => <ActionItem key={i} i={i} text={x} people={people} meName={account.email} projectId={linkedProject} subject={subject} />)}</div>}
@@ -375,7 +376,7 @@ function MailReader({ row, account, agent, projects, linkedProject, archived, sn
           </div>
           {a && a.tasks.length > 0 && <div className="ml-ai-tasks">{a.tasks.slice(0, 3).map((s, i) => <TaskSuggestion key={i} s={s} wid={wid} />)}</div>}
           {lastFromMe && quiet >= 3 && (
-            <div className="ml-nudge in" data-testid="ml-followup"><span className="ml-orb" aria-hidden="true" />
+            <div className="ml-nudge in" data-testid="ml-followup"><SiriOrb className="ml-orb" />
               <span>No reply from <b>{other}</b> in {quiet} days — remind?</span>
               <button type="button" className="btn btn-sm" onClick={() => openReminderComposer({ text: `Chase ${other}: ${subject}` })}>Remind me</button>
               {account.canSend && <button type="button" className="btn btn-sm btn-primary" onClick={() => setReply({ all: false, body: `Hi ${other.split(' ')[0]},\n\nJust following up on the mail below. Could you share an update when you get a moment?\n\nThanks,` })}>Nudge now</button>}

@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -166,11 +167,11 @@ export function ApprovalsPage() {
           ]} />
           <span className="ap-sp" />
           <label className="ap-filter"><Icon name="filter" size={14} />
-            <select aria-label="Type" value={type} onChange={(e) => { const v = e.target.value; if (v.startsWith('/')) nav(v); else setParam('type', v || null); }}>
+            <Select aria-label="Type" value={type} onChange={(e) => { const v = e.target.value; if (v.startsWith('/')) nav(v); else setParam('type', v || null); }}>
               <option value="">All types</option>
               {TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               {data.elsewhere.map((e) => <option key={e.kind} value={e.href}>{e.label} ({e.count}) ›</option>)}
-            </select><Icon name="chevronD" size={12} />
+            </Select><Icon name="chevronD" size={12} />
           </label>
           <CalmGo onClick={() => openApprovalRequest()}>Request approval</CalmGo>
         </div>

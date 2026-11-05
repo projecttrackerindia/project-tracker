@@ -1,0 +1,40 @@
+# Staging overlay: the same images as production, on its own small server (staging.projecttracker.in), with its OWN database full of
+# fictional demo data. Nothing here can reach production data: there is no Cloud SQL proxy, no bucket and no real email.
+# On the staging server /opt/pt/.env holds COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml, so every plain
+# `docker compose ...` (and vm-release.sh) uses this overlay. Set up once with ./staging-setup.sh.
+services:
+  caddy:
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Same service name as production's database proxy, so the API's connection string (Host=cloudsql) is identical; here it is a
+  # plain PostgreSQL holding only seeded, made-up data.
+  cloudsql:
+    image: mirror.gcr.io/library/postgres:16-alpine
+    command: ["postgres"]
+    environment:
+      POSTGRES_DB: projectmanagement
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:?set STAGING_DB_PASSWORD in /opt/pt/.env}
+    volumes: ["stagingdb:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d projectmanagement"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    environment:
+      Seed__Demo: "true"                 # fictional organisation, people, projects and tasks
+      Email__Provider: Log               # staging never emails anyone
+      Billing__Provider: Mock            # and never charges anyone
+      Sentry__Environment: staging
+
+  # The meeting bot is not run on staging (it would join real meetings). `--profile meetbot` starts it on purpose.
+  meetbot:
+    profiles: ["meetbot"]
+
+volumes:
+  stagingdb:
