@@ -60,7 +60,10 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const today = new Date().toISOString().slice(0, 10);
   const [zoom, setZoom] = useState<Zoom>('week');
   const [fit, setFit] = useState(true);
-  const [group, setGroup] = useState<GroupBy>('none');
+  // A saved view can open the timeline grouped (?tg=owner, "This week by owner").
+  const [group, setGroup] = useState<GroupBy>(() => { const g = params.get('tg'); return g && g in GROUP_LABEL ? g as GroupBy : 'none'; });
+  const tg = params.get('tg');
+  useEffect(() => { if (tg && tg in GROUP_LABEL) setGroup(tg as GroupBy); }, [tg]);
   const [menu, setMenu] = useState<null | 'group'>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);

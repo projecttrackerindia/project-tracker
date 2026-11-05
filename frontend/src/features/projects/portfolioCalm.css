@@ -362,3 +362,31 @@ html .pfa-grid { grid-template-columns: 1fr; align-content: start; }
   html .ps4-ai .ai-row .pfa-c { min-height: 44px; }
 }
 .pfo-ext { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+
+/* saved views bar + sheet (calm-round4a) */
+.pfv { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; min-width: 0; }
+.pfv-scroll { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 1; }
+.pfv-scroll::-webkit-scrollbar { display: none; }
+.pfv-chip, .pfv-more { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 0; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer;
+  background: var(--ds-fill-2, rgba(120,120,128,.1)); color: var(--ds-label, inherit); transition: transform 200ms var(--calm-spring, ease); }
+.pfv-chip:active, .pfv-more:active { transform: scale(.96); }
+.pfv-chip.on { background: var(--ds-label, #111); color: var(--ds-bg, #fff); }
+.pfv-more { background: transparent; color: var(--ds-accent, #2f6bff); }
+.pfv-sheet section + section { margin-top: 16px; }
+.pfv-sheet h4 { margin: 0 4px 6px; font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ds-label-2, #6b6b75); }
+.pfv-sheet ul { list-style: none; margin: 0; padding: 0; border-radius: 14px; background: var(--ds-bg-grouped, rgba(120,120,128,.06)); overflow: hidden; }
+.pfv-sheet li { display: flex; align-items: center; }
+.pfv-sheet li + li { box-shadow: inset 0 .5px 0 var(--ds-separator, rgba(60,60,67,.14)); }
+.pfv-row { flex: 1; min-width: 0; min-height: 50px; padding: 8px 14px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pfv-row.on { font-weight: 600; }
+.pfv-row-t { display: flex; flex-direction: column; font-size: 15px; }
+.pfv-row-t small { font-size: 12px; color: var(--ds-label-2, #6b6b75); font-weight: 400; }
+.pfv-pin { width: 44px; height: 44px; flex: none; border: 0; background: none; color: var(--ds-label-3, #8e8e93); cursor: pointer; display: grid; place-items: center; }
+.pfv-pin.on { color: var(--ds-accent, #2f6bff); }
+.pfv-save { display: flex; flex-direction: column; gap: 10px; }
+.pfv-save input { min-height: 44px; border: 0; border-radius: 12px; padding: 0 14px; font: inherit; font-size: 15px; background: var(--ds-fill-1, rgba(120,120,128,.08)); color: var(--ds-label, inherit); box-shadow: inset 0 0 0 1px var(--ds-separator, rgba(60,60,67,.14)); }
+.pfv-seg { display: inline-flex; padding: 2px; border-radius: 10px; background: var(--ds-fill-2, rgba(120,120,128,.12)); align-self: flex-start; }
+.pfv-seg button { min-height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.pfv-seg button.on { background: var(--ds-bg-elev, #fff); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.pfv-go { align-self: flex-end; min-height: 44px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ds-accent, #2f6bff); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.pfv-go:disabled { opacity: .45; }
