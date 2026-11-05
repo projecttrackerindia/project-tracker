@@ -40,7 +40,7 @@ public class FcmSender(IHttpClientFactory http, IOptions<PushOptions> options, I
         if (acct is null) return null;   // not set up: counts as a failed attempt, nothing else
         var bearer = await TokenAsync(acct, ct);
         if (bearer is null) return null;
-        var body = BuildMessage(subscription.Endpoint[PushService.NativePrefix.Length..], payload, delivery);
+        var body = BuildMessage(subscription.Endpoint[PushService.NativePrefix.Length..], payload, delivery, DrawsQuickActions(subscription.UserAgent));
         using var req = new HttpRequestMessage(HttpMethod.Post, $"https://fcm.googleapis.com/v1/projects/{acct.ProjectId}/messages:send")
         { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
@@ -55,8 +55,15 @@ public class FcmSender(IHttpClientFactory http, IOptions<PushOptions> options, I
         return code;
     }
 
-    /// <summary>The FCM message for the Web Push payload: a notification (shown by the system) plus the data the app uses to open the right page.</summary>
-    public static string BuildMessage(string deviceToken, string payload, PushDelivery? delivery = null)
+    /// <summary>The app build draws quick-action notices itself (apps/android native/quick marks its user agent "PTQuick/").</summary>
+    public static bool DrawsQuickActions(string? userAgent) => userAgent?.Contains("PTQuick/", StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// The FCM message for the Web Push payload: a notification (shown by the system) plus the data the app uses to open the right page.
+    /// A notice with quick actions ("qa") or a ringing call goes data-only to an app that draws them itself, so its service builds the notice
+    /// with buttons even when the app is in the background or closed (a "notification" block would be shown by the system, without buttons).
+    /// </summary>
+    public static string BuildMessage(string deviceToken, string payload, PushDelivery? delivery = null, bool nativeQuick = false)
     {
         using var doc = JsonDocument.Parse(payload);
         var root = doc.RootElement;
@@ -65,18 +72,20 @@ public class FcmSender(IHttpClientFactory http, IOptions<PushOptions> options, I
         foreach (var name in new[] { "link", "tag", "type", "token", "urgent", "number", "call", "qa", "actions", "id" })
             if (Get(name) is { Length: > 0 } v) data[name] = v;
         var title = Get("title") ?? "Project Tracker";
-        var message = new Dictionary<string, object?>
+        var ttl = $"{(delivery ?? PushDelivery.Default).TtlSeconds}s";
+        var dataOnly = nativeQuick && (data.ContainsKey("qa") || data.ContainsKey("call"));
+        var message = new Dictionary<string, object?> { ["token"] = deviceToken, ["data"] = data };
+        if (dataOnly)
         {
-            ["token"] = deviceToken,
-            ["notification"] = new { title, body = Get("body") ?? "" },
-            ["data"] = data,
-            ["android"] = new
-            {
-                priority = "HIGH",
-                ttl = $"{(delivery ?? PushDelivery.Default).TtlSeconds}s",
-                notification = new { channel_id = "alerts", tag = Get("tag"), click_action = "FCM_PLUGIN_ACTIVITY" },
-            },
-        };
+            data["title"] = title;
+            data["body"] = Get("body") ?? "";
+            message["android"] = new { priority = "HIGH", ttl };
+        }
+        else
+        {
+            message["notification"] = new { title, body = Get("body") ?? "" };
+            message["android"] = new { priority = "HIGH", ttl, notification = new { channel_id = "alerts", tag = Get("tag"), click_action = "FCM_PLUGIN_ACTIVITY" } };
+        }
         // Quick actions: the iOS app registers one notification category per button set (QA_APPROVE_REJECT, QA_REPLY_READ...), which shows them.
         if (root.TryGetProperty("actions", out var acts) && acts.ValueKind == JsonValueKind.Array && acts.GetArrayLength() > 0)
             message["apns"] = new { payload = new { aps = new { category = "QA_" + string.Join("_", acts.EnumerateArray().Select(a => (a.GetString() ?? "").ToUpperInvariant())) } } };

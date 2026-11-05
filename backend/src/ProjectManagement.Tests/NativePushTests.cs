@@ -47,4 +47,30 @@ public class NativePushTests(ApiFactory factory)
         Assert.False(data.TryGetProperty("number", out _));              // empty values are left out
         Assert.Equal("HIGH", m.GetProperty("android").GetProperty("priority").GetString());
     }
+
+    [Fact]
+    public void A_quick_action_notice_goes_data_only_to_an_app_that_draws_its_own_buttons()
+    {
+        var payload = JsonSerializer.Serialize(new { title = "Leave request", body = "Two days off", link = "/approvals/1", tag = "n-1", qa = "key-abcdefghijklmnopqrstu", actions = new[] { "approve", "reject" } });
+        Assert.True(FcmSender.DrawsQuickActions("Mozilla/5.0 (Linux; Android 14) ProjectTrackerApp PTQuick/1"));
+        Assert.False(FcmSender.DrawsQuickActions("Mozilla/5.0 ProjectTrackerApp"));
+        Assert.False(FcmSender.DrawsQuickActions(null));
+
+        using var quick = JsonDocument.Parse(FcmSender.BuildMessage("device-token", payload, null, nativeQuick: true));
+        var m = quick.RootElement.GetProperty("message");
+        Assert.False(m.TryGetProperty("notification", out _));                       // data-only: the app's service draws it, with buttons
+        Assert.False(m.GetProperty("android").TryGetProperty("notification", out _));
+        Assert.Equal("HIGH", m.GetProperty("android").GetProperty("priority").GetString());
+        var data = m.GetProperty("data");
+        Assert.Equal("Leave request", data.GetProperty("title").GetString());
+        Assert.Equal("Two days off", data.GetProperty("body").GetString());
+        Assert.Equal("key-abcdefghijklmnopqrstu", data.GetProperty("qa").GetString());
+
+        // An older app (no native buttons) still gets the system-drawn notice, and so does a notice without quick actions.
+        using var old = JsonDocument.Parse(FcmSender.BuildMessage("device-token", payload, null, nativeQuick: false));
+        Assert.True(old.RootElement.GetProperty("message").TryGetProperty("notification", out _));
+        var plain = JsonSerializer.Serialize(new { title = "FYI", body = "x", link = "/" });
+        using var p = JsonDocument.Parse(FcmSender.BuildMessage("device-token", plain, null, nativeQuick: true));
+        Assert.True(p.RootElement.GetProperty("message").TryGetProperty("notification", out _));
+    }
 }
