@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
             {
                 o.Filters.Add<ValidationFilter>();
                 o.Filters.Add<ApiResponseFilter>();
+                o.Filters.Add<HotReadWriteFilter>();
                 o.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
             })
             .ConfigureApiBehaviorOptions(o => o.SuppressModelStateInvalidFilter = true) // ValidationFilter renders errors instead

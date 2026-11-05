@@ -13,11 +13,11 @@ public class PortfolioController(PortfolioBoardService board, PlanSheetService s
     private static PortfolioFilter Filter(Guid? teamId, Guid? ownerId, Guid? groupId, string? health, DateOnly? dueFrom, DateOnly? dueTo) =>
         new(teamId, ownerId, groupId, string.IsNullOrWhiteSpace(health) ? null : health, dueFrom, dueTo);
 
-    [HttpGet("board")]
+    [HttpGet("board"), HotRead]
     public async Task<IActionResult> Board([FromQuery] Guid? teamId, [FromQuery] Guid? ownerId, [FromQuery] Guid? groupId, [FromQuery] string? health,
         [FromQuery] DateOnly? dueFrom, [FromQuery] DateOnly? dueTo, CancellationToken ct) => Ok(await board.BoardAsync(Filter(teamId, ownerId, groupId, health, dueFrom, dueTo), ct));
 
-    [HttpGet("timeline")]
+    [HttpGet("timeline"), HotRead]
     public async Task<IActionResult> Timeline([FromQuery] Guid? teamId, [FromQuery] Guid? ownerId, [FromQuery] Guid? groupId, [FromQuery] string? health,
         [FromQuery] DateOnly? dueFrom, [FromQuery] DateOnly? dueTo, CancellationToken ct) => Ok(await board.TimelineAsync(Filter(teamId, ownerId, groupId, health, dueFrom, dueTo), ct));
 

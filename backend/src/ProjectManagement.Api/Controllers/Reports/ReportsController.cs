@@ -13,7 +13,7 @@ namespace ProjectManagement.Api.Controllers.Reports;
 [Route("api/v1/reports"), RequireWorkspace, RequireModule(Modules.Reports)]
 public class ReportsController(ReportService reports, ReportExportService exports) : ApiControllerBase
 {
-    [HttpGet("summary")]
+    [HttpGet("summary"), HotRead]
     public async Task<IActionResult> Summary([FromQuery] int days = 7, [FromQuery] Guid? teamId = null, CancellationToken ct = default) => Ok(await reports.GetSummaryAsync(days, teamId, ct));
 
     [HttpGet("exports")]

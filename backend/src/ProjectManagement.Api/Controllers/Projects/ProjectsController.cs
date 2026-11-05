@@ -52,7 +52,7 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
     [HttpGet("{id:guid}/history")]
     public async Task<IActionResult> History(Guid id, CancellationToken ct) => Ok(await history.ProjectAsync(id, ct));
 
-    [HttpGet("{id:guid}/health")]
+    [HttpGet("{id:guid}/health"), HotRead]
     public async Task<IActionResult> Health(Guid id, CancellationToken ct) => Ok(await projects.GetHealthAsync(id, ct));
 
     /// <summary>Set the status by hand (OnTrack / AtRisk / Delayed with why and until when), or clear it with an empty health.</summary>
