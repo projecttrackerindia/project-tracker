@@ -1,4 +1,5 @@
 import { openNew } from '../../components/v2/state';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Face } from '../../components/Face';
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -361,7 +362,7 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
       </div>
       {saved && w && <SavedReplies w={w} onClose={() => setSaved(false)} onUse={(t) => { setText(t); setSaved(false); setTimeout(() => box.current?.focus(), 0); }} />}
       <form className="dq-comp" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <span className="dq-orb" aria-hidden="true" />
+        <SiriOrb className="dq-orb" />
         <textarea ref={box} rows={1} value={text} maxLength={4000} aria-label="Reply" placeholder={`Reply on ${channel === 'whatsapp' ? 'WhatsApp' : channel === 'email' ? 'mail' : 'the ticket'}…`}
           onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }} />
         <button type="button" className={`dq-sr-btn${saved ? ' on' : ''}`} aria-label="Saved replies" aria-expanded={saved} title="Saved replies" disabled={!w}
@@ -424,7 +425,7 @@ function SavedReplies({ w, onUse, onClose }: { w: WorkItemDetail; onUse: (text: 
               <div className="dq-sr-p">{t.text}</div></div>
             <div className="dq-sr-a">
               <button type="button" className="dq-btn sm" disabled={!!busy} onClick={() => void use(t, false)}>{busy === `${t.id}-in` ? '…' : 'Insert'}</button>
-              {ai && <button type="button" className="dq-btn sm dq-sr-ai" disabled={!!busy} onClick={() => void use(t, true)}><span className="dq-orb" aria-hidden="true" />{busy === `${t.id}-ai` ? 'Filling…' : 'AI fill'}</button>}
+              {ai && <button type="button" className="dq-btn sm dq-sr-ai" disabled={!!busy} onClick={() => void use(t, true)}><SiriOrb className="dq-orb" />{busy === `${t.id}-ai` ? 'Filling…' : 'AI fill'}</button>}
             </div>
           </div>
         ))}
@@ -530,7 +531,7 @@ function Context({ row, now }: { row: WorkRow; now: number }) {
         ))}
       </div>
       <div className="dq-card dq-ai">
-        <div className="dq-ai-line"><span className="dq-orb" aria-hidden="true" /><span>{draft.isLoading && ai ? 'Drafting a reply from similar tickets…' : `“${reply}”`}</span></div>
+        <div className="dq-ai-line"><SiriOrb className="dq-orb" /><span>{draft.isLoading && ai ? 'Drafting a reply from similar tickets…' : `“${reply}”`}</span></div>
         <div className="dq-row" style={{ gap: 8, marginTop: 12, paddingLeft: 26 }}>
           <button type="button" className="dq-btn sm pri" disabled={sending || !w} onClick={() => void send()}>{sending ? 'Sending…' : 'Send'}</button>
           <button type="button" className="dq-btn sm white" onClick={() => window.dispatchEvent(new CustomEvent('dq-draft', { detail: reply }))}>Edit</button>

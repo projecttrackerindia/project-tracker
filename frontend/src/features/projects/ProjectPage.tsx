@@ -1,4 +1,5 @@
 import { useQueries } from '@tanstack/react-query';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { CalmJourney, calmStepPos, type CalmStep } from '../../components/calm';
 import { openSchedule } from '../meet/scheduleStore';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -458,7 +459,7 @@ function AiLine({ detail }: { detail: ProjectDetail }) {
   const ask = (q: string) => useAssistant.getState().ask(q);
   return (
     <div className="pp-ai" role="note" aria-label="From the assistant">
-      <span className="pa-orb" aria-hidden="true" />
+      <SiriOrb className="pa-orb" />
       <span className="pp-ai-text">{text}</span>
       {ai && (gap
         ? <button type="button" className="pa-btn sm" onClick={() => ask(`Draft a short message asking for the ${plural(pending, 'pending sign-off')} on project ${p.name} (${p.key}), stage by stage, with who signs each.`)}>Request {plural(pending, 'sign-off')}</button>

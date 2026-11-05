@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Select } from '../../components/Select';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -450,7 +451,7 @@ function Availability({ people, loading, me, date, tz, start, minutes, onUse }: 
         </div>
       )}
       {rows.length > 0 && s0 != null && (
-        <p className="ms-av-aura"><span className="calm-orb" aria-hidden="true" />{busy.length === 0 ? `Everyone is free ${day.split(' ')[0]} ${clock(s0)}.` : `${busy.map((b) => (b.userId === me ? 'You are' : `${b.name.split(' ')[0]} is`)).slice(0, 2).join(', ')} busy at ${clock(s0)}.`}{others[0] != null && busy.length > 0 ? ` ${clock(others[0])} works for everyone.` : ''}</p>
+        <p className="ms-av-aura"><SiriOrb className="calm-orb" />{busy.length === 0 ? `Everyone is free ${day.split(' ')[0]} ${clock(s0)}.` : `${busy.map((b) => (b.userId === me ? 'You are' : `${b.name.split(' ')[0]} is`)).slice(0, 2).join(', ')} busy at ${clock(s0)}.`}{others[0] != null && busy.length > 0 ? ` ${clock(others[0])} works for everyone.` : ''}</p>
       )}
       {rows.length > 0 && others.length > 0 && <>
         <div className="ms-av-h">Other good times</div>

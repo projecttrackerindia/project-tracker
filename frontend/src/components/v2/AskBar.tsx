@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { SiriOrb } from '../aura/SiriOrb';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { insightApi, projectApi } from '../../api/endpoints';
 import { Icon, type IconName } from '../Icon';
@@ -46,9 +47,9 @@ export function Toolbar() {
   return (
     <div ref={bar} className="v2-tb shell-head" role="toolbar" aria-label="Your day">
       <span className="v2-tb-sp" />
-      <AttendanceCapsule />
-      <NotificationBell />
+      <AttendanceCapsule ring />
       <AuraOrbButton />
+      <NotificationBell />
       <AvatarMenu />
     </div>
   );
@@ -82,7 +83,7 @@ export function AuraOrbButton() {
   return (
     <button type="button" className={`shell-hb shell-orb${open ? ' on' : ''}`} data-aura-entry="" aria-label={`Aura (${AURA_KEY})`} title={`Aura ${AURA_KEY}`} aria-expanded={open}
       onClick={() => { haptic(); toggleAura(where); }}>
-      <span className="calm-orb" aria-hidden="true" />
+      <SiriOrb className="calm-orb" />
     </button>
   );
 }
@@ -116,7 +117,7 @@ export function AuraPhoneOrb() {
   return (
     <button type="button" className={`m-icon m-aura-orb${open ? ' on' : ''}`} data-aura-entry="" aria-label="Aura" aria-expanded={open}
       onClick={() => { haptic(); toggleAura(where); }}>
-      <AuraOrb size={24} label={null} />
+      <SiriOrb size={26} state={open ? 'listening' : undefined} />
     </button>
   );
 }

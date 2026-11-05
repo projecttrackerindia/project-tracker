@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import type { CalendarEvent, TimeEntry, TimelineEvent } from '../../api/types';
 import { Face } from '../../components/Face';
 import { Icon } from '../../components/Icon';
@@ -237,7 +238,7 @@ function MeetingHero({ m, today, nowH, onOpen }: { m: Meet; today: string; nowH:
       <p className="wp-when">{clockH(m.start)} – {clockH(m.end)}{f?.providerName ? ` · ${f.providerName}` : ''}</p>
       {join && (/^https?:/.test(join) ? <a className="wp-join" href={join} target="_blank" rel="noreferrer">Join meeting</a> : <a className="wp-join" href={join}>Join meeting</a>)}
       <div className="wp-notes">
-        <span className="wp-orb" aria-hidden="true" />
+        <SiriOrb className="wp-orb" />
         <div><b>Notes by Project Tracker</b><small>Summary &amp; action items after the call</small></div>
         <button type="button" role="switch" aria-checked={notes} aria-label="Notes by Project Tracker" className={`wp-sw${notes ? ' on' : ''}`} aria-disabled="true"
           title="The notetaker is set on the meeting — open it to change" onClick={onOpen} />

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { qualityApi, type CaseDraft, type CasePriority, type EndpointTests as Tests } from '../../api/qualityApi';
@@ -94,7 +95,7 @@ export function EndpointTests({ endpointId, projectId }: { endpointId: string; p
 
       {asked && proposals.data && (
         <div className="et-proposals" aria-label="Proposed test cases">
-          <p className="et-groot"><span className="et-orb" aria-hidden="true" /> Aura proposes {cards.length} case{cards.length === 1 ? '' : 's'} from this endpoint&apos;s description. Nothing is added until you confirm.</p>
+          <p className="et-groot"><SiriOrb className="et-orb" /> Aura proposes {cards.length} case{cards.length === 1 ? '' : 's'} from this endpoint&apos;s description. Nothing is added until you confirm.</p>
           <ul>
             {cards.map((d) => (
               <li key={d.kind} className="et-card" data-testid="proposal">

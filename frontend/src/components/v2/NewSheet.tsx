@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { SiriOrb } from '../aura/SiriOrb';
 import { Select } from '../Select';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ApiError, uploadFile } from '../../api/client';
@@ -333,7 +334,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
         </label>
         <div className="v2-understood" aria-live="polite">
           <div className="v2-new-chips">
-            <span className="v2-understood-label"><span className="v2-orb" aria-hidden="true" />Understood as{understood ? <span className="sr-only"> {/^[aeiou]/.test(shownLabel) ? 'an' : 'a'} {shownLabel}</span> : null}</span>
+            <span className="v2-understood-label"><SiriOrb className="v2-orb" />Understood as{understood ? <span className="sr-only"> {/^[aeiou]/.test(shownLabel) ? 'an' : 'a'} {shownLabel}</span> : null}</span>
             {chips.map((c, i) => (
               <motion.span key={(c as React.ReactElement).key} className="v2-new-chip-wrap" initial={still ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                 transition={still ? instant : { ...t.enter, delay: staggerDelay(i) }}>{c}</motion.span>

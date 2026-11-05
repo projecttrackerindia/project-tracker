@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { insightApi, timeApi } from '../../api/endpoints';
@@ -303,7 +304,7 @@ function TodayRail({ meets, nowH, freeMin, hero }: { meets: MeetLite[]; nowH: nu
       <WeekCard />
       {freeMin >= 30 && hero && (
         <CalmCard className="td-tip" aria-label="Aura">
-          <span className="calm-orb" aria-hidden="true" />
+          <SiriOrb className="calm-orb" />
           <p>You have {hm(freeMin)} free today. {hero.title} is the best use of it. {ai && <button type="button" onClick={() => ask(`Hold focus time for ${hero.key} ${hero.title} in my free time today.`)}>Hold it</button>}</p>
         </CalmCard>
       )}

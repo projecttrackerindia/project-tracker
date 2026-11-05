@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { chatApi, statusApi } from '../../api/endpoints';
@@ -139,7 +140,7 @@ export function WeeklyReportPage() {
           <div className="wrp-eyebrow">Weekly status · {range(d.from, d.to)}</div>
           <h1 className="wrp-h1">Week {d.week ?? isoWeek(d.to)} report.<em>{range(d.from, d.to)}</em></h1>
         </div>
-        <div className="wrp-sourceline"><span className="wrp-orb" aria-hidden="true" />
+        <div className="wrp-sourceline"><SiriOrb className="wrp-orb" />
           Written from {s ? `${plural(s.updates, 'update')}, ${plural(s.meetings, 'meeting')}${mail.count ? `, ${plural(mail.count, 'mail')}` : ''} and ${plural(s.commits, 'commit')}` : 'the project'} · {ago(d.writtenAt)}
         </div>
       </header>
@@ -224,7 +225,7 @@ export function WeeklyReportPage() {
           )}
 
           <div className="wrp-card wrp-ai">
-            <p><span className="wrp-orb" aria-hidden="true" />{ai ? 'Tone is neutral and every line comes from the project. Want it shorter, or framed for executives?' : 'Read it through, edit any line, then approve.'}</p>
+            <p><SiriOrb className="wrp-orb" />{ai ? 'Tone is neutral and every line comes from the project. Want it shorter, or framed for executives?' : 'Read it through, edit any line, then approve.'}</p>
             <div className="wrp-ai-row">
               {ai && <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void rewrite('shorten')}>{busy === 'shorten' ? 'Shortening…' : 'Shorter'}</button>}
               {ai && <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void rewrite('formal')}>{busy === 'formal' ? 'Rewriting…' : 'For execs'}</button>}

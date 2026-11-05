@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { SiriOrb } from '../aura/SiriOrb';
 import './calm-kit.css';
 
 /**
@@ -9,7 +10,7 @@ export function AuraLine({ text, action, onAction, href, className = '' }: { tex
   if (!text) return null;
   return (
     <div className={`aura-line ${className}`.trim()} role="note" aria-label="Aura">
-      <span className="calm-orb" aria-hidden="true" />
+      <SiriOrb className="calm-orb" />
       <span className="aura-line-text">{text}</span>
       {action && (href ? <a href={href}>{action}</a> : onAction ? <button type="button" onClick={onAction}>{action}</button> : null)}
     </div>
@@ -17,4 +18,4 @@ export function AuraLine({ text, action, onAction, href, className = '' }: { tex
 }
 
 /** The Aura orb on its own (16px, conic gradient). */
-export function CalmOrb() { return <span className="calm-orb" aria-hidden="true" />; }
+export function CalmOrb() { return <SiriOrb className="calm-orb" />; }

@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { ApiError } from '../../api/client';
 import { resourcesApi } from '../../api/endpoints';
 import { registerPaletteCommands } from '../../components/paletteRegistry';
@@ -662,7 +663,7 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
 
       {smart && (
         <Floating anchor={smart.anchor} onClose={() => setSmart(null)} width={400} label="Smart fill" style={{ padding: '14px 16px' }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><span className="ps3-orb sm" aria-hidden="true" /><b>Fill progress from status?</b></div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><SiriOrb className="ps3-orb sm" /><b>Fill progress from status?</b></div>
           <div className="ps3-dim" style={{ fontSize: 12, lineHeight: 1.5, margin: '8px 0 10px' }}>
             You’re dragging {smart.src.progress}% down {smart.targets.length + 1} rows. {listKeys(smart.targets.filter((t) => smartValue(t) !== 100).map((t) => t.key))} {smart.targets.filter((t) => smartValue(t) !== 100).length === 1 ? 'isn’t' : 'aren’t'} done — Aura can fill from each task’s checklist instead.</div>
           <div style={{ fontSize: 12.5, lineHeight: 1.8 }}>

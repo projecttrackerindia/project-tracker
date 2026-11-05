@@ -1,4 +1,5 @@
 import { coverageText, useCoverage } from '../quality/coverage';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import type { ProjectCoverage } from '../../api/qualityApi';
 import { Term } from '../../components/Term';
 import { pinItem, useContextMenu, usePins } from '../../components/v2/pins';
@@ -349,7 +350,7 @@ function DuplicateLine({ projects }: { projects: Project[] }) {
   };
   return (
     <div className="pa-ai" role="note" aria-label="Likely duplicate" data-testid="duplicate-line">
-      <span className="pa-orb" aria-hidden="true" />
+      <SiriOrb className="pa-orb" />
       <span className="pa-ai-text">
         {g.slice(0, -1).map((p, i) => <span key={p.id}>{i > 0 ? ', ' : ''}<b>{p.name}</b></span>)} and <b>{g[g.length - 1].name}</b> look like the same project — {owners ? 'same owner, ' : ''}same name apart from case and spacing.
       </span>

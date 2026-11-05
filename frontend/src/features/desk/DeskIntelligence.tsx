@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -81,7 +82,7 @@ export function RoutingCard({ ticketId, now }: { ticketId: string; now: number }
     <div className="dq-card dq-cc dai-card" data-testid="dai-routing">
       {i && (
         <div className="dai-sum">
-          <div className="dai-sum-h"><span className="dq-orb" aria-hidden="true" /><b>AI summary</b>
+          <div className="dai-sum-h"><SiriOrb className="dq-orb" /><b>AI summary</b>
             <span className="dq-sp" /><span className={`dai-conf${i.needsReview ? ' low' : ''}`} title={i.source === 'ai' ? 'From the AI model' : 'From keyword rules'}>{i.confidence}%</span></div>
           {i.summary && <p>{i.summary}</p>}
           <div className="dai-chips">

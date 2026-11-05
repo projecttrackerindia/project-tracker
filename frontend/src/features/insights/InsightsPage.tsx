@@ -1,4 +1,5 @@
 import { Face } from '../../components/Face';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { MeetTimeRows } from '../meet/MeetTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgentWorkflowsPage } from '../ai/AgentWorkflowsPage';
@@ -291,7 +292,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
         </section>
       </div>
       <section className="ins-card ins-ai" aria-label="What stands out">
-        <b className="ins-ai-h"><span className="ins-orb" aria-hidden="true" />What stands out</b>
+        <b className="ins-ai-h"><SiriOrb className="ins-orb" />What stands out</b>
         {workload.isLoading || projects.isLoading ? <p>Reading the numbers…</p> : (
           <div className="ins-so">
             {notes.slice(0, 3).map((n) => <div key={n.id}><p><b>{n.lead}</b>{n.rest}</p>{n.action}</div>)}
