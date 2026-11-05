@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Domain.Enums;
@@ -57,7 +58,7 @@ public class SmartNotificationsTests(ApiFactory factory)
         for (var i = 1; i <= 3; i++)
             await owner.CreateTaskAsync(project, $"Fictional step {i}", new { title = $"Fictional step {i}", assigneeId = member.UserId });
 
-        var rows = factory.WithDb(db => db.Notifications.Where(n => n.UserId == member.UserId && n.Type == NotificationType.TaskAssigned).OrderBy(n => n.CreatedAt)
+        var rows = factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == member.UserId && n.Type == NotificationType.TaskAssigned).OrderBy(n => n.CreatedAt)
             .Select(n => new { n.Browser, n.PushPending, n.EmailPending, n.Link }).ToList());
         Assert.Equal(3, rows.Count);
         Assert.All(rows, r => Assert.True(r.Browser));   // assignments ask something of the person: each one still pings
@@ -96,7 +97,7 @@ public class SmartNotificationsTests(ApiFactory factory)
         Assert.True(mute.Ok, mute.ToString());
         Assert.Equal("Fictional Ledger Revamp", mute.Data!["label"]!.GetValue<string>());
         await owner.CreateTaskAsync(project, "Fictional step 4", new { title = "Fictional step 4", assigneeId = member.UserId });
-        var last = factory.WithDb(db => db.Notifications.Where(n => n.UserId == member.UserId && n.Type == NotificationType.TaskAssigned).OrderByDescending(n => n.CreatedAt)
+        var last = factory.WithDb(db => db.Notifications.IgnoreQueryFilters().Where(n => n.UserId == member.UserId && n.Type == NotificationType.TaskAssigned).OrderByDescending(n => n.CreatedAt)
             .Select(n => new { n.InApp, n.Browser, n.PushPending, n.EmailPending }).First());
         Assert.True(last.InApp);
         Assert.False(last.Browser || last.PushPending || last.EmailPending);
