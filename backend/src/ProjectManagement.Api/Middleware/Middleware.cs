@@ -306,6 +306,23 @@ public class CurrentContextMiddleware(RequestDelegate next)
             await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, userId, secondFactor, session.SsoTenantId,
                 new ProjectManagement.Application.Features.Organization.SignInFacts(session.AuthMethod, session.CreatedAt, session.PasswordLength));
         }
+        else if (HttpMethods.IsPost(http.Request.Method) && http.Request.Path.StartsWithSegments("/api/v1/notification-actions", out var rest)
+            && rest.Value is { Length: > 1 } key && key.IndexOf('/', 1) < 0)
+        {
+            // A button on a notification outside the app: its signed, single-use key (QuickActionService) names the person and the workspace.
+            // The request is signed in as them in that workspace only, with the same membership, suspension and IP rules as a sign-in.
+            var tokens = http.RequestServices.GetRequiredService<ProjectManagement.Application.Abstractions.ITokenService>();
+            if (ProjectManagement.Application.Features.Notifications.QuickActionService.Read(tokens, Uri.UnescapeDataString(key[1..])) is { } claim)
+            {
+                var owner = await db.Users.AsNoTracking().Where(u => u.Id == claim.UserId).Select(u => new { u.IsActive, u.TimeZone, u.MfaEnabled, u.MustChangePassword }).FirstOrDefaultAsync(http.RequestAborted);
+                if (owner is { IsActive: true })
+                {
+                    ctx.UserId = claim.UserId; ctx.SessionId = null; ctx.IsPlatformAdmin = false; ctx.MustChangePassword = owner.MustChangePassword;
+                    zone.UserZoneId = owner.TimeZone;
+                    await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, claim.UserId, owner.MfaEnabled, workspace: claim.TenantId);
+                }
+            }
+        }
         await next(http);
     }
 
@@ -316,9 +333,11 @@ public class CurrentContextMiddleware(RequestDelegate next)
     /// </summary>
     private static async Task ApplyMembershipAsync(HttpContext http, CurrentContext ctx, IAppDbContext db,
         ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone,
-        Guid userId, bool mfaEnabled, Guid? ssoTenantId = null, ProjectManagement.Application.Features.Organization.SignInFacts? signIn = null)
+        Guid userId, bool mfaEnabled, Guid? ssoTenantId = null, ProjectManagement.Application.Features.Organization.SignInFacts? signIn = null, Guid? workspace = null)
     {
-        if (!Guid.TryParse(http.User.FindFirst(JwtClaims.WorkspaceId)?.Value, out var workspaceId)) return;
+        Guid workspaceId;
+        if (workspace is { } named) workspaceId = named;
+        else if (!Guid.TryParse(http.User.FindFirst(JwtClaims.WorkspaceId)?.Value, out workspaceId)) return;
         // Signed in through this organization's own single sign-on: its identity provider vouched for the person (and applies its MFA).
         if (ssoTenantId == workspaceId) mfaEnabled = true;
         var membership = await (from m in db.TenantMembers

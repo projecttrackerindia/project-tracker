@@ -354,6 +354,7 @@ public static class DependencyInjection
         services.AddScoped<NotificationRouter>();
         services.AddScoped<NotificationService>();
         services.AddScoped<NotificationActionService>();
+        services.AddScoped<QuickActionService>();
         services.AddScoped<NotificationPreferenceService>();
         services.AddScoped<NotificationEmailService>();
         services.AddScoped<ActivityService>();
