@@ -1,7 +1,8 @@
 import { waitForPushReceipt } from '../notifications/pushReceipts';
 import { orgHref } from '../../lib/orgPath';
 import { pushApi } from '../../api/endpoints';
-import { ApiError } from '../../api/client';
+import { ApiError, post } from '../../api/client';
+import { quickActionsOn } from '../notifications/quick/quickPref';
 import { playSound } from '../../lib/attention';
 import { isDesktopApp } from '../../lib/desktop';
 import { enableNativePush, isNativeApp, nativeEndpoint, nativePermission } from '../../lib/native';
@@ -24,7 +25,7 @@ const keyBytes = (b64: string) => {
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
 };
 
-type DesktopBridge = { notify?: (n: { title: string; body: string; link: string; tag: string; silent: boolean; urgent: boolean }) => void; closeNotifications?: (tags: string[]) => void };
+type DesktopBridge = { notify?: (n: { title: string; body: string; link: string; tag: string; silent: boolean; urgent: boolean; qa?: string; actions?: string[] }) => void; closeNotifications?: (tags: string[]) => void };
 const desktopBridge = () => (typeof window === 'undefined' ? undefined : (window as unknown as { ptDesktop?: DesktopBridge }).ptDesktop);
 /** The desktop app's native notifications for these tags close (read somewhere). */
 export function closeDesktopNotifications(tags: string[]) { try { desktopBridge()?.closeNotifications?.(tags); } catch { /* not the desktop app */ } }
@@ -182,7 +183,10 @@ export async function systemNotification(title: string, body: string | null, tag
   // they never arrived there), so the main process shows a native one (Windows toast / macOS Notification Center) that opens the link.
   const desk = desktopBridge();
   if (isDesktopApp() && desk?.notify) {
-    try { desk.notify({ title, body: body ?? '', link, tag, silent: opts.osSound !== true, urgent: opts.sticky ?? false }); return true; } catch { /* fall through */ }
+    // Quick actions: a notice from the server (its tag is its id) gets a one-time key, so its buttons work from the toast with the window closed.
+    const quick = /^[0-9a-f-]{36}$/i.test(tag) && quickActionsOn()
+      ? await post<{ token: string; actions: string[] }>(`/notifications/${tag}/quick-key`).catch(() => null) : null;
+    try { desk.notify({ title, body: body ?? '', link, tag, silent: opts.osSound !== true, urgent: opts.sticky ?? false, ...(quick?.actions.length ? { qa: quick.token, actions: quick.actions } : {}) }); return true; } catch { /* fall through */ }
   }
   // Urgent ones (reminders by default) stay on screen until dismissed; the rest go away by themselves. The page plays its own sound, so
   // the system one is silent (two sounds for one alert would be noise); renotify makes a repeated tag pop up again instead of updating quietly.
