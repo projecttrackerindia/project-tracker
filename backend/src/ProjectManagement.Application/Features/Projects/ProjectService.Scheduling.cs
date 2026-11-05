@@ -84,6 +84,8 @@ public partial class ProjectService
         var (project, stages, preview) = await PrepareScheduleAsync(id, req, ct);
         var oldDue = project.DueDate;
         var note = DueDateHistory.Prepare(oldDue, preview.DueDate, req.Reason, null);
+        var oldStart = project.StartDate;
+        var startReason = dueHistory.Require("start date", oldStart, preview.StartDate, req.Reason);
         project.StageScheduleMode = req.Mode; project.StartDate = preview.StartDate; project.DueDate = preview.DueDate;
         foreach (var row in preview.Stages)
         {
@@ -92,6 +94,7 @@ public partial class ProjectService
         }
         project.Version++;
         if (note is not null) dueHistory.Record(project.TenantId, id, null, oldDue, preview.DueDate, note);
+        if (oldStart != project.StartDate) dueHistory.RecordDate(project.TenantId, id, DateKinds.Project, id, DateKinds.Start, oldStart, project.StartDate, startReason);
         recorder.Activity("project.schedule_recalculated", "Project", id, $"Scheduled {stages.Count} stages of \"{project.Name}\"; finish {preview.FinishDate:yyyy-MM-dd}, end {preview.DueDate:yyyy-MM-dd} ({req.Mode}).", id);
         recorder.Audit("project.schedule_recalculated", "Project", id, newValue: preview);
         await db.SaveChangesAsync(ct); await tx.CommitIfOwnedAsync(ct);
