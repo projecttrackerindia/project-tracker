@@ -95,9 +95,9 @@ if 'ScreenShieldPlugin' not in src:
     if 'ScreenShieldPlugin' not in src:
         sys.exit('Could not register the screen shield in MainActivity.java')
     main.write_text(src)
-# Quick actions, full-screen calls, the Today widget and live timers (native/quick). Opt-in until verified on devices: PT_QUICK_NATIVE=1.
-import os
-if os.environ.get('PT_QUICK_NATIVE') == '1':
+# Quick actions, full-screen calls, the Today widget and live timers (native/quick). On by default; PT_QUICK_NATIVE=0 builds without them.
+import os, json
+if os.environ.get('PT_QUICK_NATIVE', '1') != '0':
     for f in pathlib.Path('native/quick/java').glob('*.java'):
         (main.parent / f.name).write_text(f.read_text().replace('package PKG;', f'package {pkg};'))
     (main.parent / 'BuildConfigHost.java').write_text(f'package {pkg};\n\n/** The server the quick-action buttons talk to. */\nfinal class BuildConfigHost {{ static final String BASE = "https://{host}"; }}\n')
@@ -129,5 +129,13 @@ if os.environ.get('PT_QUICK_NATIVE') == '1':
         if plugin not in src:
             src = src.replace('registerPlugin(ScreenShieldPlugin.class);', f'registerPlugin(ScreenShieldPlugin.class);\n        registerPlugin({plugin}.class);', 1)
     main.write_text(src)
+    # Tell the server this build draws quick-action notices itself, so it may send them data-only (they then work with the app closed).
+    cfg = pathlib.Path('android/app/src/main/assets/capacitor.config.json')
+    if cfg.exists():
+        c = json.loads(cfg.read_text())
+        ua = c.get('android', {}).get('appendUserAgent') or c.get('appendUserAgent') or 'ProjectTrackerApp'
+        if 'PTQuick/' not in ua:
+            c.setdefault('android', {})['appendUserAgent'] = f'{ua} PTQuick/1'
+            cfg.write_text(json.dumps(c, indent=2))
     print('Quick actions, widget and live timer added')
 print('Android project patched')
