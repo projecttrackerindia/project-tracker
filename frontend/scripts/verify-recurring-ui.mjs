@@ -9,7 +9,7 @@ import { openCreate } from './lib/aura.mjs';
 // + New › "From template…": the searchable picker of project and task templates, picking one, the start-date form, creating through
 // /templates/{id}/create-project and landing on the new project. Light and dark at 1440, and an iPhone at 390 (no sideways scroll, nothing cut off).
 // Built frontend with fictional fixtures only (the shell mocks are the ones verify-approvals-phone-ui.mjs uses).
-const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/recurring-ui');
+const origin = 'https://projecttracker-preview.test', dist = path.resolve('dist'), out = path.resolve('test-results/recurring');
 await fs.mkdir(out, { recursive: true });
 const csp = await appCsp();
 const user = { id: '00000000-0000-0000-0000-0000000000a1', displayName: 'Ravi Menon', email: 'ravi@example.test', emailVerified: true, timeZone: 'Asia/Kolkata', isPlatformAdmin: false };

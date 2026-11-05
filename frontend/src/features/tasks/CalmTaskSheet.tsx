@@ -12,6 +12,7 @@ import { toast } from '../../stores/ui';
 import { refreshWork } from '../work/workUi';
 import { shortDay } from '../calm/createSheets';
 import { RepeatField } from '../recurring/RepeatField';
+import { templateApi } from '../recurring/api';
 import { WorkItemPanel } from '../work/WorkItemPanel';
 import '../calm/calm-pages.css';
 
@@ -76,7 +77,8 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
             <WorkItemPanel id={t.id} onClose={onClose} embedded />
           </div>
           <div className="ts-col">
-            {!t.parentTaskId && <div className="ts-meta"><span>Repeat</span><span><RepeatField taskId={t.id} dueDate={t.dueDate} canEdit={t.canEdit} /></span></div>}
+            {!t.parentTaskId && <div className="ts-repeat"><span>Repeat</span><span><RepeatField taskId={t.id} dueDate={t.dueDate} canEdit={t.canEdit} /></span></div>}
+            {!t.parentTaskId && <div className="ts-tpl"><button type="button" className="cp-lk bl" data-testid="save-task-template" onClick={() => void templateApi.saveTask(t.id).then(() => toast('Saved as a task template.'), () => toast('Could not save the template.', 'error'))}>Save as template</button></div>}
             <div className="ts-lab">Checklist · {cl.data?.done ?? 0} of {cl.data?.total ?? items.length}</div>
             {items.length === 0 && <p className="calm-week-note">No checklist yet.</p>}
             {items.map((i) => (

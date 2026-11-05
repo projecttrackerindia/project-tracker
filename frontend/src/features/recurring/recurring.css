@@ -55,3 +55,11 @@
   .rp-days { padding-left: 0; justify-content: space-between; }
   .tp-acts .rp-btn { flex: 1; height: 40px; }
 }
+.ts-repeat { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; margin: 0 0 6px; font-size: 13px; }
+.ts-repeat > span:first-child { color: var(--ds-text-3, var(--calm-text-3)); }
+.ts-tpl { margin: 0 0 16px; font-size: 13px; }
+/* In the task sheet: the label never clips, and the editor spans the column instead of spilling past the sheet. */
+.ts-repeat { position: relative; }
+.ts-repeat .rp-field { position: static; }
+.ts-repeat .rp-value { margin: -2px 0 -2px -8px; max-width: calc(100% + 8px); }
+@media (min-width: 601px) { .ts-repeat .rp-pop { left: 0; right: 0; width: auto; max-width: none; top: calc(100% + 8px); } }

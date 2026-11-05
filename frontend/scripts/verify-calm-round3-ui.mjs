@@ -84,7 +84,7 @@ const docs = { items: [{ id: g(960), key: 'DOC-1', number: 1, title: 'Atlas paym
 
 const errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
-const ALLOWED = [/^POST \/api\/v1\/tasks\/[^/]+\/timer\/start$/, /^POST \/api\/v1\/timer\/stop$/, /^POST \/api\/v1\/reminders\/[^/]+\/done$/, /^PATCH \/api\/v1\/work-items\/[^/]+$/, /^POST \/api\/v1\/work-items$/, /^POST \/api\/v1\/projects$/, /^PUT \/api\/v1\/tasks\/[^/]+\/checklist\/[^/]+$/, /^PATCH \/api\/v1\/tasks\/[^/]+\/move$/, /^POST \/api\/v1\/me\/attendance\/check-in$/, /^POST \/api\/v1\/tasks\/[^/]+\/checklist$/];
+const ALLOWED = [/^PUT \/api\/v1\/tasks\/[^/]+\/recurrence$/, /^POST \/api\/v1\/tasks\/[^/]+\/timer\/start$/, /^POST \/api\/v1\/timer\/stop$/, /^POST \/api\/v1\/reminders\/[^/]+\/done$/, /^PATCH \/api\/v1\/work-items\/[^/]+$/, /^POST \/api\/v1\/work-items$/, /^POST \/api\/v1\/projects$/, /^PUT \/api\/v1\/tasks\/[^/]+\/checklist\/[^/]+$/, /^PATCH \/api\/v1\/tasks\/[^/]+\/move$/, /^POST \/api\/v1\/me\/attendance\/check-in$/, /^POST \/api\/v1\/tasks\/[^/]+\/checklist$/];
 const make = async (theme, writes, opts = {}) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
   await ctx.clock.setFixedTime(new Date(at(today, opts.hh ?? 13, opts.mm ?? 52)));
@@ -227,6 +227,22 @@ try {
     }
     if (phone) await fitsPhoneX(page, `task sheet ${tag}`);
     await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `task-sheet-${tag}.png`) });
+    // Repeat: the isolated RepeatField in the task sheet opens a small editor (weekly on days, ends after N) that saves through PUT /recurrence.
+    {
+      const rep = page.getByTestId('repeat-field'); await rep.scrollIntoViewIfNeeded(); await rep.click();
+      await page.getByLabel('How often').selectOption('weekly');
+      await page.getByRole('group', { name: 'On these days' }).getByRole('button', { name: 'Thu' }).click();
+      await page.getByLabel('Ends').selectOption('after');
+      const recurDir = path.resolve('test-results/recurring'); await fs.mkdir(recurDir, { recursive: true });
+      if (phone) await fitsPhoneX(page, `repeat ${tag}`);
+      await page.waitForTimeout(1200); await page.screenshot({ path: path.join(recurDir, `repeat-field-${tag}.png`), animations: 'disabled' });
+      await page.getByRole('dialog', { name: 'Repeat' }).getByRole('button', { name: 'Done' }).click(); await page.waitForTimeout(400);
+      const put = writes.find((x) => /^PUT \/api\/v1\/tasks\/[^/]+\/recurrence$/.test(x.w));
+      assert.ok(put, `${tag}: repeat saves through PUT /recurrence`);
+      assert.equal(put.body.rule.frequency, 'weekly'); assert.equal(put.body.rule.endAfter, 10);
+      writes.length = 0;
+      checks.push(`${tag}: Repeat field sets a weekly rule that ends after N`);
+    }
     await ctx.close();
   }
 } finally { await browser.close(); }
