@@ -92,19 +92,25 @@ public class TimelineService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         // Keys (INFRA-4, WT-12, AI-3, INFRA-I2) for the open work, so a focus block can name the item: three batched reads, never one per item.
         var dueIds = events.Where(e => e.Type == "due").GroupBy(e => e.SourceType).ToDictionary(g => g.Key, g => g.Select(e => e.SourceId).ToList());
         var keys = new Dictionary<Guid, string>();
+        // Who each open item is assigned to (the Calendar's People view lays the team out by person and drags work between them).
+        var owners = new Dictionary<Guid, Guid?>();
         if (dueIds.TryGetValue("task", out var taskIds))
-            foreach (var k in await db.Tasks.AsNoTracking().Where(t => taskIds.Contains(t.Id)).Select(t => new { t.Id, t.Number, ProjectKey = t.Project!.Key }).ToListAsync(ct))
-                keys[k.Id] = $"{k.ProjectKey}-{k.Number}";
+            foreach (var k in await db.Tasks.AsNoTracking().Where(t => taskIds.Contains(t.Id)).Select(t => new { t.Id, t.Number, ProjectKey = t.Project!.Key, t.AssigneeId }).ToListAsync(ct))
+            { keys[k.Id] = $"{k.ProjectKey}-{k.Number}"; owners[k.Id] = k.AssigneeId; }
         if (dueIds.TryGetValue("issue", out var issueIds))
             foreach (var k in await db.StageIssues.AsNoTracking().Where(i => issueIds.Contains(i.Id))
                          .Select(i => new { i.Id, i.Number, ProjectKey = db.Projects.Where(p => p.Id == i.ProjectId).Select(p => p.Key).FirstOrDefault() }).ToListAsync(ct))
                 keys[k.Id] = $"{k.ProjectKey}-I{k.Number}";
         var workIds = (dueIds.TryGetValue("action", out var a1) ? a1 : []).Concat(dueIds.TryGetValue("work", out var a2) ? a2 : []).ToList();
         if (workIds.Count > 0)
-            foreach (var k in await db.WorkTasks.AsNoTracking().Where(w => workIds.Contains(w.Id)).Select(w => new { w.Id, w.Number, w.Kind }).ToListAsync(ct))
-                keys[k.Id] = WorkItemService.KeyOf(k.Kind, k.Number);
+            foreach (var k in await db.WorkTasks.AsNoTracking().Where(w => workIds.Contains(w.Id)).Select(w => new { w.Id, w.Number, w.Kind, w.AssigneeId }).ToListAsync(ct))
+            { keys[k.Id] = WorkItemService.KeyOf(k.Kind, k.Number); owners[k.Id] = k.AssigneeId; }
         for (var i = 0; i < events.Count; i++)
-            if (events[i].Type == "due" && keys.TryGetValue(events[i].SourceId, out var key)) events[i] = events[i] with { Key = key };
+        {
+            if (events[i].Type != "due") continue;
+            if (keys.TryGetValue(events[i].SourceId, out var key)) events[i] = events[i] with { Key = key };
+            if (owners.TryGetValue(events[i].SourceId, out var owner) && owner is not null) events[i] = events[i] with { UserId = owner };
+        }
 
         await AddDueTimesAsync(events, people, workScope, fromUtc, toUtc, ct);
 

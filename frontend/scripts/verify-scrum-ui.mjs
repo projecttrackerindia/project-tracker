@@ -70,7 +70,7 @@ try{
   let dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();await dialog.getByRole('heading',{name:'Schedule a stand-up'}).waitFor();
   // A workspace stand-up needs no project: "No project" is the default, and the title follows the workspace.
-  assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),'','No project is the default');
+  assert.equal(await dialog.getByLabel('Project',{exact:true}).locator('xpath=..').locator('select.ss-native').inputValue(),'','No project is the default');
   assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Preview Workspace stand-up');
   // The one schedule sheet (meet-schedule): a stand-up repeats daily on weekdays and lasts 15 minutes by default.
   assert.equal(await dialog.getByRole('radiogroup',{name:'Repeats'}).getByRole('radio',{name:'Daily'}).getAttribute('aria-checked'),'true','A stand-up repeats on weekdays by default');
@@ -87,7 +87,7 @@ try{
   // Choosing a project switches the invitees and the suggested title to that project's.
   await page.getByRole('button',{name:'Schedule meeting',exact:true}).click();
   dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Stand-up',exact:true}).click();
-  await dialog.getByLabel('Project',{exact:true}).selectOption(pid);
+  await dialog.getByLabel('Project',{exact:true}).locator('xpath=..').locator('select.ss-native').selectOption(pid, { force: true });
   assert.equal(await dialog.getByLabel('Title',{exact:true}).inputValue(),'Connected delivery stand-up');
   await dialog.getByLabel('Date',{exact:true}).fill('2030-01-07');await dialog.getByLabel('Start',{exact:true}).fill('09:30');
   await dialog.getByLabel('Total sessions',{exact:true}).fill('10');
@@ -104,8 +104,8 @@ try{
   await page.getByRole('button',{name:'More on this project'}).click();await page.getByRole('menu',{name:'More on this project'}).getByRole('menuitem',{name:/^Meet/}).click();await page.waitForURL(/\/meetings\?.*project=/);
   await page.getByRole('button',{name:'Schedule meeting',exact:true}).click();
   dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
-  await page.waitForFunction(()=>document.querySelector('[aria-label="Project"]')?.value?.length>0);
-  assert.equal(await dialog.getByLabel('Project',{exact:true}).inputValue(),pid);checks.push(`project-meet-${width}`);
+  await page.waitForFunction(()=>(document.querySelector('[aria-label="Project"]')?.parentElement?.querySelector('select.ss-native')?.value ?? '').length>0);
+  assert.equal(await dialog.getByLabel('Project',{exact:true}).locator('xpath=..').locator('select.ss-native').inputValue(),pid);checks.push(`project-meet-${width}`);
   await page.close();
  }
  const logo=await ctx.newPage();await logo.goto(origin+'/preview-org/calendar');await logo.locator('[data-testid="week-planner"]').waitFor();

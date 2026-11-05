@@ -11,6 +11,8 @@ public class QueryFilterBypassGuardTests
 {
     private static readonly string[] Reviewed =
     [
+        "ProjectManagement.Application/Features/Integrations/MicrosoftProductivityAuthService.cs", // the mail watcher's Outlook grant: one person's connection in the named workspace only (GetInboxGrantForAsync)
+        "ProjectManagement.Application/Features/Mailbox/MailWatch.cs", // the background mail watcher: lists every connected IMAP mailbox with its own workspace and owner; each alert is created for that owner in that workspace only
         "ProjectManagement.Application/Features/Time/PlannedLeaveService.cs", // exact tenant/request tombstone check after person authorization; no cross-tenant read
         "ProjectManagement.Api/Middleware/Middleware.cs",
         "ProjectManagement.Application/Features/Platform/StatusPageService.cs", // the public status page is opened without signing in: found by its unique slug, then only that page's workspace (named in every query); a slug's uniqueness across workspaces is an existence check
@@ -22,6 +24,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Vault/VaultJobs.cs", // nightly vault work and offboarding: each query names its workspace (or reads only ids to visit each workspace in turn, as that workspace); key re-wrapping per workspace
         "ProjectManagement.Application/Features/Integrations/OAuthService.cs", // token endpoint: grants found by their secret hash, before any workspace exists
         "ProjectManagement.Api/Realtime/ChatHub.cs",
+        "ProjectManagement.Api/Realtime/SnoozeReturnWorker.cs", // returning snoozes across workspaces: reads only ids and recipients, each announced to its own workspace
         "ProjectManagement.Application/Features/Admin/AdminService.cs",
         "ProjectManagement.Application/Features/People/MemberProfile.cs",
         "ProjectManagement.Application/Features/Resumes/PersonalFileCleanup.cs", // trusted storage-key existence checks only, across owners and deleted records; no content is retrieved
@@ -41,6 +44,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Billing/BillingMailer.cs", // billing e-mails are sent from webhooks and background jobs with no signed-in workspace: it reads only that workspace's name and its owner's address
         "ProjectManagement.Application/Features/Auth/AuthService.cs",
         "ProjectManagement.Application/Features/Auth/DeviceLoginService.cs",
+        "ProjectManagement.Application/Features/Approvals/ApprovalService.cs", // which linked ids are projects or work of this workspace (named explicitly), deleted or not - ids only, to leave out links to deleted ones
         "ProjectManagement.Application/Features/Auth/SessionApprovalService.cs", // "Single active session" at sign-in, before any workspace is chosen: whether an organization the person belongs to requires it (flags and names of their own memberships only)
         "ProjectManagement.Application/Features/Automation/AutomationService.cs",
         "ProjectManagement.Application/Features/Automation/AutomationConditions.cs", // scheduled Desk ticket rules: finds enabled rules of every active workspace (ids only), then runs each as that workspace

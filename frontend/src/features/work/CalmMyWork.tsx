@@ -33,7 +33,6 @@ const mondayOf = (iso: string) => { const d = new Date(`${iso}T00:00:00Z`); retu
  */
 export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; more: DotsItem[] }) {
   const wid = useWorkspaceId();
-  const nav = useNavigate();
   const me = useAuth((s) => s.ctx!.user.id);
   const today = todayISO();
   const weekEnd = weekEndOf(today);
@@ -83,7 +82,7 @@ export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; mor
   const second = first ? `${shortTitle(first.title)} comes first.` : 'New work lands here.';
   const lateOne = live.find((w) => w.isOverdue);
 
-  const dots = <DotsMenu label="More in My work" items={[{ label: 'Focus stack', hint: 'The earlier My work, with Do this now', icon: 'target', onSelect: () => nav('/work?classic=1') }, ...more]} />;
+  const dots = <DotsMenu label="More in My work" items={[...more]} />;
   return (
     <CalmSplit className="cp-page" crumb={<><span>My work</span><span style={{ flex: 1 }} />{dots}</>} label="My work" rail={<MyWorkRail waiting={waiting} doneWeek={doneWeek} first={first ?? null} onOpen={onOpen} onDone={() => setTab('done')} />}>
       <header className="cp-hero"><h1>{title}<em>{second}</em></h1></header>
@@ -124,7 +123,7 @@ export function CalmMyWork({ onOpen, more }: { onOpen: (id: string) => void; mor
       <CalmFoot>
         <CalmInsights items={[
           { key: 'open', label: `${live.length} open`, onClick: () => setTab('week') },
-          { key: 'overdue', label: `${overdue} overdue`, onClick: () => nav('/work?classic=1&overdue=1') },
+          { key: 'overdue', label: `${overdue} overdue`, onClick: () => setTab('week') },
           { key: 'done', label: `${doneWeek.length} done this week`, onClick: () => setTab('done') },
         ]} />
         <AuraLine text={lateOne ? `${shortTitle(lateOne.title)} is overdue. Moving it to a free afternoon keeps the week honest.` : completedToday(doneWeek[0] ?? {}, today) ? 'You finished something today. Nice.' : undefined}
@@ -146,7 +145,7 @@ function MyWorkRail({ waiting, doneWeek, first, onOpen, onDone }: { waiting: Wor
   return (
     <>
       <WeekCard link />
-      <CalmRailCard title="Waiting on others" link={waiting.length ? 'Nudge all ›' : undefined} onLink={() => nav('/work?classic=1&filter=raised')}>
+      <CalmRailCard title="Waiting on others" >
         {waiting.length === 0 ? <p className="calm-week-note">Nobody owes you anything.</p> : waiting.slice(0, 4).map((w) => (
           <CalmRailRow key={w.id} lead={<CalmAv name={w.assignee?.name ?? '?'} />} title={w.assignee?.name ?? 'Unassigned'} sub={w.title} hot={w.isOverdue}
             right={w.isOverdue ? 'Late' : dayText(w.dueDate)} onClick={() => onOpen(w.id)} />

@@ -114,7 +114,8 @@ public class ApprovalService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var expiring = all.Count(r => r.Status == ApprovalStatuses.Pending && r.ExpiresAt is { } e && e < endOfDay);
 
         var names = await NamesAsync(list.Select(r => r.RequesterId).Concat(list.SelectMany(r => byReq.GetValueOrDefault(r.Id) ?? []).Select(s => s.ApproverId)), ct);
-        var items = list.Select(r => Dto(r, byReq.GetValueOrDefault(r.Id) ?? [], names, me, null)).ToList();
+        var gone = await GoneLinkTargetsAsync(list, ct);
+        var items = list.Select(r => Dto(r, byReq.GetValueOrDefault(r.Id) ?? [], names, me, null, gone)).ToList();
         return new ApprovalListDto(items, counts, week, byType, expiring, await ElsewhereAsync(ct));
     }
 
@@ -140,7 +141,7 @@ public class ApprovalService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         var steps = await db.ApprovalRequestSteps.AsNoTracking().Where(s => s.RequestId == r.Id).OrderBy(s => s.Order).ToListAsync(ct);
         var events = await db.ApprovalRequestEvents.AsNoTracking().Where(e => e.RequestId == r.Id).OrderBy(e => e.CreatedAt).ThenBy(e => e.Id).ToListAsync(ct);
         var names = await NamesAsync(steps.Select(s => s.ApproverId).Append(r.RequesterId).Concat(events.Where(e => e.UserId != null).Select(e => e.UserId!.Value)), ct);
-        return Dto(r, steps, names, ctx.RequireUserId(), events);
+        return Dto(r, steps, names, ctx.RequireUserId(), events, await GoneLinkTargetsAsync([r], ct));
     }
 
     private IQueryable<ApprovalRequest> Visible()
@@ -523,16 +524,43 @@ public class ApprovalService(IAppDbContext db, ICurrentContext ctx, AppClock clo
         try { return JsonSerializer.Deserialize<Dictionary<string, string>>(r.PayloadJson, Json) ?? []; } catch (JsonException) { return []; }
     }
 
+    private static readonly System.Text.RegularExpressions.Regex LinkGuid = new("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+
+    /// <summary>The projects and work a link points at: its id and any id in its address.</summary>
+    private static IEnumerable<Guid> LinkTargets(ApprovalLinkDto l)
+    {
+        if (Guid.TryParse(l.Id, out var id)) yield return id;
+        if (l.Href is { } h) foreach (System.Text.RegularExpressions.Match m in LinkGuid.Matches(h)) yield return Guid.Parse(m.Value);
+    }
+
+    /// <summary>
+    /// Link targets that name a project or a piece of work this person can no longer open (deleted, or in a deleted project): such links are
+    /// left out of the request entirely rather than shown as a dead link. Ids that are neither a project nor work (documents, deploys) are kept.
+    /// </summary>
+    private async Task<IReadOnlySet<Guid>> GoneLinkTargetsAsync(IEnumerable<ApprovalRequest> requests, CancellationToken ct)
+    {
+        var ids = requests.SelectMany(r => Links(r)).SelectMany(LinkTargets).Distinct().ToList();
+        if (ids.Count == 0) return new HashSet<Guid>();
+        var tid = ctx.RequireTenantId();
+        // Every project and work item of this workspace with one of those ids, deleted or not (ids only), then the ones still visible.
+        var known = await db.Projects.IgnoreQueryFilters().Where(p => p.TenantId == tid && ids.Contains(p.Id)).Select(p => p.Id)
+            .Concat(db.WorkItems.IgnoreQueryFilters().Where(w => w.TenantId == tid && ids.Contains(w.Id)).Select(w => w.Id)).ToListAsync(ct);
+        if (known.Count == 0) return new HashSet<Guid>();
+        var live = await db.Projects.Where(p => known.Contains(p.Id)).Select(p => p.Id)
+            .Concat(db.WorkItems.Where(w => known.Contains(w.Id)).Select(w => w.Id)).ToListAsync(ct);
+        return known.Except(live).ToHashSet();
+    }
+
     private static List<ApprovalLinkDto> Links(ApprovalRequest r)
     {
         try { return JsonSerializer.Deserialize<List<ApprovalLinkDto>>(r.LinksJson, Json) ?? []; } catch (JsonException) { return []; }
     }
 
-    private ApprovalRequestDto Dto(ApprovalRequest r, IReadOnlyList<ApprovalRequestStep> steps, IReadOnlyDictionary<Guid, string> names, Guid me, IReadOnlyList<ApprovalRequestEvent>? events)
+    private ApprovalRequestDto Dto(ApprovalRequest r, IReadOnlyList<ApprovalRequestStep> steps, IReadOnlyDictionary<Guid, string> names, Guid me, IReadOnlyList<ApprovalRequestEvent>? events, IReadOnlySet<Guid>? gone = null)
     {
         UserRefDto Ref(Guid id) => new(id, names.GetValueOrDefault(id) ?? "Former member");
         var needs = r.Status == ApprovalStatuses.Pending && steps.Any(s => s.Status == "Pending" && s.ApproverId == me);
-        return new ApprovalRequestDto(r.Id, r.Type, r.Title, r.Summary, Payload(r), r.Risk, r.Impact, Links(r), Ref(r.RequesterId), r.Status, r.CurrentStep,
+        return new ApprovalRequestDto(r.Id, r.Type, r.Title, r.Summary, Payload(r), r.Risk, r.Impact, Links(r).Where(l => gone is null || !LinkTargets(l).Any(gone.Contains)).ToList(), Ref(r.RequesterId), r.Status, r.CurrentStep,
             steps.Select(s => new ApprovalChainStepDto(s.Order, s.Role, Ref(s.ApproverId), s.Status, s.DecidedAt, s.Comment)).ToList(), needs, r.RequesterId == me,
             r.CreatedAt, r.ExpiresAt, r.DecidedAt, r.Outcome,
             events?.Select(e => new ApprovalEventDto(e.Id, e.UserId is { } u ? Ref(u) : null, e.Action, e.StepOrder, e.Comment, e.CreatedAt)).ToList());

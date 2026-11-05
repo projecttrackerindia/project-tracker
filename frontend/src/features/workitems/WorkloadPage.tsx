@@ -72,7 +72,7 @@ function OpenWork() {
   const colors = useChartColors();
   const fillOf = { open: colors.open, overdue: colors.late, done: colors.done } as const;
   const wanted = (params.get('scope') as WorkloadScope | null) ?? undefined;
-  const q = useWsQuery(['workload', wanted ?? ''], () => workItemApi.workload(wanted), { refetchInterval: 60_000 });
+  const q = useWsQuery(['workload', wanted ?? ''], () => workItemApi.workload(wanted), { refetchInterval: 300_000 });
   const [open, setOpen] = useState<WorkloadPerson | null>(null);
   const kinds = useVisibleKinds();
 

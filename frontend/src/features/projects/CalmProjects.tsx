@@ -70,8 +70,6 @@ export function CalmProjects() {
 
   const dots = (
     <DotsMenu label="More on Projects" items={[
-      { label: 'Passes', hint: 'The earlier cards, with filters by group, type and priority', icon: 'grid', onSelect: () => nav('/work/projects?classic=1') },
-      { label: 'Board', icon: 'kanban', onSelect: () => { try { localStorage.setItem('pm_projects_view', 'board'); } catch { /* */ } nav('/work/projects?classic=1'); } },
       { label: 'Portfolio', hint: 'Summary, decisions, timeline and Plan sheet', icon: 'chart', onSelect: () => nav('/work/projects?view=portfolio') },
       { label: 'Plan sheet', icon: 'list', onSelect: () => nav('/work/projects?view=portfolio&mode=sheet') },
       { label: 'Project groups', icon: 'folder', onSelect: () => nav('/settings/timelines/project-groups') },

@@ -54,6 +54,8 @@ setWorkDeletedHandler(() => void queryClient.invalidateQueries());
 interface AuthState {
   /** offline: started without a connection - the saved My work is shown until it is back. */
   status: 'loading' | 'authenticated' | 'anonymous' | 'offline';
+  /** Shown from this device's saved copy because the session could not be checked (no connection): renewed when it is back. */
+  offlineSession?: boolean;
   ctx: AppContext | null;
   bootstrap: () => Promise<void>;
   /** Resolves with a challenge when two-step verification is on (finish with `loginMfa`), or with a request to approve on the signed-in device. */
@@ -86,6 +88,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
     const auth = await refresh;
     if (!auth) {
+      // No connection (not a refused session): keep showing the saved copy, readable and editable through the outbox, until it is back.
+      if (warm && sameAddress && !refreshWasRefused() && get().status === 'authenticated') { set({ offlineSession: true }); return; }
       if (warm) { clearWarmStart(); queryClient.clear(); }
       // Not answered (a release restarting, a blip) is not "signed out": with saved work the offline view shows, and it is tried again.
       const unreachable = !refreshWasRefused();

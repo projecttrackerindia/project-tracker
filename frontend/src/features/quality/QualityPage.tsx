@@ -1,4 +1,5 @@
 import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
+import { Select } from '../../components/Select';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -35,7 +36,7 @@ export function QualityPage() {
   const [cell, setCell] = useState<{ runId: string; caseId: string; x: number; y: number } | null>(null);
   const wid = useWorkspaceId();
   const qc = useQueryClient();
-  const matrix = useWsQuery(['quality', 'matrix'], () => qualityApi.matrix(undefined, 4), { refetchInterval: 30_000 });
+  const matrix = useWsQuery(['quality', 'matrix'], () => qualityApi.matrix(undefined, 4), { refetchInterval: 300_000 });
   const m: TestMatrix = matrix.data ?? { runs: [], cases: [], results: [] };
   const current: TestRun | null = useMemo(() => [...m.runs].reverse().find((r) => r.status === 'Running') ?? m.runs[m.runs.length - 1] ?? null, [m.runs]);
   const ready = useWsQuery(['quality', 'readiness', current?.id ?? 'none'], () => qualityApi.readiness(current ? { runId: current.id } : {}), { enabled: !!current });
@@ -304,7 +305,7 @@ function CaseDialog({ initial, onClose, onSaved }: { initial?: TestCase; onClose
       <Field label="Expected"><input className="input" maxLength={2000} value={f.expected} onChange={(e) => setF({ ...f, expected: e.target.value })} placeholder="200 · dispatch_id present" /></Field>
       <Field label="Priority"><select className="select" value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value as CasePriority })}>{['Low', 'Medium', 'High', 'Critical'].map((p) => <option key={p}>{p}</option>)}</select></Field>
       <Field label="Area / tags"><input className="input" maxLength={300} value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="Loan dispatch" /></Field>
-      <Field label="Project"><select className="select" value={f.projectId} onChange={(e) => setF({ ...f, projectId: e.target.value })}><option value="">No project</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+      <Field label="Project"><Select className="select" value={f.projectId} onChange={(e) => setF({ ...f, projectId: e.target.value })}><option value="">No project</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
     </Dialog>
   );
 }
@@ -326,7 +327,7 @@ function RunDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (r: Tes
       <Field label="Name" required><input className="input" autoFocus maxLength={120} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="UAT 1.4" /></Field>
       <Field label="Environment"><input className="input" maxLength={40} value={f.environment} onChange={(e) => setF({ ...f, environment: e.target.value })} placeholder="DEV, UAT, PROD-like" /></Field>
       <Field label="Build"><input className="input" maxLength={40} value={f.build} onChange={(e) => setF({ ...f, build: e.target.value })} placeholder="214" /></Field>
-      <Field label="Project"><select className="select" value={f.projectId} onChange={(e) => setF({ ...f, projectId: e.target.value })}><option value="">No project</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+      <Field label="Project"><Select className="select" value={f.projectId} onChange={(e) => setF({ ...f, projectId: e.target.value })}><option value="">No project</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
     </Dialog>
   );
 }

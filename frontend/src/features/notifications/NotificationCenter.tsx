@@ -154,7 +154,7 @@ function Inbox() {
   const [why, setWhy] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
   useAppZone();   // re-group when the zone changes
-  const counts = useWsQuery(['notifications', 'counts'], notificationApi.counts, { refetchInterval: 60_000 });
+  const counts = useWsQuery(['notifications', 'counts'], notificationApi.counts, { refetchInterval: 300_000 });
   // Until the person picks, open the lane that has something in it: what needs them first.
   const lane: Lane = picked ?? (counts.data && counts.data.needsYou === 0 && counts.data.forInfo > 0 ? 'info' : 'needs');
   const q = useWsQuery(['notifications', 'page', lane, page, unreadOnly], () =>

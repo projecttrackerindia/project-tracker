@@ -177,8 +177,20 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
         RequireEnabled();ctx.RequireTenantId();var uid=ctx.RequireUserId();
         return await GrantForAsync(uid,requiredScope,exact:false,ct);
     }
-    private async Task<MicrosoftMailGrant> GrantForAsync(Guid uid,string requiredScope,bool exact,CancellationToken ct){
-        var row=await db.MicrosoftConnections.AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct)
+    /// <summary>
+    /// The person's Outlook inbox (Mail.Read) for background work with no signed-in workspace (the mail watcher): the connection is looked up
+    /// in the named workspace only, for that person only. Never returned to the browser.
+    /// </summary>
+    public async Task<MicrosoftMailGrant> GetInboxGrantForAsync(Guid tenantId,Guid userId,CancellationToken ct){
+        RequireEnabled();
+        if(!Options.InboxEnabled)throw new ConflictException("Microsoft inbox access is not enabled.","INBOX_DISABLED");
+        return await GrantForAsync(userId,"Mail.Read",exact:false,ct,tenantId);
+    }
+    private IQueryable<MicrosoftConnection> Connections(Guid? tenantId)=>tenantId is {} t
+        ?db.MicrosoftConnections.IgnoreQueryFilters().Where(c=>c.TenantId==t)
+        :db.MicrosoftConnections;
+    private async Task<MicrosoftMailGrant> GrantForAsync(Guid uid,string requiredScope,bool exact,CancellationToken ct,Guid? tenantId=null){
+        var row=await Connections(tenantId).AsNoTracking().SingleOrDefaultAsync(c=>c.UserId==uid,ct)
             ??throw new ConflictException("Connect your Microsoft account first.","MICROSOFT_NOT_CONNECTED");
         if(exact?!HasExact(row.Scopes,requiredScope):!HasScope(row.Scopes,requiredScope))throw new ConflictException("Reconnect and grant the required Microsoft permission.","MICROSOFT_SCOPE_REQUIRED");
         if(row.AccessTokenExpiresAt>clock.Now)return new(row.Email,secrets.Unprotect(row.AccessTokenProtected),row.Id,Hash(row.RefreshTokenProtected),row.ConsentEpoch);
@@ -192,7 +204,7 @@ public class MicrosoftProductivityAuthService(IAppDbContext db,ICurrentContext c
         if(!HasScope(granted,requiredScope))throw new ConflictException("Reconnect and grant the required Microsoft permission.","MICROSOFT_SCOPE_REQUIRED");
         var refresh=payload.RootElement.TryGetProperty("refresh_token",out var rt)&&rt.ValueKind==JsonValueKind.String?Field(payload.RootElement,"refresh_token",10000):secrets.Unprotect(row.RefreshTokenProtected);
         var encryptedAccess=secrets.Protect(access);var encryptedRefresh=secrets.Protect(refresh);
-        var won=await db.MicrosoftConnections.Where(c=>c.Id==row.Id&&c.RefreshTokenProtected==row.RefreshTokenProtected&&c.ConsentEpoch==row.ConsentEpoch&&c.Email==row.Email&&c.ProviderUserId==row.ProviderUserId&&c.Scopes==row.Scopes)
+        var won=await Connections(tenantId).Where(c=>c.Id==row.Id&&c.RefreshTokenProtected==row.RefreshTokenProtected&&c.ConsentEpoch==row.ConsentEpoch&&c.Email==row.Email&&c.ProviderUserId==row.ProviderUserId&&c.Scopes==row.Scopes)
             .ExecuteUpdateAsync(s=>s.SetProperty(c=>c.AccessTokenProtected,encryptedAccess).SetProperty(c=>c.RefreshTokenProtected,encryptedRefresh)
                 .SetProperty(c=>c.AccessTokenExpiresAt,expiry).SetProperty(c=>c.Scopes,granted),ct);
         if(won!=1)throw new ConflictException("Your Microsoft connection changed. Reload before sending.","MICROSOFT_CONNECTION_CHANGED");

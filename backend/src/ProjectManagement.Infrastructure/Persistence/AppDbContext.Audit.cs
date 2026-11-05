@@ -84,8 +84,10 @@ public partial class AppDbContext
             }
         }
         // Activity written in this save is what other people's open screens need to hear about (sent only once it is committed).
-        var changes = changeFeed is null ? null : ChangeTracker.Entries<Activity>().Where(e => e.State == EntityState.Added)
-            .Select(e => new ChangeEvent(e.Entity.TenantId, e.Entity.EntityType, e.Entity.EntityId, e.Entity.ProjectId, e.Entity.Action, e.Entity.ActorId)).ToList();
+        var changes = changeFeed is null ? null : RealtimeEntityChanges.Merge(ChangeTracker.Entries<Activity>().Where(e => e.State == EntityState.Added)
+            .Select(e => new ChangeEvent(e.Entity.TenantId, e.Entity.EntityType, e.Entity.EntityId, e.Entity.ProjectId, e.Entity.Action, e.Entity.ActorId)).ToList(),
+            RealtimeEntityChanges.Collect(ChangeTracker, current.UserId));
+        if (changes is { Count: > 0 }) changes = await ResolveCommentProjectsAsync(changes, cancellationToken);
         // New notifications (in the bell): their recipients' open tabs hear of them once committed, instead of at the next poll.
         var created = notificationFeed is null ? null : ChangeTracker.Entries<Notification>().Where(e => e.State == EntityState.Added && e.Entity.InApp)
             .Select(e => new NotificationAnnouncement(e.Entity.TenantId, e.Entity.UserId, e.Entity.Id, e.Entity.Type, e.Entity.InApp)).ToList();
@@ -106,6 +108,24 @@ public partial class AppDbContext
         if (changes is { Count: > 0 }) changeFeed!.Publish(changes);
         if (created is { Count: > 0 }) notificationFeed!.Announce(created);
         return saved;
+    }
+
+    /// <summary>
+    /// A comment row does not carry its project: look it up from its task or work item, so the event goes only to people who can open that
+    /// project (work without a project goes to the workspace; an unknown parent only to its author).
+    /// </summary>
+    private async Task<List<ChangeEvent>> ResolveCommentProjectsAsync(List<ChangeEvent> changes, CancellationToken ct)
+    {
+        var parents = changes.Where(c => c.Type == "comment" && c.ProjectId is null && c.ParentId is not null).Select(c => c.ParentId!.Value).Distinct().ToList();
+        if (parents.Count == 0) return changes;
+        var map = new Dictionary<Guid, Guid?>();
+        foreach (var t in await Tasks.IgnoreQueryFilters().AsNoTracking().Where(t => parents.Contains(t.Id)).Select(t => new { t.Id, t.ProjectId }).ToListAsync(ct))
+            map[t.Id] = t.ProjectId;
+        foreach (var w in await WorkTasks.IgnoreQueryFilters().AsNoTracking().Where(t => parents.Contains(t.Id)).Select(t => new { t.Id, t.RelatedProjectId }).ToListAsync(ct))
+            map.TryAdd(w.Id, w.RelatedProjectId);
+        return changes.Select(c => c.Type == "comment" && c.ProjectId is null && c.ParentId is { } p
+            ? (map.TryGetValue(p, out var proj) ? (proj is null ? c : c with { ProjectId = proj }) : c with { Audience = c.ActorId is { } a ? new List<Guid> { a } : new List<Guid>() })
+            : c).Where(c => c.Audience is not { Count: 0 }).ToList();
     }
 
     internal async Task PublishCommittedEffectsAsync(CancellationToken ct)

@@ -16,7 +16,6 @@ import { MobileTopBar } from './MobileChrome';
 import { PullToRefresh } from '../components/PullToRefresh';
 import { useIsMobile } from '../lib/mobile';
 import { useConversationViewport } from '../lib/conversationViewport';
-import { NetworkPill } from '../components/AppSplash';
 import { SignInIsland } from '../components/SignInIsland';
 // "Single active session": a new device of mine asking to sign in (loaded beside the app, not in its first bundle).
 const SessionApprovalHost = lazy(() => import('../features/auth/SessionApproval').then((m) => ({ default: m.SessionApprovalHost })));
@@ -43,6 +42,7 @@ import '../components/shell/shell.css';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
+import { OfflineSync } from '../features/offline/OfflineSync';
 import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
 
 // The calm create sheets (New task / New project from the + menu), mounted once for every page. Loaded through a glob so the shell
@@ -164,6 +164,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   // The live chat connection runs for people who can chat: organization workspaces, not guests, not platform administrators.
   const chatOn = useAuth((s) => !!s.ctx?.current && s.ctx.current.type !== 'Personal' && s.ctx.current.role !== 'Guest' && !s.ctx.user.isPlatformAdmin);
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
+  // Realtime sync runs for everyone in a workspace (personal workspaces and guests too); chat rides on the same connection.
+  const liveOn = useAuth((s) => !!s.ctx?.current && !s.ctx.user.isPlatformAdmin);
   const newOpen = useNewSheet((s) => s.open);
   const scheduleOpen = useScheduleSheet((s) => !!s.open);
   const grootOpen = useGroot((s) => s.open);
@@ -212,9 +214,9 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <AfterFirstPaint><MeetTimePrompt /></AfterFirstPaint>}
       {!admin && <WhenFirstOpened open={grootOpen}><GrootChatHost /></WhenFirstOpened>}
       {!admin && <CopilotHost />}
+      <OfflineSync phone={phone} />
       <SignInIsland />
       <Suspense fallback={null}><SessionApprovalHost /></Suspense>
-      <NetworkPill />
       <CallHost />
       {!admin && <IncomingCallHost />}
       <ToastRoot />
@@ -229,7 +231,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <AttendanceHost />}
       {!admin && <AuraWatcher />}
       {!admin && <ChangeUndoPrompt />}
-      {chatOn && <AfterFirstPaint><ChatRealtime /></AfterFirstPaint>}
+      {liveOn && <AfterFirstPaint><ChatRealtime chat={chatOn} /></AfterFirstPaint>}
       {chatOn && <ProjectChatHost />}
       {!admin && <LiveBanners />}
       {!admin && <BadgeSync />}

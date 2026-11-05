@@ -79,7 +79,7 @@ export function ApprovalsPage() {
   const type = params.get('type') ?? '';
   const openId = params.get('open');
   const setParam = (k: string, v: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (v) n.set(k, v); else n.delete(k); if (k !== 'open') n.delete('open'); return n; }, { replace: k !== 'open' });
-  const list = useWsQuery(['approvals', view, type], () => approvalsApi.list(view, type), { refetchInterval: 60_000, placeholderData: (p) => p });
+  const list = useWsQuery(['approvals', view, type], () => approvalsApi.list(view, type), { refetchInterval: 300_000, placeholderData: (p) => p });
   const detail = useWsQuery(['approvals', 'one', openId], () => approvalsApi.get(openId!), { enabled: !!openId });
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -337,7 +337,7 @@ function Detail({ a, me, busy, onClose, onDecide }: { a: Approval; me: string; b
 
 /** The Approvals tab's own number (requests waiting on you), for the shell's sidebar. */
 export function useApprovalCounts(enabled = true) {
-  return useWsQuery(['approvals', 'counts'], approvalsApi.counts, { refetchInterval: 60_000, staleTime: 30_000, enabled });
+  return useWsQuery(['approvals', 'counts'], approvalsApi.counts, { refetchInterval: 300_000, staleTime: 30_000, enabled });
 }
 
 export default ApprovalsPage;

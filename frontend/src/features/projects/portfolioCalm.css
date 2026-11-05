@@ -339,3 +339,25 @@ html body .pf-present:not(.phone) .pf-slide { padding-left: 80px; }
 .ctl-seg.late, .ctl-seg.risk { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 30%, transparent); }
 .ctl-seg.late::after { content: ''; position: absolute; right: 6px; top: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--calm-red, #ff3b30); }
 .ctl-seg + .ctl-seg { border-left: 2px solid var(--calm-card); }
+
+/* Action items (round 3): Owner · Start · Due · Status columns like the Plan sheet, edited in place; one full-width card per meeting. */
+html .pfa-grid { grid-template-columns: 1fr; align-content: start; }
+.pfa-row5 { display: grid; grid-template-columns: minmax(0, 1fr) 170px 132px 132px 150px; gap: 0 12px; align-items: center; }
+.pfa-colh { min-height: 28px; font-size: 11.5px; color: var(--calm-ink3-text); font-weight: 500; }
+.pfa-row5 .pfa-t { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pfa-c { min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.pfa-c.late .pfa-date { color: var(--calm-red-text); }
+.cpk-trigger.pfa-pick, .cpk-trigger.cps-pick { min-height: 32px; font-size: 13px; padding: 0 8px; background: transparent; border-radius: 9px; }
+.cpk-trigger.pfa-pick:hover, .cpk-trigger.cps-pick:hover { background: var(--calm-fill); }
+.pfa-date { height: 32px; border: 0; border-radius: 9px; background: transparent; color: var(--calm-ink); font: inherit; font-size: 13px; padding: 0 6px; width: 100%; min-width: 0; color-scheme: light dark; }
+.pfa-date:hover:not(:disabled), .pfa-date:focus { background: var(--calm-fill); outline: none; }
+.ps4-aigrid .colh.ai, html .ps4-ai .ai-row { grid-template-columns: 26px minmax(0, 30fr) minmax(0, 14fr) minmax(0, 11fr) minmax(0, 11fr) minmax(0, 13fr) minmax(0, 11fr); }
+.cps-own { min-width: 0; }
+@media (max-width: 900px) {
+  .pfa-row5 { grid-template-columns: 1fr 1fr; gap: 2px 8px; padding: 8px 0; }
+  .pfa-row5 .pfa-t { grid-column: 1 / -1; }
+  .pfa-colh { display: none; }
+  html .ps4-ai .ai-row { grid-template-columns: 26px 1fr 1fr; }
+  html .ps4-ai .ai-row .t { grid-column: 2 / -1; }
+  html .ps4-ai .ai-row .pfa-c { min-height: 44px; }
+}

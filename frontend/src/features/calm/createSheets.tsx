@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Select } from '../../components/Select';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { checklistApi, projectApi, projectGroupApi, teamApi, workspaceApi } from '../../api/endpoints';
@@ -134,18 +135,18 @@ export function NewTaskSheet({ open, onClose, project, text }: { open: boolean; 
         <div className="cm-grid2">
           <div className="cm-col">
             <div className="cm-pair">
-              <Field label="Project"><select className="cm-in" value={projectId} onChange={(e) => { touched.current.project = true; setProjectId(e.target.value); setStageId(''); }}>
+              <Field label="Project"><Select className="cm-in" value={projectId} onChange={(e) => { touched.current.project = true; setProjectId(e.target.value); setStageId(''); }}>
                 <option value="">Choose…</option>{list.filter((p) => p.status !== 'Archived').map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 {project && !list.some((p) => p.id === project.id) && <option value={project.id}>{project.name}</option>}
-              </select></Field>
-              <Field label="Phase"><select className="cm-in" value={stageId} onChange={(e) => setStageId(e.target.value)} disabled={!stages.length}>
+              </Select></Field>
+              <Field label="Phase"><Select className="cm-in" value={stageId} onChange={(e) => setStageId(e.target.value)} disabled={!stages.length}>
                 <option value="">{stages.length ? 'Any phase' : 'No phases'}</option>{stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select></Field>
+              </Select></Field>
             </div>
             <div className="cm-pair">
-              <Field label="Owner"><select className="cm-in" value={ownerId} onChange={(e) => { touched.current.owner = true; setOwnerId(e.target.value); }}>
+              <Field label="Owner"><Select className="cm-in" value={ownerId} onChange={(e) => { touched.current.owner = true; setOwnerId(e.target.value); }}>
                 <option value="">Nobody yet</option>{people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-              </select></Field>
+              </Select></Field>
               <Field label="Estimate"><input className="cm-in" value={estimate} onChange={(e) => setEstimate(e.target.value)} placeholder="50 min" /></Field>
             </div>
             <div className="cm-pair">
@@ -252,8 +253,8 @@ export function ProjectSheet({ open, onClose, project }: { open: boolean; onClos
           <div className="cm-col">
             <Field label="Name"><input className="cm-in" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="Project name" autoFocus /></Field>
             <div className="cm-pair">
-              <Field label="Owner"><select className="cm-in" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>{people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</select></Field>
-              <Field label="Team"><select className="cm-in" value={teamId} onChange={(e) => setTeamId(e.target.value)}><option value="">No team</option>{(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+              <Field label="Owner"><Select className="cm-in" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>{people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Field>
+              <Field label="Team"><Select className="cm-in" value={teamId} onChange={(e) => setTeamId(e.target.value)}><option value="">No team</option>{(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
             </div>
             <div className="cm-pair">
               <Field label="Start"><input className="cm-in" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>

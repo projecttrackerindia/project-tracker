@@ -144,7 +144,7 @@ try{
   await page.getByTestId('mz-schedule').click();
   const f=page.getByRole('dialog');await f.getByRole('heading',{name:'Schedule a meeting'}).waitFor();
   assert.equal(await f.locator('.mt-notetaker').count(),0,'The notetaker comes with a project: no row without one');
-  await f.getByLabel('Project',{exact:true}).selectOption(project.id);
+  await f.getByLabel('Project',{exact:true}).locator('xpath=..').locator('select.ss-native').selectOption(project.id, { force: true });
   const voice=f.getByRole('radio',{name:/Transcription \+ voice suggestions/});await voice.waitFor();
   assert.ok(await voice.isDisabled());assert.match(await f.locator('.mt-notetaker').innerText(),/Voice needs the speech service/);
   await f.getByRole('radio',{name:/^Transcription Listens/}).check();
@@ -192,10 +192,9 @@ try{
   assert.match(await page.getByTestId('call-no-transcript').innerText(),/Aura was not in this call/);checks.push('call-detail');
   await page.goto(origin+'/preview-org/meetings?s=recordings');await page.getByTestId('mz-call-row').first().waitFor();
   assert.equal(await page.getByTestId('mz-call-row').count(),1,'Recordings: only what has notes');checks.push('recordings');
-  // Call now: an ad-hoc call with the people chosen (nobody ticked to begin with).
-  await page.goto(origin+'/preview-org/meetings');await page.getByTestId('mz-call-now').click();
-  const cn=page.getByRole('dialog',{name:'Start a call'});await cn.waitFor();await page.waitForTimeout(300);await shot('meet-call-now-1440.png');
-  await cn.getByRole('button',{name:'Cancel'}).click();checks.push('call-now');
+  // No "Call now" on Meetings (calls start from a person or a chat).
+  await page.goto(origin+'/preview-org/meetings');await page.waitForTimeout(600);
+  assert.equal(await page.getByTestId('mz-call-now').count(),0,'no Call now button');checks.push('no-call-now');
 
   // 7. The Calendar (Home › Calendar in v2) shows meetings and opens them in Meetings; it has no meeting button of its own.
   await page.goto(origin+'/preview-org/calendar');await page.locator('[data-testid="week-planner"]').waitFor();
