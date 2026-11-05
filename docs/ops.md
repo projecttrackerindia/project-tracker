@@ -114,3 +114,38 @@ approved template.
 
 Any channel whose settings are empty is skipped. Runbook when an alert arrives: open the run link in the issue, check
 `docker compose logs api` on the VM, and if a release just went out use Actions › **Rollback**.
+
+## 4. Backups and the monthly restore test
+
+**What is promised**: Cloud SQL `pt-db` takes an automated backup every day at 20:30 UTC (02:00 IST), keeps **14**, and has
+point-in-time recovery with **7 days** of transaction logs. (The VM holds no data of its own; uploaded files live in the bucket.)
+
+- `./deploy/gcp/backups-verify.sh` — read-only check of those settings and of the newest backup (fails if older than 30 h).
+  `FIX=1 ./deploy/gcp/backups-verify.sh` patches the instance to the expected settings.
+- `./deploy/gcp/restore-test.sh` — restores the newest successful backup into a temporary instance `pt-restore-test-<time>`
+  (same version and tier, no backups, label `purpose=restore-test`), sets a throwaway password on *that* instance only, counts
+  tables, checks the EF migrations history and that `Tenants`, `Users`, `Projects` and `Tasks` have rows, then deletes the instance
+  (also on failure). Cost: about an hour of one small instance per month.
+- GitHub **Restore test** (`.github/workflows/restore-test.yml`) runs both on the 1st of each month and alerts (email/WhatsApp) on failure.
+  The result table lands in the run summary.
+
+**Restore for real** (point in time, into a new instance, then switch the VM's `DB_CONNECTION` in `/opt/pt/.env`):
+`gcloud sql instances clone pt-db pt-db-restored --point-in-time=2026-11-05T09:00:00Z`.
+
+**Owner creates** a restore-test account (runs as the `github` pool, `main` branch only):
+
+```bash
+PROJECT_ID=central-weft-511003-c1; NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+SA=pt-restore-test@$PROJECT_ID.iam.gserviceaccount.com
+gcloud iam service-accounts create pt-restore-test --display-name="ProjectTracker monthly restore test"
+gcloud projects add-iam-policy-binding $PROJECT_ID --member=serviceAccount:$SA --role=roles/cloudsql.viewer --condition=None
+gcloud projects add-iam-policy-binding $PROJECT_ID --member=serviceAccount:$SA --role=roles/cloudsql.client --condition=None
+# create/restore/delete only instances whose name starts with pt-restore-test
+gcloud projects add-iam-policy-binding $PROJECT_ID --member=serviceAccount:$SA --role=roles/cloudsql.admin \
+  --condition='title=restore-test-only,expression=resource.name.startsWith("projects/'$PROJECT_ID'/instances/pt-restore-test")'
+gcloud iam service-accounts add-iam-policy-binding $SA --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/$NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/projecttrackerindia/project-tracker"
+```
+
+Then add the GitHub variable `GCP_RESTORE_SA`. If `instances.create` is refused under the condition (Cloud SQL checks create on the
+project), drop the condition for a first run and tighten again; the script only ever touches `pt-restore-test-*`.
