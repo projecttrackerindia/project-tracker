@@ -20,7 +20,7 @@
 .prb-shot { position: relative; border-radius: 12px; overflow: hidden; background: var(--ds-fill, rgba(118, 118, 128, .08)); aspect-ratio: 16 / 10; display: grid; place-items: center;
   color: var(--ds-text-3); font-size: 12px; }
 .prb-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
-.prb-shot button { position: absolute; top: 8px; right: 8px; }
+.prb-shot button { position: absolute; bottom: 8px; right: 8px; background: var(--ds-surface, #fff); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
 .prb-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: 12px; color: var(--ds-text-3); margin: 0; }
 .prb-facts dt { font-weight: 600; color: var(--ds-text-2); }
 .prb-facts dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
