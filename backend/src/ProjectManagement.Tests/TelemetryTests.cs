@@ -36,6 +36,8 @@ public class TelemetryTests(ApiFactory factory)
     public async Task Vitals_are_kept_per_workspace_and_only_admins_read_them()
     {
         var owner = await TestClient.RegisterAsync(factory, "Vitals Owner");
+        await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
         var page = $"/projects/{Guid.NewGuid()}/board?view=1";
         var kept = await owner.Post("/api/v1/telemetry/vitals", Beacon(page, "mobile", 1800));
         Assert.Equal(HttpStatusCode.Accepted, kept.Status);
