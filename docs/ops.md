@@ -87,3 +87,30 @@ DNS: an `A` record `staging` → the printed address. GitHub variables: `GCP_STA
 
 The staging pool is separate on purpose: a token from a pull request can never act as the production deploy account.
 Caveat: a same-repository PR labelled `staging` runs its own `cloudbuild.yaml` with the Cloud Build account, so only label PRs you trust.
+
+## 3. Uptime and alerts
+
+Checked flows (same list in both places): `/health/ready` (API + database, must say `Healthy`), `/` (website shell),
+`/api/v1/platform/status` (API through nginx), `/api/v1/auth/password-policy` (sign-in service); optionally a real sign-in with a
+dedicated monitoring account.
+
+| Where | How often | Alerts | Set up with |
+|---|---|---|---|
+| Google Cloud Monitoring uptime checks (`pt-ready`, `pt-web`, `pt-api`, `pt-auth`) | every minute, several regions | email after 2 failing minutes, and on recovery | `ALERT_EMAIL=you@… ./deploy/gcp/uptime-setup.sh` |
+| GitHub **Uptime** workflow (`.github/workflows/uptime.yml`, `deploy/ops/uptime-check.sh`) | every 5 min (GitHub's minimum; may lag) | email (Resend) + WhatsApp, once per outage via an `uptime` issue; again on recovery | GitHub variables/secrets below |
+
+WhatsApp is sent from GitHub, not from the app: an alert relayed through the API cannot be sent while the API is down. It uses the
+Meta Cloud API with the **same Meta app and phone number as the Desk WhatsApp integration**, and a business-initiated message needs an
+approved template.
+
+**Owner creates** (GitHub › Settings › Secrets and variables › Actions):
+
+- Secrets: `ALERT_RESEND_API_KEY`, `ALERT_WHATSAPP_TOKEN` (a system-user token of the Desk WhatsApp app), optional
+  `UPTIME_LOGIN_EMAIL` / `UPTIME_LOGIN_PASSWORD` (a monitoring-only account with no data).
+- Variables: `ALERT_EMAIL_TO`, `ALERT_EMAIL_FROM` (a verified Resend sender), `ALERT_WHATSAPP_PHONE_ID`, `ALERT_WHATSAPP_TO`
+  (comma-separated, with country code), `ALERT_WHATSAPP_TEMPLATE` (default `ops_alert`: one utility template, body
+  `ProjectTracker alert: {{1}}`), optional `UPTIME_BASE_URL`, `UPTIME_DISABLED=true` to pause.
+- A repository label `uptime`.
+
+Any channel whose settings are empty is skipped. Runbook when an alert arrives: open the run link in the issue, check
+`docker compose logs api` on the VM, and if a release just went out use Actions › **Rollback**.

@@ -204,10 +204,12 @@ jobs:
           docker run --rm -e DOMAIN=staging.example.com -e ACME_EMAIL=ci@example.com -v "$PWD/Caddyfile.staging:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Release script (tag pinning and automatic rollback) behaves
         run: bash deploy/gcp/test-vm-release.sh
+      - name: Uptime check script behaves
+        run: bash deploy/ops/test-uptime-check.sh
       - name: Shell scripts parse
         run: |
           for f in deploy/*.sh; do sh -n "$f" && echo "ok $f"; done
-          for f in deploy/gcp/*.sh deploy/gcp/calls/*.sh; do bash -n "$f" && echo "ok $f"; done
+          for f in deploy/gcp/*.sh deploy/gcp/calls/*.sh deploy/ops/*.sh; do bash -n "$f" && echo "ok $f"; done
       - name: Calls server files are valid (compose and Caddyfile)
         run: |
           CALLS_HOST=calls.example.com ACME_EMAIL=ci@example.com docker compose -f deploy/gcp/calls/docker-compose.yml config -q
