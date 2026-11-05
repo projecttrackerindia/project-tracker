@@ -37,6 +37,8 @@ jobs:
         env:
           ASPNETCORE_ENVIRONMENT: Development
           ASPNETCORE_URLS: http://localhost:5080
+          # The journeys sign up @example.com people; example.com publishes a null MX, so the real mail-domain check would refuse them.
+          Signup__CheckEmailDomain: 'false'
         run: |
           dotnet build -c Release -v q
           nohup dotnet bin/Release/net9.0/ProjectManagement.Api.dll > "$RUNNER_TEMP/api.log" 2>&1 &

@@ -12,7 +12,7 @@ try {
   await s.page.getByTestId('today-hero').waitFor();
   for (const path of ['/work', '/work/projects', '/work/projects?view=portfolio', '/insights', '/people', '/people/teams', '/settings/profile', '/library', '/meetings']) {
     await go(s, path);
-    if (path === '/settings/profile') await s.page.locator('main').getByRole('heading', { name: 'Profile & sign-in', exact: true }).waitFor();
+    if (path === '/settings/profile') await s.page.locator('main').getByRole('heading', { name: /^Your profile\./ }).waitFor();
     else await s.page.locator('main').getByRole('heading', { level: 1 }).first().waitFor();
     assert.equal(await s.page.getByText('Something went wrong', { exact: true }).count(), 0, path + ' has no crash screen');
     assert.equal(await s.page.getByText('Page not found', { exact: true }).count(), 0, path + ' resolves');
