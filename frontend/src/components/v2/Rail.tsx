@@ -261,7 +261,7 @@ function WorkspaceSwitcher() {
   const lens = useTeamLens();
   return (
     <>
-      <button type="button" ref={trigger} className="shell-ws-btn" aria-haspopup="menu" aria-expanded={open} title={admin ? BRAND : `${BRAND} · ${cur?.name ?? ''}`}
+      <button type="button" ref={trigger} className="shell-ws-btn" data-testid="team-switcher" aria-haspopup="dialog" aria-expanded={open} title={admin ? BRAND : `${BRAND} · ${cur?.name ?? ''}`}
         onClick={() => (admin ? nav('/admin') : setOpen((o) => !o))}>
         <Logo size={28} />
         <span className="v2-side-ws-text shell-wn"><b>{BRAND}</b><small>{admin ? 'Platform administration' : `${cur?.name ?? 'Workspace'} ▾ · ${cur?.type === 'Personal' ? 'Personal' : cur?.role ?? ''}${lens.team ? ` · ${lens.team.name}` : ''}`}</small></span>

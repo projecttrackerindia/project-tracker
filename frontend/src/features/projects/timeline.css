@@ -159,3 +159,4 @@ html[data-theme='dark'] .ptl, html[data-theme='dark'] .ptl-pop, html[data-theme=
 .ptl-mbar[class*='pc-'].done { opacity: .55; }
 /* the original plan of an extended project: a thin dashed ghost under the bar (calm-round4a) */
 .ptl-orig { position: absolute; height: 4px; border-radius: 2px; pointer-events: auto; background: repeating-linear-gradient(90deg, var(--ds-label-3, #8e8e93) 0 6px, transparent 6px 10px); opacity: .55; }
+.ctl-orig { position: absolute; bottom: 2px; height: 3px; border-radius: 2px; pointer-events: none; background: repeating-linear-gradient(90deg, var(--ds-label-3, #8e8e93) 0 6px, transparent 6px 10px); opacity: .7; }

@@ -526,6 +526,10 @@ function CalmLanes({ projects, work, today, weeks, setWeeks, colourOf, lanesRef,
                     if (b <= a) return null;
                     return <span key={g.name + g.start} className={`ctl-seg pc-${colourOf(p.id)} ${st === 'Late' ? 'late' : st === 'At risk' ? 'risk' : ''}`} style={{ left: pct(a), width: `calc(${((b - a) / days) * 100}% - 4px)` }}>{g.name}</span>;
                   })}
+                  {/* The original plan of an extended project: a dashed ghost from the start to the first due date. */}
+                  {(() => { const s0 = startOf(p); if (!p.originalDue || !p.due || p.originalDue >= p.due || !s0) return null;
+                    const a = Math.max(from, dn(s0)), b = Math.min(to, dn(p.originalDue) + 1); if (b <= a) return null;
+                    return <i className="ctl-orig" data-testid="timeline-ghost" title={`Original plan: due ${dmy(p.originalDue)}`} style={{ left: pct(a), width: `${((b - a) / days) * 100}%` }} aria-hidden="true" />; })()}
                 </div>
               </div>
             );

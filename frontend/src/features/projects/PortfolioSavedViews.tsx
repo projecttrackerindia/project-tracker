@@ -8,7 +8,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { haptic } from '../../lib/mobile';
 import { useAuth, useIsPersonal, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
-import type { PortfolioMode, PortfolioUrlState } from './portfolioShared';
+import { encodeToks, type PortfolioMode, type PortfolioUrlState } from './portfolioShared';
 import type { Tok } from './planSheetQuery';
 import { deleteWithUndo } from '../../lib/undoDelete';
 
@@ -58,8 +58,15 @@ export function PortfolioViewsBar({ url }: { url: PortfolioUrlState }) {
     haptic();
     if (activeId === v.id) { url.setToks([]); return; }
     url.setToks(v.toks);
-    url.setMode(v.mode);
-    setParams((p) => { const n = new URLSearchParams(p); if (v.tg) n.set('tg', v.tg); else n.delete('tg'); return n; }, { replace: true });
+    // One address change for the tokens, the tab and the grouping (separate updates in one event would undo each other).
+    setParams((p) => {
+      const n = new URLSearchParams(p);
+      n.set('view', 'portfolio');
+      if (v.mode === 'overview') n.delete('mode'); else n.set('mode', v.mode);
+      const f = encodeToks(v.toks); if (f) n.set('f', f); else n.delete('f');
+      if (v.tg) n.set('tg', v.tg); else n.delete('tg');
+      return n;
+    }, { replace: true });
   };
   const pinned = all.filter((v) => pins.includes(v.id));
   return (

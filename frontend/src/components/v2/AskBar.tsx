@@ -83,8 +83,8 @@ export function AuraOrbButton() {
   void ai;
   return (
     <button type="button" className={`shell-hb shell-orb${open ? ' on' : ''}`} data-aura-entry="" aria-label={`Aura (${AURA_KEY})`} title={`Aura ${AURA_KEY}`} aria-expanded={open}
-      onClick={() => { haptic(); toggleAura(where); }}>
-      <SiriOrb className="calm-orb" />
+      onClick={() => { haptic(); toggleAuraSearch(where); }}>
+      <SiriOrb state={open ? 'listening' : undefined} />
     </button>
   );
 }

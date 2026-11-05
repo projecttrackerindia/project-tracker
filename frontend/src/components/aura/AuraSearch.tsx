@@ -75,6 +75,12 @@ function AuraSearchSheet() {
   useEffect(() => { const t = window.setTimeout(() => setDebounced(q.trim()), 160); return () => window.clearTimeout(t); }, [q]);
   useEffect(() => { setMood('aura-search', q ? 'listen' : null); return () => setMood('aura-search', null); }, [q, setMood]);
   useEffect(() => { const unlock = lockScroll('body'); window.setTimeout(() => input.current?.focus({ preventScroll: true }), 20); return unlock; }, []);
+  // Esc closes even before the field has the focus.
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !(e.target instanceof Node && e.target.parentElement?.closest('.aura-s'))) { e.preventDefault(); hide(); } };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [hide]);
   const enabled = debounced.length >= 2;
   const hits = useWsQuery(['aura-search', debounced], () => insightApi.search(debounced), { enabled, staleTime: 30_000, retry: false });
   const msgs = useWsQuery(['aura-search-chat', debounced], () => chatApi.search(debounced).catch(() => []), { enabled, staleTime: 30_000, retry: false });
