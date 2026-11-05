@@ -27,7 +27,7 @@ import { toast } from '../../stores/ui';
 import { DotsMenu } from '../talk/DotsMenu';
 import { formatMinutes } from '../time/time';
 import { KIND_LABEL, inboxApi, type InboxBriefing, type InboxFilter, type InboxKind, type InboxRow } from './inboxApi';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m as motion } from 'framer-motion';
 import { itemVariants, listVariants, sharedLayout } from '../../lib/motion';
 import { SignalsSection, signalsLine, useTodaySignals } from './Signals';
 import { Term } from '../../components/Term';

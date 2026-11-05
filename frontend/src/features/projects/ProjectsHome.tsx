@@ -4,7 +4,7 @@ import type { ProjectCoverage } from '../../api/qualityApi';
 import { Term } from '../../components/Term';
 import { pinItem, useContextMenu, usePins } from '../../components/v2/pins';
 import { Face } from '../../components/Face';
-import { motion, useReducedMotion } from 'framer-motion';
+import { m as motion, useReducedMotion } from 'framer-motion';
 import { sharedLayout } from '../../lib/motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';

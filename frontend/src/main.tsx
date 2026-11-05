@@ -5,6 +5,7 @@ import { installStableTabs } from './lib/stableTabs';
 import { installCapture } from './features/feedback/capture';
 import { installKeyboardViewport } from './lib/keyboardViewport';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { LazyMotion } from 'framer-motion';
 import '@fontsource-variable/inter';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/700.css';
@@ -84,12 +85,16 @@ if (document.documentElement.classList.contains('app')) document.getElementById(
 installStableTabs();
 installCapture();
 installKeyboardViewport();
+const loadMotion = () => import('./lib/motionFeatures').then((m) => m.default);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-      <InstallBanner />
-    </QueryClientProvider>
+    <LazyMotion features={loadMotion}>
+      <QueryClientProvider client={queryClient}>
+        <App />
+        <InstallBanner />
+      </QueryClientProvider>
+    </LazyMotion>
   </StrictMode>,
 );
 

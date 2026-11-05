@@ -3,7 +3,7 @@ import { handToVault } from '../vault/vaultHandoff';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { instant, sharedLayout, staggerDelay, t } from '../../lib/motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { chatApi } from '../../api/endpoints';

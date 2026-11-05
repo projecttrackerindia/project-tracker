@@ -1,5 +1,5 @@
 import { Select } from '../../../components/Select';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { instant, presets, t } from '../../../lib/motion';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';

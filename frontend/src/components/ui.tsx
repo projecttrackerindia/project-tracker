@@ -1,6 +1,6 @@
 import { cloneElement, createContext, forwardRef, isValidElement, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import { useSheetDrag } from './Sheet';
-import { animate, motion, useReducedMotion } from 'framer-motion';
+import { m as motion, useReducedMotion } from 'framer-motion';
 import { duration, reveal, t } from '../lib/motion';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
@@ -318,9 +318,15 @@ export function CountUp({ value }: { value: number }) {
   const [shown, setShown] = useState(skip ? value : 0);
   useEffect(() => {
     if (skip || done.current) { setShown(value); return; }
-    const c = animate(0, value, { ...reveal, duration: duration.sheet,
-      onUpdate: (v) => setShown(Math.round(v)), onComplete: () => { done.current = true; } });
-    return () => c.stop();
+    // The animation engine is loaded with the motion features (see lib/motionFeatures.ts), never on the first screen's critical path.
+    let stop: (() => void) | undefined, gone = false;
+    void import('../lib/motionFeatures').then(({ animate }) => {
+      if (gone) return;
+      const c = animate(0, value, { ...reveal, duration: duration.sheet,
+        onUpdate: (v) => setShown(Math.round(v)), onComplete: () => { done.current = true; } });
+      stop = () => c.stop();
+    });
+    return () => { gone = true; stop?.(); };
   }, [value, skip]);
   return <>{shown.toLocaleString()}</>;
 }
