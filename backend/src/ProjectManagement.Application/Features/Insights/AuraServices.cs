@@ -98,7 +98,7 @@ public partial class AuraWhyService(IAppDbContext db, AppClock clock, DocumentAi
 
         var done = t.Category is StatusCategory.Done or StatusCategory.Cancelled;
         var late = !done && t.DueDate is { } due && due < today ? today.DayNumber - due.DayNumber : 0;
-        facts.Add(done ? $"{key} is {t.Status.ToLowerInvariant()}{(t.CompletedAt is { } c ? $" (finished {D(DateOnly.FromDateTime(c))})" : "")}."
+        facts.Add(done ? $"{key} is {t.Status.ToLowerInvariant()}{(t.CompletedAt is { } fin ? $" (finished {D(DateOnly.FromDateTime(fin))})" : "")}."
             : late > 0 ? $"{key} is {late} day{(late == 1 ? "" : "s")} late: it was due {D(t.DueDate)} and is still {t.Status.ToLowerInvariant()}."
             : t.DueDate is null ? $"{key} has no due date and is {t.Status.ToLowerInvariant()}."
             : $"{key} is not late yet: it is due {D(t.DueDate)} and is {t.Status.ToLowerInvariant()}.");
