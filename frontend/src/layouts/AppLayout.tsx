@@ -43,6 +43,7 @@ import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
 import { AuraSearchHost } from '../components/aura/AuraSearch';
+import { ExtensionReasonHost } from '../features/dates/ExtensionReason';
 import { OfflineSync } from '../features/offline/OfflineSync';
 import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
 
@@ -209,6 +210,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && !(phone && conversation) && <Fab />}
       {!admin && <AuraKeys />}
       {!admin && <AuraSearchHost />}
+      <ExtensionReasonHost />
       {!admin && <ApprovalRequestHost />}
       {!admin && CalmCreateHost && <Suspense fallback={null}><CalmCreateHost /></Suspense>}
       {!admin && <WhenFirstOpened open={newOpen}><NewSheetHost /></WhenFirstOpened>}

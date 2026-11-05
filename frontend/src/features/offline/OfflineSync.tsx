@@ -1,3 +1,4 @@
+import { askExtensionReason } from '../dates/ExtensionReason';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { refreshSession, replayQueued, setQueuedHandler } from '../../api/client';
@@ -82,8 +83,9 @@ export function OfflineSync({ phone = false }: { phone?: boolean }) {
       else if (r.sent) toast(r.sent === 1 ? 'Your offline edit is saved' : `${r.sent} offline edits saved`);
       for (const e of r.needReason) {
         toast('A date you pushed later offline needs a reason', 'warning', { label: 'Add reason', onClick: () => {
-          const reason = window.prompt('Reason for extending')?.trim();
-          if (reason) void giveReason(e.id, reason).then(flush); else void dropQueued(e.id).then(() => queryClient.invalidateQueries());
+          void askExtensionReason({ what: 'date' }).then((reason) => {
+            if (reason) void giveReason(e.id, reason).then(flush); else void dropQueued(e.id).then(() => queryClient.invalidateQueries());
+          });
         } });
       }
       if (r.sent || r.conflicts || r.rejected) void queryClient.invalidateQueries();
