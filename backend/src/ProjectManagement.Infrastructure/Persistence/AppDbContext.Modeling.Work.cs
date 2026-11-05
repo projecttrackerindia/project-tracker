@@ -745,6 +745,7 @@ public partial class AppDbContext
             e.Property(x => x.IpRanges).HasMaxLength(6000);
             e.Property(x => x.AllowedSignIn).HasMaxLength(100);
             e.Property(x => x.AllowedEmailDomains).HasMaxLength(2000);
+            e.Property(x => x.MfaScope).HasMaxLength(20);
         });
         b.Entity<OAuthClient>(e => { e.HasIndex(x => x.ClientId).IsUnique(); e.Property(x => x.ClientId).HasMaxLength(40); e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.RedirectUrisJson).HasMaxLength(4000); e.Property(x => x.ClientUri).HasMaxLength(500); e.Property(x => x.LogoUri).HasMaxLength(500); });

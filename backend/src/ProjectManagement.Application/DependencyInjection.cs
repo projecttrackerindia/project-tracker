@@ -357,6 +357,7 @@ public static class DependencyInjection
         services.AddScoped<NotificationPreferenceService>();
         services.AddScoped<NotificationEmailService>();
         services.AddScoped<ActivityService>();
+        services.AddScoped<ProjectManagement.Application.Features.Insights.AuditViewerService>();
         services.AddScoped<DashboardService>();
         services.AddScoped<CalendarService>();
         services.AddScoped<TimelineService>();

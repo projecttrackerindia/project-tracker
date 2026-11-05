@@ -12969,6 +12969,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("DeletedItemsRetentionDays")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("LastPurgedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -13227,11 +13230,22 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(6000)
                         .HasColumnType("character varying(6000)");
 
+                    b.Property<bool>("IpOwnerBypass")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("KeepDataInIndia")
                         .HasColumnType("boolean");
 
                     b.Property<int>("MinPasswordLength")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("MfaGraceUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MfaScope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<bool>("RequireMfa")
                         .HasColumnType("boolean");

@@ -334,7 +334,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
             return;
         }
 
-        var blocked = await orgSecurity.CheckAccessAsync(workspaceId, mfaEnabled, ctx.IpAddress, http.RequestAborted, signIn);
+        var blocked = await orgSecurity.CheckAccessAsync(workspaceId, mfaEnabled, ctx.IpAddress, http.RequestAborted, signIn, membership.Role);
         if (blocked is not null) { ctx.BlockedWorkspace = (workspaceId, blocked.Code, blocked.Message); return; }
 
         ctx.TenantId = workspaceId;
