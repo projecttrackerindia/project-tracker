@@ -37,6 +37,8 @@ public class RecurringWorkWorker(IServiceScopeFactory scopes, IOptions<Recurring
                         await scope.ServiceProvider.GetRequiredService<RecurrenceJob>().RunAsync(now, stoppingToken);
                     using (var scope = scopes.CreateScope())
                         await scope.ServiceProvider.GetRequiredService<ManagerDigestService>().SendAsync(now, stoppingToken);
+                    using (var scope = scopes.CreateScope())
+                        await scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Features.Insights.AuraFridayJob>().RunAsync(now, stoppingToken);
                     beats.Beat("Repeating tasks and manager e-mail", every);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

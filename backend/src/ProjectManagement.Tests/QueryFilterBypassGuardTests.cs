@@ -15,6 +15,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Mailbox/MailWatch.cs", // the background mail watcher: lists every connected IMAP mailbox with its own workspace and owner; each alert is created for that owner in that workspace only
         "ProjectManagement.Application/Features/Time/PlannedLeaveService.cs", // exact tenant/request tombstone check after person authorization; no cross-tenant read
         "ProjectManagement.Api/Middleware/Middleware.cs",
+        "ProjectManagement.Application/Features/Insights/AuraServices.cs", // AuraFridayJob: the background worker lists owners of active projects with their own workspace; each notice is created for that owner in that workspace only
         "ProjectManagement.Application/Features/Platform/StatusPageService.cs", // the public status page is opened without signing in: found by its unique slug, then only that page's workspace (named in every query); a slug's uniqueness across workspaces is an existence check
         "ProjectManagement.Application/Features/Vault/VaultService.Sealed.cs", // who has access to a sealed collection now: memberships of the whole workspace (named explicitly), so people outside the caller's project view never look like they lost access
         "ProjectManagement.Application/Features/Vault/SecretLinkPublic.cs", // a self-destructing link is opened without signing in: found by the hash of its token (unique across workspaces); its workspace's name and the sender's name only
