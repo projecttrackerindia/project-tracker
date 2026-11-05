@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { instant, presets, staggerDelay, t } from '../../lib/motion';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -58,7 +59,7 @@ export function AskDocs({ typeOf, onAsking, onQuery, onAsked, placeholder = 'Ask
   return (
     <div className={`lb-askwrap${hero ? ' hero' : ''}`}>
       <form className={`lb-q${asked ? ' on' : ''}`} role="search" onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (t.length >= 3) setAsked(t); }}>
-        <span className="lb-orb" aria-hidden="true" />
+        <SiriOrb className="lb-orb" />
         <input type="search" value={q} autoComplete="off" placeholder={placeholder} aria-label="Ask your docs"
           onChange={(e) => { setQ(e.target.value); onQuery?.(e.target.value); if (asked && e.target.value.trim() !== asked) setAsked(null); }} />
         {hero ? <button type="submit" className="lb-q-ask" disabled={q.trim().length < 3}>Ask</button> : <button type="submit" className="lb-q-go" aria-label="Ask" disabled={q.trim().length < 3}>↩</button>}

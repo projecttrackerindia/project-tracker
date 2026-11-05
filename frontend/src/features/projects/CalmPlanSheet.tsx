@@ -14,6 +14,8 @@ import { portfolioApi, type SheetChange, type SheetRow, type SheetStatus } from 
 import { PortfolioSkeleton, usePortfolio, useShellLine } from './PortfolioShell';
 import { patchPortfolio, refreshPortfolio } from './portfolioShared';
 import { dayNum } from './planSheet';
+import { ExtendedBadge, WasDate } from '../dates/ExtendedDate';
+import { matchesAll } from './planSheetQuery';
 
 /**
  * Portfolio › Plan sheet, the approved calm design (demo shot 13, the user's own screenshot): pastel folder tabs, one per project (dot and short name)
@@ -48,7 +50,10 @@ function phasesOf(projectId: string, work: SheetRow[]): Phase[] {
 }
 
 export function CalmPlanSheet() {
-  const { sheet, projects, work, url, colourOf, today, tabPrefs, phone } = usePortfolio();
+  const { sheet, projects, work: allWork, url, colourOf, today, tabPrefs, phone, active, qctx } = usePortfolio();
+  // A filter (a saved view such as Dates extended or My overdue) narrows the tasks; the folder tabs stay the projects.
+  const toks = useMemo(() => active.filter((t) => t.kind !== 'project'), [active]);
+  const work = useMemo(() => (toks.length ? allWork.filter((r) => matchesAll(r, toks, qctx)) : allWork), [allWork, toks, qctx]);
   const wid = useWorkspaceId();
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000, retry: false });
   const people = useMemo(() => (members.data ?? []).filter((m) => m.isActive !== false).map((m) => ({ id: m.userId, label: m.displayName, sub: m.email })), [members.data]);
@@ -58,7 +63,7 @@ export function CalmPlanSheet() {
   const [ask, setAsk] = useState<{ changes: SheetChange[]; label: string; moves: { key: string; from: string; to: string; days: number | null }[] } | null>(null);
   const colours = url.colours;
   const shown = useMemo(() => projects.filter((p) => !colours.length || colours.includes(colourOf(p.id))), [projects, colours, colourOf]);
-  const tab = url.tab === 'all' ? 'all' : shown.find((p) => p.id === url.tab)?.id ?? shown[0]?.id ?? 'all';
+  const tab = url.tab === 'all' || (!url.tab && toks.length > 0) ? 'all' : shown.find((p) => p.id === url.tab)?.id ?? shown[0]?.id ?? 'all';
   const name = (id: string) => tabPrefs.names[id] || projects.find((p) => p.id === id)?.title || '';
   const statusesBy = useMemo(() => { const m = new Map<string, SheetStatus[]>(); for (const s of sheet.data?.statuses ?? []) m.set(s.projectId, [...(m.get(s.projectId) ?? []), s]); return m; }, [sheet.data]);
   // Phase rows are headers, not tasks: the counts are the tasks under them (and lone tasks).
@@ -105,7 +110,8 @@ export function CalmPlanSheet() {
           onClick={(e) => setEdit({ id: r.id, col: 'due', anchor: e.currentTarget })}>{md(r.start)}</button></td>
         <td>
           <button type="button" className={`cps-dc ${late(r, today) || blocked(r) ? 'late' : ''}`} disabled={!r.canEdit} aria-label={`Due date of ${r.title}: ${md(r.due)}`}
-            onClick={(e) => setEdit({ id: r.id, col: 'due', anchor: e.currentTarget })}>{md(r.due)}</button>
+            onClick={(e) => setEdit({ id: r.id, col: 'due', anchor: e.currentTarget })}><WasDate r={r} />{md(r.due)}</button>
+          <ExtendedBadge r={r} />
           {saved === r.id && <span className="ps3-saved" role="status">✓ Saved</span>}
         </td>
         <td><button type="button" className={`cps-pill ${tone}`} disabled={!r.canEdit} aria-label={`Status of ${r.title}: ${pl}`} onClick={(e) => setEdit({ id: r.id, col: 'status', anchor: e.currentTarget })}>{pl}</button></td>
@@ -128,7 +134,7 @@ export function CalmPlanSheet() {
         <div className="cps-tabs" role="tablist" aria-label="Plan sheet projects">
           {shown.map((p) => (
             <button key={p.id} type="button" role="tab" aria-selected={tab === p.id} className={`cps-ft pc-${colourOf(p.id)} ${tab === p.id ? 'on' : ''}`} onClick={() => url.setTab(p.id)} title={name(p.id)}>
-              <b aria-hidden="true" />{short(name(p.id))}
+              <b aria-hidden="true" />{short(name(p.id))}{(() => { const pr = (sheet.data?.rows ?? []).find((x) => x.id === p.id && x.kind === 'project'); return pr ? <ExtendedBadge r={pr} /> : null; })()}
             </button>
           ))}
           <button type="button" role="tab" aria-selected={tab === 'all'} className={`cps-ft all ${tab === 'all' ? 'on' : ''}`} onClick={() => url.setTab('all')}>All</button>
@@ -144,7 +150,7 @@ export function CalmPlanSheet() {
         <div className="cps-scroll">
           <table className="cps-t-table" aria-label="Plan sheet">
             <thead><tr><th style={{ width: '44%' }}>Task</th><th>Owner</th><th>Start</th><th>Due</th><th>Status</th></tr></thead>
-            {tab === 'all' ? shown.map((p) => projectBody(p.id, true)) : projectBody(tab, false)}
+            {tab === 'all' ? shown.filter((p) => !toks.length || work.some((r) => r.projectId === p.id)).map((p) => projectBody(p.id, true)) : projectBody(tab, false)}
           </table>
         </div>
         <div className="cps-hint">Click any date to edit · changes save instantly</div>

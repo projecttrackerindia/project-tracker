@@ -172,8 +172,10 @@ try {
   assert.equal(await page.locator('.v2-new-sheet').count(), 0);
   await page.locator('.v2-panel').getByText('WT-9 · Ticket').waitFor(); assert.equal(at(), '/work?item=00000000-0000-0000-0000-0000000000f1'); checks.push('new-sheet');
   await page.keyboard.press('Escape'); await page.waitForTimeout(300);
-  await page.keyboard.press('Control+k'); await page.locator('.groot-chat.float textarea').waitFor(); await page.waitForTimeout(150);
-  assert.ok(await page.locator('.groot-chat.float textarea').evaluate((el) => el === document.activeElement), 'Ctrl K opens the Aura panel with the cursor in its field');
+  // Ctrl K opens Aura search (round 4a); Enter on the empty field opens the Aura panel with the cursor in its field.
+  await page.keyboard.press('Control+k'); await page.getByTestId('aura-search-input').waitFor(); await page.waitForTimeout(100); await page.keyboard.press('Enter');
+  await page.locator('.groot-chat.float textarea').waitFor(); await page.waitForTimeout(150);
+  assert.ok(await page.locator('.groot-chat.float textarea').evaluate((el) => el === document.activeElement), 'Ctrl K, Enter opens the Aura panel with the cursor in its field');
   await page.keyboard.press('Control+k'); await page.locator('.groot-chat').waitFor({ state: 'detached' });
   await page.keyboard.press('Control+Shift+k'); await page.locator('.cmdk').waitFor(); await page.waitForTimeout(150); await page.keyboard.press('Escape'); checks.push('ctrl-k');
 

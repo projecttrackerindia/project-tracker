@@ -1,4 +1,5 @@
 import { Face } from '../../components/Face';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { MeetTimeCards } from '../meet/MeetTime';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AgentPage, type AgentSection } from '../agent/AgentPage';
@@ -172,15 +173,15 @@ function Briefing({ q, team }: { q: UseQueryResult<InboxBriefing, Error>; team: 
   const ask = useAssistant((s) => s.ask);
   const rows = useCachedWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { staleTime: 30_000 });
   const { day } = useToday(team);
-  if (q.isLoading) return <div className="hm-brief loading" aria-busy="true"><span className="hm-orb" aria-hidden="true" /><p>Reading your work…</p></div>;
-  if (q.isError) return <div className="hm-brief" role="status"><span className="hm-orb" aria-hidden="true" /><p>The briefing could not be read just now. <button type="button" className="link-btn" onClick={() => void q.refetch()}>Try again</button></p></div>;
+  if (q.isLoading) return <div className="hm-brief loading" aria-busy="true"><SiriOrb className="hm-orb" /><p>Reading your work…</p></div>;
+  if (q.isError) return <div className="hm-brief" role="status"><SiriOrb className="hm-orb" /><p>The briefing could not be read just now. <button type="button" className="link-btn" onClick={() => void q.refetch()}>Try again</button></p></div>;
   if (!q.data) return null;
   const b = q.data;
   const critical = (rows.data?.rows ?? []).filter((r) => r.urgent).length;
   const summary = briefingSummary(b, critical, day ? dayCounts(day).free : null);
   return (
     <section className="hm-brief" aria-label="Briefing" title={b.sources ? `From ${b.sources}` : undefined}>
-      <span className="hm-orb" aria-hidden="true" />
+      <SiriOrb className="hm-orb" />
       <p><b>{todayHeadline(b.headline)}</b>{summary && <> <span className="hm-brief-sum" data-testid="briefing-summary">{summary}</span></>}</p>
       {ai && <button type="button" className="hm-plan" onClick={() => ask('Plan my day: put what needs me today in order around my meetings, with focus blocks for the most important work.')}>Plan my day</button>}
     </section>
@@ -339,7 +340,7 @@ function UpNext({ team }: { team: boolean }) {
       </div>
       {ai && (
         <button type="button" className="hm-ai-line" onClick={() => ask(`Brief me for "${next.e.title}"${next.e.projectName ? ` (${next.e.projectName})` : ''}: open defects, pending items and what to ask for.`)}>
-          <span className="hm-orb sm" aria-hidden="true" /><span>Brief ready: what is open, pending and worth asking{next.e.projectName ? ` on ${next.e.projectName}` : ''}.</span>
+          <SiriOrb className="hm-orb sm" /><span>Brief ready: what is open, pending and worth asking{next.e.projectName ? ` on ${next.e.projectName}` : ''}.</span>
         </button>
       )}
     </section>

@@ -232,6 +232,18 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
     return data as T;
   }
 
+  // A date moved later without a reason: the shared "Reason for extending" sheet asks for one and the same request is sent again with it.
+  // One place for every surface (task and plan sheets, action items, timeline and calendar drags, quick-add, Aura).
+  if (error.status === 422 && error.code === 'DATE_EXTENSION_REASON_REQUIRED' && onExtensionReason && (body === undefined || (body !== null && typeof body === 'object' && !Array.isArray(body)))) {
+    const b = (body ?? {}) as Record<string, unknown>;
+    if (!b.extensionReason) {
+      const reason = await onExtensionReason({ message: error.message, method, path, body: b });
+      if (reason) return send<T>(method, path, { ...b, extensionReason: reason, ...(b.dueDateReason ? {} : { dueDateReason: reason }) }, opts, idempotencyKey);
+      error.message = 'The date was not moved.';
+      (error as ApiError & { cancelled?: boolean }).cancelled = true;
+    }
+  }
+
   if (error.status === 401 && auth && retry && !path.startsWith('/auth/')) {
     const renewed = await refreshSession();
     if (renewed) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey);
@@ -240,6 +252,12 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   }
   throw error;
 }
+
+/** What the reason sheet is told about a refused date change. */
+export interface ExtensionAsk { message: string; method: string; path: string; body: Record<string, unknown> }
+let onExtensionReason: ((ask: ExtensionAsk) => Promise<string | null>) | null = null;
+/** Set by the app shell: shows the "Reason for extending" sheet and resolves with the reason (null when cancelled). */
+export const setExtensionReasonHandler = (fn: ((ask: ExtensionAsk) => Promise<string | null>) | null) => { onExtensionReason = fn; };
 
 type QueuedHandler = (method: string, path: string, body: unknown, workspaceId: string | null, tempId?: string) => unknown;
 let onQueued: QueuedHandler | null = null;

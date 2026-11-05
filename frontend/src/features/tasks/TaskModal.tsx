@@ -26,6 +26,8 @@ import { DueChangeFields, dueChange } from '../projects/DueChangeFields';
 import { RemindMeButton } from '../reminders/RemindMe';
 import { TaskSuggestionsStrip } from './TaskSuggestionsStrip';
 import './tasks.css';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 interface Form {
   title: string; description: string; statusId: string; priority: Priority; assigneeId: string;
@@ -147,17 +149,16 @@ export function TaskModal({ taskId, projectId, statusId, initial, onClose }: { t
   });
 
   const remove = async () => {
-    if (!task || !(await confirmDialog({ title: 'Delete task?', message: `Delete ${task.key} “${task.title}” and its subtasks?` }))) return;
-    try {
-      await taskApi.remove(task.id);
-      onClose();
-      // Forget everything about the deleted task (its panels would only answer "not found"), then refresh the lists.
-      await queryClient.cancelQueries({ predicate: (q) => q.queryKey.includes(task.id) });
-      queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(task.id) });
-      toast('Task deleted.', 'success');
-      void invalidateWorkspace(wid);
-    }
-    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete the task.', 'error'); }
+    if (!task) return;
+    // Undo for 10 s instead of a confirm (the task and its subtasks come back with Restore).
+    await deleteWithUndo({ what: 'Task', remove: () => taskApi.remove(task.id), restore: () => restoreApi.task(task.id),
+      onRemoved: () => {
+        onClose();
+        // Forget everything about the deleted task (its panels would only answer "not found"), then refresh the lists.
+        void queryClient.cancelQueries({ predicate: (q) => q.queryKey.includes(task.id) }).then(() => queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(task.id) }));
+        void invalidateWorkspace(wid);
+      },
+      onRestored: () => void invalidateWorkspace(wid) });
   };
 
   const sortedStatuses = useMemo(() => [...statuses].sort((a, b) => a.order - b.order), [statuses]);

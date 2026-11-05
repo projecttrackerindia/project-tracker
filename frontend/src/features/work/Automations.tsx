@@ -1,5 +1,6 @@
 import { Select } from '../../components/Select';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -116,7 +117,7 @@ function Describe({ onDraft }: { onDraft: (f: Flow) => void }) {
   return (
     <form className="au-describe" onSubmit={(e) => { e.preventDefault(); void go(); }}>
       <div className="au-describe-h">Describe it in words</div>
-      <div className="au-describe-line"><span className="au-orb" aria-hidden="true" />
+      <div className="au-describe-line"><SiriOrb className="au-orb" />
         <textarea rows={2} value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} disabled={!ai || busy} aria-label="Describe the automation in words"
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void go(); } }}
           placeholder={ai ? '“If a critical ticket sits 30 min without reply, give it to on-call and tell the incidents channel.”' : 'AI is off for this workspace: build it with the sentence.'} />

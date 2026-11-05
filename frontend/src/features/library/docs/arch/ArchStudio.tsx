@@ -1,5 +1,6 @@
 import { Select } from '../../../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { SiriOrb } from '../../../../components/aura/SiriOrb';
 import { createPortal } from 'react-dom';
 import {
   addEdge, getNodesBounds, getViewportForBounds, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow,
@@ -352,7 +353,7 @@ function Studio({ title: initialTitle, data, onDone, onClose, context, onDraft, 
             </div>
           )}
           <form className={`arch-ask${drawing ? ' busy' : ''}`} onSubmit={(e) => { e.preventDefault(); void draw(); }}>
-            <span className="arch-orb" aria-hidden="true" />
+            <SiriOrb className="arch-orb" />
             <input value={ask} onChange={(e) => setAsk(e.target.value)} disabled={drawing} maxLength={1500} aria-label="Describe the system or a change"
               placeholder={nodes.length ? 'Describe a change — “Add a fraud check between the gateway and payouts”' : 'Describe the system — “Mobile app → gateway → loan service → core banking, with a cache”'} />
             <button type="submit" className="arch-btn primary" disabled={drawing || !ask.trim()}>{drawing ? 'Drawing…' : 'Draw it'}</button>

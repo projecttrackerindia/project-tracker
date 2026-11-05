@@ -1,5 +1,6 @@
 import { Select } from '../../components/Select';
 import { useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { delegateApi, meetingApi } from '../../api/endpoints';
@@ -285,7 +286,7 @@ function MeetingItemsCard({ meetingRef, at }: { meetingRef: string; at: string |
           ))}
         </ul>
       )}
-      {noOwner > 0 && <p className="mz-aura"><span className="calm-orb" aria-hidden="true" />{noOwner === 1 ? 'One item has' : `${noOwner} items have`} no owner yet.</p>}
+      {noOwner > 0 && <p className="mz-aura"><SiriOrb className="calm-orb" />{noOwner === 1 ? 'One item has' : `${noOwner} items have`} no owner yet.</p>}
     </CalmCard>
   );
 }

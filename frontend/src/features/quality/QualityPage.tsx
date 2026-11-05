@@ -1,4 +1,5 @@
 import { ToolbarSeg } from '../../components/v2/ToolbarSeg';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Select } from '../../components/Select';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -186,7 +187,7 @@ function Readiness({ run, r, results, onShow, showing, onNewRun }: { run: TestRu
       <div className="qa-st"><div className="n" style={{ color: '#ff9500' }}>{r?.blocked ?? 0}</div><div className="l">Blocked</div></div>
       {failed.length > 0 && (
         <div className="dq-ai qa-insight">
-          <div className="dq-ai-line"><span className="dq-orb" aria-hidden="true" />
+          <div className="dq-ai-line"><SiriOrb className="dq-orb" />
             <span>{cause ? `${nFailed === 1 ? 'The failure' : `All ${nFailed} failures`} share ${cause} — fix it once to clear them.` : `${nFailed} failures, ${blockers} of them blocking — start with the blockers.`}</span></div>
           <button type="button" className="dq-btn sm white" onClick={onShow}>{showing ? 'Show all' : 'Show failures'}</button>
         </div>

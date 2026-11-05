@@ -1,5 +1,6 @@
 import { Select } from '../../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { SiriOrb } from '../../../components/aura/SiriOrb';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../../api/client';
 import { apiDocApi, docTrackerApi, documentApi } from '../../../api/endpoints';
@@ -159,7 +160,7 @@ export function DocsHub() {
               <section aria-label="Start a document" className="dx-sect">
                 <div className="dx-sect-h"><h2>Start something</h2><button type="button" className="dx-link" onClick={() => setModal('wizard')}>All templates</button></div>
                 <div className="dx-starts">
-                  <button type="button" className="dx-start ai" onClick={() => setModal('ai')}><span className="dx-orb" aria-hidden="true" /><b>Write with AI</b><small>From a line, a meeting, project work or files</small></button>
+                  <button type="button" className="dx-start ai" onClick={() => setModal('ai')}><SiriOrb className="dx-orb" /><b>Write with AI</b><small>From a line, a meeting, project work or files</small></button>
                   <button type="button" className="dx-start" onClick={() => void newPage.create()}><span className="dx-start-i" aria-hidden="true">＋</span><b>Blank page</b><small>Type / for blocks</small></button>
                   {starters.map((t) => (
                     <button key={t.id} type="button" className="dx-start" style={{ '--dc': t.color } as CSSProperties} onClick={() => void newPage.create({ template: t })} title="Starts a page with this template's headings">
@@ -343,7 +344,7 @@ function NeedsReview({ onChanged, canCreate, projects }: { onChanged: () => void
           ))}
           {items.map((p, i) => (
             <li key={p.id} className="dx-rv">
-              <span className="dx-av ai" aria-hidden="true"><span className="dx-orb" /></span>
+              <span className="dx-av ai" aria-hidden="true"><SiriOrb className="dx-orb" /></span>
               <span className="dx-rv-main"><b>{p.title}</b><small>{kindLabel(p.kind)} · AI draft{p.projectKey ? ` · ${p.projectKey}` : ''}</small></span>
               <button type="button" className={`dx-btn sm${reviews.length === 0 && i === 0 && open !== p.id ? ' tint' : ''}`} aria-expanded={open === p.id} onClick={() => setOpen(open === p.id ? null : p.id)}>{open === p.id ? 'Close' : 'Review'}</button>
               {open === p.id && (

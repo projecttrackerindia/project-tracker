@@ -60,7 +60,10 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const today = new Date().toISOString().slice(0, 10);
   const [zoom, setZoom] = useState<Zoom>('week');
   const [fit, setFit] = useState(true);
-  const [group, setGroup] = useState<GroupBy>('none');
+  // A saved view can open the timeline grouped (?tg=owner, "This week by owner").
+  const [group, setGroup] = useState<GroupBy>(() => { const g = params.get('tg'); return g && g in GROUP_LABEL ? g as GroupBy : 'none'; });
+  const tg = params.get('tg');
+  useEffect(() => { if (tg && tg in GROUP_LABEL) setGroup(tg as GroupBy); }, [tg]);
   const [menu, setMenu] = useState<null | 'group'>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -321,6 +324,8 @@ function Bar({ p, colour, y, X, W, px, today, todayX, labels, drag, dragging, dr
         {clipL && <span className="ptl-clip l" aria-hidden="true">‹</span>}
         <span className="ptl-handle" role="slider" aria-label={`Due date of ${p.name}`} aria-valuetext={dmy(due)} aria-valuenow={dn(due)} onPointerDown={onDragStart} onClick={(e) => e.stopPropagation()} />
       </div>
+      {/* The original plan as a ghost bar under the current one, when the due date was extended. */}
+      {p.originalDue && p.due && p.originalDue < p.due && <i className="ptl-orig" data-testid="timeline-ghost" title={`Original plan: due ${dmy(p.originalDue)}`} style={{ top: by + 24, left: Math.max(0, x0), width: Math.max(4, Math.min(W, X(p.originalDue) + px) - Math.max(0, x0)) }} aria-hidden="true" />}
       {slip > 0 && <i className="ptl-slip" style={{ top: by, left: x1, width: Math.max(4, Math.min(W, fx) - x1) }} aria-hidden="true" />}
       {clipR && <span className="ptl-clip r" style={{ top: by }} aria-hidden="true">›</span>}
       {drag && <i className="ptl-ghost" style={{ top: by - 1, left: X(p.due) + px, width: Math.max(0, x1 - X(p.due) - px) }} aria-hidden="true" />}
@@ -521,6 +526,10 @@ function CalmLanes({ projects, work, today, weeks, setWeeks, colourOf, lanesRef,
                     if (b <= a) return null;
                     return <span key={g.name + g.start} className={`ctl-seg pc-${colourOf(p.id)} ${st === 'Late' ? 'late' : st === 'At risk' ? 'risk' : ''}`} style={{ left: pct(a), width: `calc(${((b - a) / days) * 100}% - 4px)` }}>{g.name}</span>;
                   })}
+                  {/* The original plan of an extended project: a dashed ghost from the start to the first due date. */}
+                  {(() => { const s0 = startOf(p); if (!p.originalDue || !p.due || p.originalDue >= p.due || !s0) return null;
+                    const a = Math.max(from, dn(s0)), b = Math.min(to, dn(p.originalDue) + 1); if (b <= a) return null;
+                    return <i className="ctl-orig" data-testid="timeline-ghost" title={`Original plan: due ${dmy(p.originalDue)}`} style={{ left: pct(a), width: `${((b - a) / days) * 100}%` }} aria-hidden="true" />; })()}
                 </div>
               </div>
             );

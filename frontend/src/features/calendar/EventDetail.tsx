@@ -1,5 +1,6 @@
 import { Select } from '../../components/Select';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -132,7 +133,7 @@ function Head({ kind, title, when, why, sub }: { kind: Detail['kind']; title: st
       <div className="ed-kind"><span className="ed-ico" aria-hidden="true"><Icon name={k.icon} size={13} /></span>{k.label}{sub && <span className="ed-sub">{sub}</span>}</div>
       <h2 className="ed-title">{title}</h2>
       <p className="ed-when">{when}</p>
-      <p className="ed-why" data-testid="ed-why"><span className="wp-orb sm" aria-hidden="true" /><span>{why}</span></p>
+      <p className="ed-why" data-testid="ed-why"><SiriOrb className="wp-orb sm" /><span>{why}</span></p>
     </header>
   );
 }
@@ -376,7 +377,7 @@ function MeetingBody({ m, today, nowH, days, actions, onClose }: { m: Meet; toda
             {f?.canManage && cd !== 'ended' && <button type="button" className="ed-btn" data-testid="ed-edit-meeting" onClick={() => setMode('edit')}
               title={f.provider === 'ours' ? 'Change the title and agenda' : `Held in ${f.providerName}: its title and agenda change there`}><Icon name="edit" size={13} />Edit</button>}
           </div>
-          {(e.notes || (f && f.notetaker !== 'off')) && <p className="ed-foot"><span className="wp-orb sm" aria-hidden="true" />Notes by Project Tracker — summary &amp; action items after the call</p>}
+          {(e.notes || (f && f.notetaker !== 'off')) && <p className="ed-foot"><SiriOrb className="wp-orb sm" />Notes by Project Tracker — summary &amp; action items after the call</p>}
         </div>
       )}
     </>

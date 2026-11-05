@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { flashAura } from '../../components/aura/mood';
-import { invalidateWorkspace } from '../../lib/hooks';
+import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useIsMobile } from '../../lib/mobile';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
@@ -43,7 +43,7 @@ function Ring({ p, color }: { p: number; color: string }) {
  * Tapping it opens the day: the shift bar with a now-marker, Home / Office / Client, and one Check in / Check out button. On a phone it
  * shrinks to the ring and the hours and the day opens as a bottom sheet. Aura greets a check-in (morning) and a check-out (evening).
  */
-export function AttendanceCapsule({ compact = false }: { compact?: boolean }) {
+export function AttendanceCapsule({ compact = false, ring = false }: { compact?: boolean; ring?: boolean }) {
   const q = useAttendanceToday();
   const d = q.data;
   const day = useWorkday(d);
@@ -65,9 +65,9 @@ export function AttendanceCapsule({ compact = false }: { compact?: boolean }) {
   const aria = state === 'none' ? 'Check in for today' : state === 'done' ? `Checked out, ${hours} today` : `Checked in, ${label}, ${hours}. Open your day`;
   return (
     <div className="att-cap-wrap" ref={box}>
-      <button type="button" className={`att-cap${compact ? ' compact' : ''}`} data-state={state} data-testid="att-capsule" aria-label={aria} aria-expanded={open} aria-haspopup="dialog"
+      <button type="button" className={`att-cap${compact ? ' compact' : ''}${ring ? ' ring' : ''}`} data-state={state} data-testid="att-capsule" aria-label={aria} aria-expanded={open} aria-haspopup="dialog"
         onClick={() => setOpen((o) => !o)} style={{ '--att-c': COLOR[state] } as React.CSSProperties}>
-        {state === 'none' ? <span className="att-cap-in">Check in</span> : (
+        {ring ? <Ring p={state === 'none' ? 0 : state === 'done' || state === 'overtime' ? 1 : day.share} color={COLOR[state]} /> : state === 'none' ? <span className="att-cap-in">Check in</span> : (
           <>
             <Ring p={state === 'done' || state === 'overtime' ? 1 : day.share} color={COLOR[state]} />
             {compact ? <b className="att-cap-h">{hours}</b> : (
@@ -153,6 +153,32 @@ function DayPanel({ today, onDone }: { today: AttendanceToday; onDone: () => voi
       <div className="att-day-mini">
         <span>{state === 'none' ? `Now ${today.localTime}` : `Today · ${hm(day.minutes)}`}</span>
         {late > 0 && <span>Late check-in · {hm(late)}</span>}
+      </div>
+      <WeekSummary today={today.date} />
+    </div>
+  );
+}
+
+/** This week so far (Monday to today): hours per day as small bars, and the total. */
+function WeekSummary({ today }: { today: string }) {
+  const d = new Date(`${today}T00:00:00`);
+  const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const from = iso(mon);
+  const q = useWsQuery(['attendance', 'week', from, today], () => attendanceApi.list(from, today, 'me'), { staleTime: 60_000 });
+  const days = Array.from({ length: 5 }, (_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return iso(x); });
+  const mins = (k: string) => (q.data ?? []).filter((r) => r.date === k).reduce((a, r) => a + r.minutes, 0);
+  const total = days.reduce((a, k) => a + mins(k), 0);
+  const max = Math.max(480, ...days.map(mins));
+  return (
+    <div className="att-week" data-testid="att-week" aria-label={`This week ${hm(total)}`}>
+      <div className="att-week-h"><span>This week</span><b>{hm(total)}</b></div>
+      <div className="att-week-bars">
+        {days.map((k, i) => (
+          <span key={k} className={k === today ? 'today' : ''} title={`${['Mon', 'Tue', 'Wed', 'Thu', 'Fri'][i]} · ${hm(mins(k))}`}>
+            <i style={{ transform: `scaleY(${Math.max(0.04, mins(k) / max)})` }} /><small>{'MTWTF'[i]}</small>
+          </span>
+        ))}
       </div>
     </div>
   );

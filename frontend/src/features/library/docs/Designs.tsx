@@ -1,5 +1,6 @@
 import { Select } from '../../../components/Select';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { SiriOrb } from '../../../components/aura/SiriOrb';
 import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../../../api/client';
@@ -106,7 +107,7 @@ export function Designs({ projectId, projectName }: { projectId: string | null; 
         </div>
       )}
       {waiting > 0 && reviewer && (
-        <div className="dz-aistrip" data-testid="dz-aistrip"><span className="dz-orb" aria-hidden="true" />
+        <div className="dz-aistrip" data-testid="dz-aistrip"><SiriOrb className="dz-orb" />
           <span><b>{plural(waiting, 'design')} wait{waiting === 1 ? 's' : ''} on {reviewer.name.split(' ')[0]}’s review.</b> {designs.filter((d) => d.data.state === 'review').map((d) => d.title).slice(0, 3).join(', ')}</span>
           <button type="button" className="dx-btn tint" disabled={nudge.isPending || nudged} onClick={() => nudge.mutate(waiting)}>{nudged ? 'Nudged' : `Nudge ${reviewer.name.split(' ')[0]}`}</button>
         </div>

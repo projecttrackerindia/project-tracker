@@ -1,4 +1,5 @@
 import { useQueries } from '@tanstack/react-query';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { CalmJourney, calmStepPos, type CalmStep } from '../../components/calm';
 import { openSchedule } from '../meet/scheduleStore';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -45,6 +46,8 @@ import '../agent/agent.css';
 import './projects.css';
 import './projectsHome.css';
 import './projectPage.css';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 export type ProjectTab = 'overview' | 'work' | 'docs' | 'time' | 'activity';
 const TABS: ProjectTab[] = ['overview', 'work', 'docs', 'time', 'activity'];
@@ -151,9 +154,8 @@ export function ProjectPage() {
   const drop = (key: string) => setParams((x) => { const n = new URLSearchParams(x); n.delete(key); return n; }, { replace: true });
   const addWork = canCreate && seeTasks && !archived;
   const remove = async () => {
-    if (!(await confirmDialog({ title: 'Delete project?', message: `Deleting “${p.name}” will also remove all of its tasks.` }))) return;
-    try { await projectApi.remove(p.id); toast('Project deleted.', 'warning'); await invalidateWorkspace(wid); nav('/work/projects'); }
-    catch (e) { toast(errText(e, 'Could not delete the project.'), 'error'); }
+    await deleteWithUndo({ what: 'Project', remove: () => projectApi.remove(p.id), restore: () => restoreApi.project(p.id),
+      onRemoved: () => { void invalidateWorkspace(wid); nav('/work/projects'); }, onRestored: () => { void invalidateWorkspace(wid); nav(`/work/projects/${p.id}`); } });
   };
   const saveTemplate = async () => {
     try { await templateApi.saveProject(p.id); toast('Saved as a template. Find it in + New › From template…'); await invalidateWorkspace(wid, 'templates'); }
@@ -464,7 +466,7 @@ function AiLine({ detail }: { detail: ProjectDetail }) {
   const ask = (q: string) => useAssistant.getState().ask(q);
   return (
     <div className="pp-ai" role="note" aria-label="From the assistant">
-      <span className="pa-orb" aria-hidden="true" />
+      <SiriOrb className="pa-orb" />
       <span className="pp-ai-text">{text}</span>
       {ai && (gap
         ? <button type="button" className="pa-btn sm" onClick={() => ask(`Draft a short message asking for the ${plural(pending, 'pending sign-off')} on project ${p.name} (${p.key}), stage by stage, with who signs each.`)}>Request {plural(pending, 'sign-off')}</button>

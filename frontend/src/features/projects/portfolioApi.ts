@@ -42,6 +42,8 @@ export interface SheetRow {
   /** Additive (plan sheet v3): estimate for the workload bars, checklist counts for the smart fill, progress set by hand. */
   estimatedHours?: number | null; checklistTotal?: number | null; checklistDone?: number | null; manualProgress?: boolean;
   /** Days the due date has moved from the first one it had. */ slipDays?: number | null;
+  /** Date extensions (activity-dates): the first due date, how many times it moved later, and the days between it and the current one. */
+  originalDate?: string | null; extensionCount?: number; totalSlipDays?: number;
   /** The phase (project stage) a task sits in: the first level of the focus view's tree. */ stageId?: string | null; stage?: string | null;
 }
 export interface SheetStatus { id: string; projectId: string; name: string; category: string }

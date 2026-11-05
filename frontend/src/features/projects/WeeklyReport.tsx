@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { chatApi, statusApi } from '../../api/endpoints';
 import type { WeeklyItem, WeeklySent } from '../../api/endpoints';
 import { ErrorState, PageLoader } from '../../components/ui';
-import { CalmLink, CalmOrb, CalmPicker, CalmRailCard, CalmSplit } from '../../components/calm';
+import { CalmLink, CalmPicker, CalmRailCard, CalmSplit } from '../../components/calm';
 import { useWsQuery } from '../../lib/hooks';
 import { toast } from '../../stores/ui';
 import { useAi } from '../ai/Assistant';
@@ -159,7 +160,7 @@ export function WeeklyReportPage() {
       </CalmRailCard>
 
       <div className="calm-rc wrp-card wrp-ai">
-        <p><CalmOrb />{ai ? 'Tone is neutral and every line comes from the project. Want it shorter, or framed for executives?' : 'Read it through, edit any line, then approve.'}</p>
+        <p><SiriOrb className="wrp-orb" />{ai ? 'Tone is neutral and every line comes from the project. Want it shorter, or framed for executives?' : 'Read it through, edit any line, then approve.'}</p>
         <div className="wrp-ai-row">
           {ai && <button type="button" className="calm-chip-btn" disabled={busy !== null} onClick={() => void rewrite('shorten')}>{busy === 'shorten' ? 'Shortening…' : 'Shorter'}</button>}
           {ai && <button type="button" className="calm-chip-btn" disabled={busy !== null} onClick={() => void rewrite('formal')}>{busy === 'formal' ? 'Rewriting…' : 'For execs'}</button>}
@@ -198,7 +199,7 @@ export function WeeklyReportPage() {
       <header className="calm-hero wrp-head">
         <div className="wrp-eyebrow">Weekly status · {range(d.from, d.to)}</div>
         <h1 className="calm-hero-title wrp-h1">Week {d.week ?? isoWeek(d.to)} report.<em>{range(d.from, d.to)}</em></h1>
-        <div className="aura-line wrp-sourceline"><span className="calm-orb wrp-orb" aria-hidden="true" />
+        <div className="aura-line wrp-sourceline"><SiriOrb className="wrp-orb" />
           Written from {s ? `${plural(s.updates, 'update')}, ${plural(s.meetings, 'meeting')}${mail.count ? `, ${plural(mail.count, 'mail')}` : ''} and ${plural(s.commits, 'commit')}` : 'the project'} · {ago(d.writtenAt)}
         </div>
       </header>

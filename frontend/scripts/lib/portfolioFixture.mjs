@@ -88,12 +88,12 @@ const sheet = (s) => ({ asOf: today, timeZone: 'Asia/Kolkata', rows: s.rows, peo
   scopes: [{ id: 'all', label: 'Everything I can see', allowed: true, why: null, teamId: null }] });
 const projectsOf = (s) => s.rows.filter((r) => r.kind === 'project');
 const timeline = (s) => ({ from: '2026-08-01', to: '2026-12-19', projects: projectsOf(s).map((p, i) => ({
-  id: p.id, key: p.key, name: p.title, health: HEALTH[p.category] ?? 'OnTrack', group: 'Delivery', start: p.start, due: p.due, originalDue: null, forecast: null, progress: p.progress, milestones: [], dependsOn: p.key === 'CB' ? [P.AA] : [],
+  id: p.id, key: p.key, name: p.title, health: HEALTH[p.category] ?? 'OnTrack', group: 'Delivery', start: p.start, due: p.due, originalDue: p.originalDate ?? null, forecast: null, progress: p.progress, milestones: [], dependsOn: p.key === 'CB' ? [P.AA] : [],
   ownerId: p.ownerId, owner: p.owner, team: i < 2 ? 'Team Lending' : 'Team Payments', teamId: g(800 + (i < 2 ? 0 : 1)), slipDays: 0, confidence: 'medium', forecastBasis: null, openTasks: 2, blockedTasks: 0, finishedLast28Days: 3, version: 4, status: 'Active', lastChange: null })) });
 const brief = (s) => {
   const ps = projectsOf(s), n = (c) => ps.filter((p) => p.category === c).length;
   return { asOf: today, projects: ps.length, onTrack: n('OnTrack'), atRisk: n('AtRisk'), delayed: n('Delayed'), onHold: 0, workComplete: n('Done'), overdueTasks: 1, blockedTasks: 0, openActionItems: 0, overdueActionItems: 0, dateChangesLast30Days: 0,
-    headlines: [`${ps.length} active projects: ${n('OnTrack')} on track, ${n('AtRisk')} at risk, ${n('Delayed')} late.`], recentSlips: [], stretched: [],
+    headlines: [`${ps.length} active projects: ${n('OnTrack')} on track, ${n('AtRisk')} at risk, ${n('Delayed')} late.`], recentSlips: s.slips ?? [], stretched: [],
     ranked: ps.map((p) => ({ projectId: p.id, key: p.key, name: p.title, group: 'Delivery', health: HEALTH[p.category], progress: p.progress, owner: p.owner, startDate: p.start, dueDate: p.due, delayedDays: 0, openTasks: 2, overdueTasks: 0,
       blockedTasks: 0, openActionItems: 0, overdueActionItems: 0, finishedLast28Days: 3, inProgressTasks: 1, projectedFinish: null, projectedSlipDays: 0, confidence: 'medium', score: 1, level: 'Low', reasons: [] })) };
 };
@@ -125,7 +125,12 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       return;
     }
     let data = [];
-    if (ep === '/api/v1/portfolio/sheet/bulk' && method === 'POST') {
+    // A test can answer any call first (calm round 4a: search, attendance, activity, the extension rule).
+    const own = state.extra ? await state.extra({ ep, method, req, url }) : undefined;
+    if (own !== undefined) {
+      if (own && own.__status) { await route.fulfill({ status: own.__status, contentType: 'application/json', body: JSON.stringify(own.body) }); return; }
+      data = own;
+    } else if (ep === '/api/v1/portfolio/sheet/bulk' && method === 'POST') {
       const b = req.postDataJSON(); state.writes.push({ ep, b });
       for (const c of b.changes) {
         const r = state.rows.find((x) => x.id === c.id); if (!r) continue;

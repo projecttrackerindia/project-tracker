@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { useNavigate } from 'react-router-dom';
 import { timeApi } from '../../api/endpoints';
 import type { CalendarEvent, TimelineEvent } from '../../api/types';
@@ -659,7 +660,7 @@ export function WeekPlanner({ onTab, extra }: { onTab?: (t: 'for-you' | 'calenda
         })}
       </section>
       <section className="wp-ai" aria-label="This week" data-testid="wp-week-summary">
-        <span className="wp-orb" aria-hidden="true" />
+        <SiriOrb className="wp-orb" />
         <div>
           {firstFree && <p className="wp-ai-free">{fmtMins(Math.round((firstFree.end - firstFree.start) * 60))} free at {hm(firstFree.start)}.{' '}
             <button type="button" className="wp-ai-act" onClick={() => { setRailOpen(false); live.current.free(today, firstFree.start, firstFree.end); }}>Hold it?</button></p>}
