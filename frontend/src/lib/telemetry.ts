@@ -137,7 +137,9 @@ export function startTelemetry() {
     .then((r) => (r.ok ? r.json() : null))
     .then((j: { data?: { errors?: boolean; vitals?: boolean } } | null) => {
       errorsOn = !!j?.data?.errors;
-      if (j?.data?.vitals !== false) startVitals();
+      // Automated browsers (tests, crawlers) are not real users; a test can opt in with window.__ptVitals = true.
+      const automated = navigator.webdriver && !(window as unknown as { __ptVitals?: boolean }).__ptVitals;
+      if (j?.data?.vitals !== false && !automated) startVitals();
     })
     .catch(() => undefined);
 }
