@@ -4,6 +4,7 @@ import type { AgentSection } from '../agent/AgentPage';
 import { PageLoader } from '../../components/ui';
 import { useIsSmallPhone } from '../../lib/mobile';
 import { CalmToday } from './CalmToday';
+import { loadLateStyles } from '../../lib/lateStyles';
 import { useClassic } from '../calm/classic';
 import type { Tab, View } from './HomeClassic';
 import './home.css';
@@ -13,7 +14,7 @@ import './home.css';
  * For me / My team view, the week calendar and the older pages still reached from Home's links each load when they are first opened.
  */
 function part<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
-  return lazy(() => load().then((m) => ({ default: m[name] })));
+  return lazy(() => Promise.all([load(), loadLateStyles()]).then(([m]) => ({ default: m[name] })));
 }
 const AgentPage = part(() => import('../agent/AgentPage'), 'AgentPage');
 const AiPage = part(() => import('../ai/AiPage'), 'AiPage');
