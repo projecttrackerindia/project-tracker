@@ -371,6 +371,27 @@ public static class PasswordHashes
 public record ChangeEvent(Guid TenantId, string EntityType, Guid? EntityId, Guid? ProjectId, string Action, Guid? ActorId,
     string? Op = null, IReadOnlyList<string>? Fields = null, IReadOnlyList<Guid>? Audience = null, string? Type = null, Guid? ParentId = null);
 
+/// <summary>
+/// The database for reads that may lag a moment behind (reports, insights, search, portfolio aggregates, exports): a read replica when
+/// ConnectionStrings:ReadOnly is set, otherwise the primary itself. Never write through it - a replica context refuses every save and every
+/// INSERT/UPDATE/DELETE, so a mistake fails loudly instead of being lost.
+/// </summary>
+public interface IReadDb
+{
+    IAppDbContext Db { get; }
+    /// <summary>True when <see cref="Db"/> is the replica (false: it is the request's own primary context).</summary>
+    bool IsReplica { get; }
+}
+
+/// <summary>
+/// The workspace's cached hot reads (shell summary, portfolio, project health, dashboards) are forgotten when something in it changes.
+/// Called after a save commits, with every workspace the save touched.
+/// </summary>
+public interface IHotReadInvalidator
+{
+    Task InvalidateAsync(IReadOnlyCollection<Guid> tenants, CancellationToken ct = default);
+}
+
 /// <summary>Tells the people who have the app open that something changed, so boards and lists update without a reload.</summary>
 public interface IChangeFeed
 {

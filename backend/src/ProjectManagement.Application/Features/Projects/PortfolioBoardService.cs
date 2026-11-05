@@ -57,8 +57,10 @@ public record PortfolioAiSummaryDto(string Text, string Model, DateTime At, bool
 /// the projects the person may open only.
 /// </summary>
 public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClock clock, AiPortfolio portfolio, ProjectAccess access, PermissionService permissions,
-    EntitlementService entitlements, CapacityService capacity, Recorder recorder, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions)
+    EntitlementService entitlements, CapacityService capacity, Recorder recorder, IAiClient ai, AiCreditService credits, IOptions<AiOptions> aiOptions, IReadDb? readDb = null)
 {
+    /// <summary>The board, the timeline and the export only read: the read replica when one is configured, otherwise the primary.</summary>
+    private IAppDbContext reads => readDb?.Db ?? db;
     public const int CapacityWeeks = 4;
     /// <summary>A task with no estimate counts as this much work when filling the next four weeks (said in the notes).</summary>
     public const int DefaultTaskMinutes = 4 * 60;
@@ -94,9 +96,9 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         var money = await MoneyAsync(ids, ct);
 
         var ownerIds = meta.Select(m => m.OwnerId).Distinct().ToList();
-        var owners = await db.Users.AsNoTracking().Where(u => ownerIds.Contains(u.Id)).OrderBy(u => u.DisplayName).Select(u => new PortfolioChoiceDto(u.Id, u.DisplayName)).ToListAsync(ct);
+        var owners = await reads.Users.AsNoTracking().Where(u => ownerIds.Contains(u.Id)).OrderBy(u => u.DisplayName).Select(u => new PortfolioChoiceDto(u.Id, u.DisplayName)).ToListAsync(ct);
         var groupIds = meta.Where(m => m.ProjectGroupId != null).Select(m => m.ProjectGroupId!.Value).Distinct().ToList();
-        var groups = await db.ProjectGroups.AsNoTracking().Where(g => groupIds.Contains(g.Id)).OrderBy(g => g.Name).Select(g => new PortfolioChoiceDto(g.Id, g.Name)).ToListAsync(ct);
+        var groups = await reads.ProjectGroups.AsNoTracking().Where(g => groupIds.Contains(g.Id)).OrderBy(g => g.Name).Select(g => new PortfolioChoiceDto(g.Id, g.Name)).ToListAsync(ct);
         return new PortfolioBoardDto(clock.Today, filter, filtered, decisions, money, cap, owners, groups, Summary(filtered, decisions, money, cap));
     }
 
@@ -126,11 +128,11 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
             .Select(t => new { t.Id, t.ProjectId, t.Number, t.Title, t.AssigneeId, t.Priority, t.DueDate, t.CreatedAt, t.CompletedAt, t.EstimatedHours, t.ActualHours, Cat = t.Status!.Category, Key = t.Project!.Key })
             .Take(20_000).ToListAsync(ct);
         var people = tasks.Where(t => t.AssigneeId != null).Select(t => t.AssigneeId!.Value).Distinct().ToList();
-        var names = await db.Users.AsNoTracking().Where(u => people.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var names = await reads.Users.AsNoTracking().Where(u => people.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         var horizon = today.AddDays(60);
-        var leave = await db.PlannedLeaves.AsNoTracking().Where(l => people.Contains(l.UserId) && l.WorkDate >= today && l.WorkDate <= horizon)
+        var leave = await reads.PlannedLeaves.AsNoTracking().Where(l => people.Contains(l.UserId) && l.WorkDate >= today && l.WorkDate <= horizon)
             .Select(l => new { l.UserId, l.WorkDate }).ToListAsync(ct);
-        var waiting = await db.AgentFindings.AsNoTracking().Where(f => ids.Contains(f.ProjectId) && f.Status == AgentFindingStatus.Proposed && f.SourceLabel == "Portfolio")
+        var waiting = await reads.AgentFindings.AsNoTracking().Where(f => ids.Contains(f.ProjectId) && f.Status == AgentFindingStatus.Proposed && f.SourceLabel == "Portfolio")
             .GroupBy(f => f.ProjectId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
         // Who has room: under 70% in the next two weeks, with the most spare first.
         var spare = await SpareAsync(ct);
@@ -208,13 +210,13 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
     {
         var tid = ctx.RequireTenantId();
         var start = clock.Today; var end = start.AddDays(13);
-        var members = await db.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive)
+        var members = await reads.TenantMembers.AsNoTracking().Where(m => m.TenantId == tid && m.Role != TenantRole.Guest && m.User!.IsActive)
             .Select(m => new { m.UserId, m.User!.DisplayName, m.WeeklyCapacityMinutes }).Take(500).ToListAsync(ct);
         var ids = members.Select(m => m.UserId).ToList();
-        var work = await db.Tasks.AsNoTracking().Where(t => t.AssigneeId != null && ids.Contains(t.AssigneeId.Value) && t.CompletedAt == null && t.DueDate != null && t.DueDate <= end
+        var work = await reads.Tasks.AsNoTracking().Where(t => t.AssigneeId != null && ids.Contains(t.AssigneeId.Value) && t.CompletedAt == null && t.DueDate != null && t.DueDate <= end
                 && t.Status!.Category != StatusCategory.Done && t.Status.Category != StatusCategory.Cancelled)
             .Select(t => new { t.AssigneeId, t.EstimatedHours, t.ActualHours }).ToListAsync(ct);
-        var leave = await db.PlannedLeaves.AsNoTracking().Where(l => ids.Contains(l.UserId) && l.WorkDate >= start && l.WorkDate <= end).Select(l => l.UserId).ToListAsync(ct);
+        var leave = await reads.PlannedLeaves.AsNoTracking().Where(l => ids.Contains(l.UserId) && l.WorkDate >= start && l.WorkDate <= end).Select(l => l.UserId).ToListAsync(ct);
         var days = CapacityService.WorkingDays(start, end);
         return members.Select(m =>
         {
@@ -411,24 +413,24 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         var board = await BoardAsync(filter, ct);
         var ranked = board.Brief.Ranked;
         var ids = ranked.Select(r => r.ProjectId).ToList();
-        var milestones = await db.Milestones.AsNoTracking().Where(m => ids.Contains(m.ProjectId)).OrderBy(m => m.DueDate).Select(m => new { m.Id, m.ProjectId, m.Name, m.DueDate, m.Status }).ToListAsync(ct);
-        var firstDue = (await db.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderBy(c => c.CreatedAt).Select(c => new { c.ProjectId, c.Previous }).ToListAsync(ct))
+        var milestones = await reads.Milestones.AsNoTracking().Where(m => ids.Contains(m.ProjectId)).OrderBy(m => m.DueDate).Select(m => new { m.Id, m.ProjectId, m.Name, m.DueDate, m.Status }).ToListAsync(ct);
+        var firstDue = (await reads.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderBy(c => c.CreatedAt).Select(c => new { c.ProjectId, c.Previous }).ToListAsync(ct))
             .GroupBy(c => c.ProjectId).ToDictionary(g => g.Key, g => g.First().Previous);
         // A project depends on another when one of its tasks waits on a task there.
-        var deps = await (from d in db.TaskDependencies.AsNoTracking()
-                          join t in db.Tasks.AsNoTracking() on d.TaskId equals t.Id
-                          join o in db.Tasks.AsNoTracking() on d.DependsOnTaskId equals o.Id
+        var deps = await (from d in reads.TaskDependencies.AsNoTracking()
+                          join t in reads.Tasks.AsNoTracking() on d.TaskId equals t.Id
+                          join o in reads.Tasks.AsNoTracking() on d.DependsOnTaskId equals o.Id
                           where ids.Contains(t.ProjectId) && ids.Contains(o.ProjectId) && t.ProjectId != o.ProjectId
                           select new { From = t.ProjectId, To = o.ProjectId }).Distinct().ToListAsync(ct);
-        var meta = await db.Projects.AsNoTracking().Where(p => ids.Contains(p.Id)).Select(p => new { p.Id, p.OwnerId, p.TeamId, p.Version, p.Status }).ToListAsync(ct);
+        var meta = await reads.Projects.AsNoTracking().Where(p => ids.Contains(p.Id)).Select(p => new { p.Id, p.OwnerId, p.TeamId, p.Version, p.Status }).ToListAsync(ct);
         var metaBy = meta.ToDictionary(m => m.Id);
         var teamIds = meta.Where(m => m.TeamId != null).Select(m => m.TeamId!.Value).Distinct().ToList();
-        var teams = await db.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+        var teams = await reads.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
         // The latest project-level due-date change, with who made it.
-        var lastChanges = (await db.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderByDescending(c => c.CreatedAt).Take(500)
+        var lastChanges = (await reads.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderByDescending(c => c.CreatedAt).Take(500)
             .Select(c => new { c.ProjectId, c.Previous, c.Revised, c.Reason, c.CreatedBy, c.CreatedAt }).ToListAsync(ct)).GroupBy(c => c.ProjectId).ToDictionary(g => g.Key, g => g.First());
         var byIds = lastChanges.Values.Where(c => c.CreatedBy != null).Select(c => c.CreatedBy!.Value).Distinct().ToList();
-        var byNames = await db.Users.AsNoTracking().Where(u => byIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var byNames = await reads.Users.AsNoTracking().Where(u => byIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         var list = ranked.Select(r =>
         {
             var m = metaBy.GetValueOrDefault(r.ProjectId);
