@@ -11,7 +11,7 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
     /// New tables only; nothing existing changes.
     /// </summary>
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261220001000_RecurringWorkAndTemplates")]
+    [Migration("20261223001000_RecurringWorkAndTemplates")]
     public partial class RecurringWorkAndTemplates : Migration
     {
         /// <inheritdoc />
