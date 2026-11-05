@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright-core');
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5173';
-const password = 'Zephyr!8472';
+const password = 'Zephyr!8472-Qx'; // the 12-character password rule
 async function api(path, body, token) {
   const r = await fetch(`${BASE}/api/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },

@@ -18,14 +18,10 @@ try {
     assert.equal(await s.page.getByText('Page not found', { exact: true }).count(), 0, path + ' resolves');
     assert.ok(await s.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), path + ' fits');
   }
-  // Create chips above Aura replace the retired per-page New project button.
+  // The Create button (bottom right) replaces the retired Aura create chips; New project opens the project form.
   await go(s, '/work/projects');
-  await s.page.locator('[data-aura-entry]:visible').first().click(); // Aura opens from its toolbar orb (⌘K)
-  await s.page.locator('.aura-dock input').click();
-  await s.page.locator('.aura-chip[data-chip="more"]').click();
-  await s.page.getByRole('radio', { name: 'Project', exact: true }).click();
-  await s.page.getByRole('textbox', { name: 'What to create', exact: true }).fill('Smoke project setup');
-  await s.page.getByRole('button', { name: /^Create project/i }).click();
+  await s.page.getByRole('button', { name: 'Create', exact: true }).click();
+  await s.page.getByRole('menu', { name: 'Create', exact: true }).getByRole('menuitem', { name: /New project/ }).click();
   const project = s.page.getByRole('dialog', { name: 'New project', exact: true });
   await project.locator('input').first().waitFor();
   await project.locator('input').first().fill('Smoke form validation');

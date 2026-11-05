@@ -19,9 +19,8 @@ try {
   await more.getByRole('button', { name: /Projects/ }).waitFor();
   await s.page.keyboard.press('Escape'); await more.waitFor({ state: 'hidden' });
   await go(s);
-  await s.page.locator('[data-aura-entry]:visible').first().click(); // Aura opens from its toolbar orb (⌘K)
-  await s.page.locator('.aura-dock input').click();
-  await s.page.locator('.aura-chip[data-chip="task"]').click();
+  await s.page.getByRole('button', { name: 'Create', exact: true }).click();
+  await s.page.getByRole('menu', { name: 'Create', exact: true }).getByRole('menuitem', { name: /New task/ }).click();
   const create = s.page.getByRole('dialog'); await create.waitFor();
   assert.ok(await create.isVisible(), 'Create task opens a phone sheet');
   assert.ok(await s.page.evaluate(() => [...document.querySelectorAll('input,textarea,select')].filter((e) => e.getBoundingClientRect().height).every((e) => parseFloat(getComputedStyle(e).fontSize) >= 16)), 'Phone fields avoid focus zoom');
