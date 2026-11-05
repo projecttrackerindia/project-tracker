@@ -16,6 +16,7 @@ import { announce, isQuiet } from '../../features/notifications/centre/announce'
 import { CATEGORY_META, categoryOf, conversationOf, iconOf } from '../../features/notifications/centre/model';
 import { mayBanner, maySound } from '../../features/notifications/centre/prefs';
 import { isViewing } from '../../features/notifications/centre/readSync';
+import { QuickBannerActions } from '../../features/notifications/quick/QuickBannerActions';
 import './v2.css';
 
 const MAX = 3;
@@ -123,6 +124,7 @@ function Banner({ n, onClose }: { n: AppNotification; onClose: () => void }) {
             <button type="button" className="ncx-btn ghost" onClick={open}>Open chat</button>
           </div>
         )}
+        {!canReply && <QuickBannerActions n={n} onDone={onClose} />}
         {replying && (
           <form className="ncx-reply" onSubmit={(e) => void send(e)}>
             <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Reply…" aria-label="Reply" maxLength={4000}
