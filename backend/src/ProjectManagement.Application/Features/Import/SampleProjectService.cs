@@ -45,6 +45,14 @@ public class SampleProjectService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var tid = ctx.RequireTenantId(); var uid = ctx.RequireUserId();
         if ((await GetAsync(ct)).Exists) throw new ConflictException("The sample project is already here.", "SAMPLE_EXISTS");
         var group = await db.ProjectGroups.Where(g => g.IsActive).OrderBy(g => g.Order).Select(g => (Guid?)g.Id).FirstOrDefaultAsync(ct);
+        if (group is null)
+        {
+            // Every project sits in a group; a brand-new workspace has none yet, so the sample brings its own.
+            var g = new ProjectGroup { TenantId = tid, Name = "Sample", Description = "Holds the sample project.", Order = 0, IsActive = true, CreatedAt = clock.Now, CreatedBy = uid };
+            db.ProjectGroups.Add(g);
+            await db.SaveChangesAsync(ct);
+            group = g.Id;
+        }
         var today = clock.Today;
         var detail = await projects.CreateAsync(new CreateProjectRequest(Name, null,
             "A fictional project to explore with. Remove it any time from Settings or the welcome card.", Priority.Medium, ProjectStatus.Active, uid,

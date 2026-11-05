@@ -49,9 +49,9 @@ public class AdoptionImportTests(ApiFactory factory)
         var first = tasks.Single(t => t!["title"]!.GetValue<string>() == "Set up the pipeline")!;
         Assert.Equal("2026-11-12", first["dueDate"]!.GetValue<string>());
         Assert.Equal("Critical", first["priority"]!.GetValue<string>());
-        Assert.Equal(c.UserId.ToString(), first["assigneeId"]!.GetValue<string>());
+        Assert.Equal(c.UserId.ToString(), first["assignee"]!["id"]!.GetValue<string>());
         var second = tasks.Single(t => t!["title"]!.GetValue<string>() == "Write the runbook")!;
-        Assert.Null(second["assigneeId"]?.GetValue<string>());
+        Assert.Null(second["assignee"]?["id"]?.GetValue<string>());
     }
 
     [Fact]
