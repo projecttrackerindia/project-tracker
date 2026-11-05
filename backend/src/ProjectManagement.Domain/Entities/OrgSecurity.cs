@@ -11,7 +11,13 @@ namespace ProjectManagement.Domain.Entities;
 public class TenantSecuritySettings : TenantEntity, ITenantScoped
 {
     public bool RequireMfa { get; set; }
+    /// <summary>Who <see cref="RequireMfa"/> applies to: "all" members, or only "admins" (Owners and Admins). Off by default; the owner turns it on.</summary>
+    public string MfaScope { get; set; } = "all";
+    /// <summary>Until this moment people the rule applies to may still enter without two-step verification (and are reminded). Null = no grace.</summary>
+    public DateTime? MfaGraceUntil { get; set; }
     public bool IpAllowlistEnabled { get; set; }
+    /// <summary>Lockout protection: an Owner who signed in with two-step verification (or a passkey) may enter from any network, so a wrong list never locks the organization out.</summary>
+    public bool IpOwnerBypass { get; set; } = true;
     /// <summary>One IP address or CIDR range per line (e.g. "203.0.113.9" or "10.0.0.0/8"). Empty when the allowlist is off.</summary>
     public string IpRanges { get; set; } = "";
     /// <summary>Stricter than the platform: passwords shorter than this must be changed before entering the workspace (0 = the platform's rule).</summary>

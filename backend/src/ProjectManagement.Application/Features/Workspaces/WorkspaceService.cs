@@ -159,12 +159,13 @@ public class WorkspaceService(
                              where m.UserId == userId && m.TenantId == workspaceId && t.Status == TenantStatus.Active
                              select m.Id).AnyAsync(ct);
         if (!allowed) throw new NotFoundException("Workspace not found.");
+        var role = await db.TenantMembers.AsNoTracking().Where(m => m.UserId == userId && m.TenantId == workspaceId).Select(m => (ProjectManagement.Domain.Enums.TenantRole?)m.Role).FirstOrDefaultAsync(ct);
 
         var user = await db.Users.FirstAsync(u => u.Id == userId, ct);
         var session = await db.UserSessions.FirstAsync(s => s.Id == sessionId, ct);
         // A session opened by this organization's own single sign-on meets its two-step rule (the identity provider applies its own).
         var blocked = await orgSecurity.CheckAccessAsync(workspaceId, user.MfaEnabled || session.SsoTenantId == workspaceId || session.AuthMethod is "passkey" or "device", ctx.IpAddress, ct,
-            new ProjectManagement.Application.Features.Organization.SignInFacts(session.AuthMethod, session.CreatedAt, user.PasswordLength));
+            new ProjectManagement.Application.Features.Organization.SignInFacts(session.AuthMethod, session.CreatedAt, user.PasswordLength), role);
         if (blocked is not null) throw new ForbiddenException(blocked.Message, blocked.Code);
 
         session.WorkspaceId = workspaceId;

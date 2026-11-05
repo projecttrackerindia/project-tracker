@@ -180,6 +180,8 @@ namespace ProjectManagement.Domain.Entities
         public int? NotificationRetentionDays { get; set; }
         public int? ChatRetentionDays { get; set; }
         public int? AuditRetentionDays { get; set; }
+        /// <summary>Items in the bin (soft-deleted projects, tasks, documents, notes ...) are removed for good this many days after deletion. Null = kept.</summary>
+        public int? DeletedItemsRetentionDays { get; set; }
         public DateTime? LastPurgedAt { get; set; }
     }
 

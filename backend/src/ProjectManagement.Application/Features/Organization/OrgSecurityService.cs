@@ -12,10 +12,12 @@ namespace ProjectManagement.Application.Features.Organization;
 
 public record OrgSecurityDto(bool RequireMfa, bool IpAllowlistEnabled, IReadOnlyList<string> IpRanges, string? MyIp, bool Entitled,
     int MinPasswordLength = 0, int SessionHours = 0, IReadOnlyList<string>? AllowedSignIn = null, int PlatformMinPasswordLength = 12,
-    IReadOnlyList<string>? AllowedEmailDomains = null);
+    IReadOnlyList<string>? AllowedEmailDomains = null, string MfaScope = "all", DateTime? MfaGraceUntil = null, bool IpOwnerBypass = true,
+    int MembersWithoutTwoStep = 0, bool MyTwoStep = false);
 /// <summary>The newer rules are optional: left out, they keep their current values.</summary>
 public record SetOrgSecurityRequest(bool RequireMfa, bool IpAllowlistEnabled, IReadOnlyList<string>? IpRanges,
-    int? MinPasswordLength = null, int? SessionHours = null, IReadOnlyList<string>? AllowedSignIn = null, IReadOnlyList<string>? AllowedEmailDomains = null);
+    int? MinPasswordLength = null, int? SessionHours = null, IReadOnlyList<string>? AllowedSignIn = null, IReadOnlyList<string>? AllowedEmailDomains = null,
+    string? MfaScope = null, int? MfaGraceDays = null, bool? IpOwnerBypass = null);
 /// <summary>How the sign-in being checked was made, for the workspace's own rules.</summary>
 public record SignInFacts(string? Method, DateTime OpenedAt, int? PasswordLength);
 /// <summary>One member in the admin's security view: what protects their account and what does not.</summary>
@@ -48,9 +50,27 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         var row = await db.TenantSecuritySettings.AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
         var entitled = await entitlements.GetValueAsync(FeatureKeys.AdvancedSecurity, ct) > 0;
         var platformMin = (await platform.GetPasswordPolicyAsync(ct)).MinLength;
+        var scope = NormalizeScope(row?.MfaScope);
+        var withoutTwoStep = await WithoutTwoStepAsync(tenantId, scope, ct);
+        var myTwoStep = ctx.UserId is { } me && await db.Users.AsNoTracking().AnyAsync(u => u.Id == me && u.MfaEnabled, ct);
         return new OrgSecurityDto(row?.RequireMfa ?? false, row?.IpAllowlistEnabled ?? false,
             row is null ? [] : IpAllowlist.ParseEntries(row.IpRanges), ctx.IpAddress, entitled,
-            row?.MinPasswordLength ?? 0, row?.SessionHours ?? 0, Methods(row?.AllowedSignIn), platformMin, EmailDomains.Parse(row?.AllowedEmailDomains));
+            row?.MinPasswordLength ?? 0, row?.SessionHours ?? 0, Methods(row?.AllowedSignIn), platformMin, EmailDomains.Parse(row?.AllowedEmailDomains),
+            scope, row?.RequireMfa == true && row.MfaGraceUntil > clock.Now ? row.MfaGraceUntil : null, row?.IpOwnerBypass ?? true, withoutTwoStep, myTwoStep);
+    }
+
+    private static string NormalizeScope(string? scope) => scope?.Trim().ToLowerInvariant() == "admins" ? "admins" : "all";
+    private static bool IsAdminRole(TenantRole? role) => role is TenantRole.Owner or TenantRole.Admin;
+
+    /// <summary>How many of the people the two-step rule would cover have neither an authenticator nor a passkey (the preview before turning it on).</summary>
+    private async Task<int> WithoutTwoStepAsync(Guid tenantId, string scope, CancellationToken ct)
+    {
+        var q = from m in db.TenantMembers.AsNoTracking()
+                join u in db.Users.AsNoTracking() on m.UserId equals u.Id
+                where m.TenantId == tenantId && u.IsActive && !u.MfaEnabled && !db.PasskeyCredentials.Any(k => k.UserId == u.Id)
+                select m.Role;
+        if (scope == "admins") q = q.Where(r => r == TenantRole.Owner || r == TenantRole.Admin);
+        return await q.CountAsync(ct);
     }
 
     public async Task<OrgSecurityDto> SetAsync(SetOrgSecurityRequest req, CancellationToken ct = default)
@@ -65,6 +85,11 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
             if (!IpAllowlist.TryValidateEntry(entry, out var error)) throw new ValidationException("ipRanges", error!);
 
         // Two safety checks so an admin can never accidentally lock everyone — including themselves — out with their own change.
+        var scope = req.MfaScope is null ? null : req.MfaScope.Trim().ToLowerInvariant();
+        if (scope is not null and not ("all" or "admins")) throw new ValidationException("mfaScope", "Choose 'all' members or only 'admins'.");
+        if (req.MfaGraceDays is { } grace && (grace < 0 || grace > 30)) throw new ValidationException("mfaGraceDays", "Choose a grace period of 0 to 30 days.");
+        if (req.IpOwnerBypass == false && req.IpAllowlistEnabled && ctx.Role == TenantRole.Owner && !IpAllowlist.Matches(entries, ctx.IpAddress))
+            throw new ValidationException("ipOwnerBypass", "Keep the owner's way back in while your own address is not on the list, or you would be locked out.");
         if (req.RequireMfa)
         {
             var me = await db.Users.AsNoTracking().Where(u => u.Id == ctx.RequireUserId()).Select(u => u.MfaEnabled).FirstAsync(ct);
@@ -105,8 +130,14 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         }
 
         var row = await db.TenantSecuritySettings.FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
-        var before = row is null ? null : new { row.RequireMfa, row.IpAllowlistEnabled, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn, row.AllowedEmailDomains };
+        var before = row is null ? null : new { row.RequireMfa, row.MfaScope, row.MfaGraceUntil, row.IpAllowlistEnabled, row.IpOwnerBypass, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn, row.AllowedEmailDomains };
         if (row is null) db.TenantSecuritySettings.Add(row = new TenantSecuritySettings { TenantId = tenantId });
+        var turningOnMfa = req.RequireMfa && !row.RequireMfa;
+        if (scope is not null) row.MfaScope = scope;
+        // The grace period starts when the rule is turned on (or is set again); turning the rule off clears it.
+        if (!req.RequireMfa) row.MfaGraceUntil = null;
+        else if (req.MfaGraceDays is { } days) row.MfaGraceUntil = days == 0 ? null : clock.Now.AddDays(days);
+        if (req.IpOwnerBypass is { } bypass) row.IpOwnerBypass = bypass;
         row.RequireMfa = req.RequireMfa;
         row.IpAllowlistEnabled = req.IpAllowlistEnabled;
         row.IpRanges = string.Join('\n', entries);
@@ -115,9 +146,29 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
         if (methods is not null) row.AllowedSignIn = methods.Count == AllMethods.Length ? "" : string.Join(',', methods);
         if (domains is not null) row.AllowedEmailDomains = string.Join(',', domains);
         recorder.Audit("org.security_changed", "Tenant", tenantId, oldValue: before,
-            newValue: new { row.RequireMfa, row.IpAllowlistEnabled, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn, row.AllowedEmailDomains }, tenantId: tenantId);
+            newValue: new { row.RequireMfa, row.MfaScope, row.MfaGraceUntil, row.IpAllowlistEnabled, row.IpOwnerBypass, row.IpRanges, row.MinPasswordLength, row.SessionHours, row.AllowedSignIn, row.AllowedEmailDomains }, tenantId: tenantId);
         await db.SaveChangesAsync(ct);
+        if (turningOnMfa) await TellPeopleWithoutTwoStepAsync(tenantId, row, ct);
         return await GetAsync(ct);
+    }
+
+    /// <summary>When the rule is turned on, everyone it now covers who has no second factor gets one calm notice (with the grace date, if any).</summary>
+    private async Task TellPeopleWithoutTwoStepAsync(Guid tenantId, TenantSecuritySettings row, CancellationToken ct)
+    {
+        var q = from m in db.TenantMembers.AsNoTracking()
+                join u in db.Users.AsNoTracking() on m.UserId equals u.Id
+                where m.TenantId == tenantId && u.IsActive && !u.MfaEnabled && !db.PasskeyCredentials.Any(k => k.UserId == u.Id)
+                select new { u.Id, m.Role };
+        if (row.MfaScope == "admins") q = q.Where(x => x.Role == TenantRole.Owner || x.Role == TenantRole.Admin);
+        var ids = await q.Select(x => x.Id).Take(2000).ToListAsync(ct);
+        if (ids.Count == 0) return;
+        var workspace = await db.Tenants.AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstAsync(ct);
+        var when = row.MfaGraceUntil is { } until ? $" by {until:d MMM yyyy}" : "";
+        foreach (var id in ids)
+            await notifications.AddAsync(id, NotificationType.Security, "Turn on two-step verification",
+                $"{workspace} now asks for two-step verification{when}. Add an authenticator app or a passkey in My account → Sign-in & security.", "/account",
+                $"org-mfa-required:{tenantId:N}:{id:N}:{clock.Now:yyyyMMdd}", ct: ct);
+        await db.SaveChangesAsync(ct);
     }
 
     public static readonly string[] AllMethods = ["password", "passkey", "google", "microsoft", "github", "apple", "sso"];
@@ -242,16 +293,21 @@ public class OrgSecurityService(IAppDbContext db, ICurrentContext ctx, Recorder 
     /// Explicit parameters (not ICurrentContext): called while the caller's context for *this* workspace is still being resolved.
     /// <paramref name="mfaEnabled"/> is treated as satisfied for API keys, which cannot have two-step verification of their own.
     /// </summary>
-    public async Task<AccessBlockedDto?> CheckAccessAsync(Guid tenantId, bool mfaEnabled, string? ip, CancellationToken ct = default, SignInFacts? signIn = null)
+    public async Task<AccessBlockedDto?> CheckAccessAsync(Guid tenantId, bool mfaEnabled, string? ip, CancellationToken ct = default, SignInFacts? signIn = null, TenantRole? role = null)
     {
         var row = await db.TenantSecuritySettings.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
         if (row is null || (!row.RequireMfa && !row.IpAllowlistEnabled && row.MinPasswordLength == 0 && row.SessionHours == 0 && row.AllowedSignIn.Length == 0)) return null;
         var entitlementValue = (await entitlements.GetEntitlementsAsync(tenantId, ct)).GetValueOrDefault(FeatureKeys.AdvancedSecurity);
         if (entitlementValue <= 0) return null;   // plan lapsed: fail open, not closed
 
-        if (row.RequireMfa && !mfaEnabled)
+        // The two-step rule covers everyone, or only Owners and Admins; during its grace period nobody is blocked by it yet.
+        var mfaCovers = NormalizeScope(row.MfaScope) == "all" || IsAdminRole(role);
+        if (row.RequireMfa && !mfaEnabled && mfaCovers && !(row.MfaGraceUntil is { } graceUntil && graceUntil > clock.Now))
             return new AccessBlockedDto(tenantId, "ORG_MFA_REQUIRED", "This organization requires two-step verification. Turn it on in My account → Sign-in & security to continue.");
-        if (row.IpAllowlistEnabled && !IpAllowlist.Matches(IpAllowlist.ParseEntries(row.IpRanges), ip))
+        // Lockout protection: an Owner who signed in interactively with a real second factor (authenticator or passkey) is never shut out by
+        // the network list. API keys (no sign-in facts) and sessions without a second factor get no such pass.
+        var ownerWayBack = row.IpOwnerBypass && role == TenantRole.Owner && signIn?.Method is "password+mfa" or "passkey";
+        if (row.IpAllowlistEnabled && !ownerWayBack && !IpAllowlist.Matches(IpAllowlist.ParseEntries(row.IpRanges), ip))
             return new AccessBlockedDto(tenantId, "ORG_IP_BLOCKED", "Your network is not on this organization's allowed list. Ask an administrator to add it.");
         // The rules below are about how this person signed in; API keys (no sign-in facts) are not affected by them.
         if (signIn is null) return null;

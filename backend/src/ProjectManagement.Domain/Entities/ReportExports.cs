@@ -9,7 +9,7 @@ namespace ProjectManagement.Domain.Enums
     /// report exports only live 7 days, so nothing long-lived is affected), Timesheet is unchanged at 2. WorkTasks = operational work
     /// tasks (the same columns as the instant "export this list" button, which uses the same writer). WorkspaceExport = everything the
     /// workspace holds, as JSON files in a zip (Owners only).</summary>
-    public enum ReportKind { Project, Workload, Timesheet, WorkTasks, WorkspaceExport, Document }
+    public enum ReportKind { Project, Workload, Timesheet, WorkTasks, WorkspaceExport, Document, MyData }
     public enum ReportFormat { Csv, Xlsx, Pdf, Zip }
     public enum ReportExportStatus { Queued, Running, Ready, Failed }
 }
