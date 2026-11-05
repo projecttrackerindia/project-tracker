@@ -149,3 +149,45 @@ gcloud iam service-accounts add-iam-policy-binding $SA --role=roles/iam.workload
 
 Then add the GitHub variable `GCP_RESTORE_SA`. If `instances.create` is refused under the condition (Cloud SQL checks create on the
 project), drop the condition for a first run and tighten again; the script only ever touches `pt-restore-test-*`.
+
+## 5. Error tracking (Sentry-compatible)
+
+Works with Sentry, GlitchTip or self-hosted Sentry: anything that accepts Sentry envelopes. **Off when the DSN is empty.**
+
+- **Server (.NET)**: `backend/src/ProjectManagement.Api/Logging/ErrorReporter.cs`. Every Error/Fatal log event (unhandled request
+  exceptions, failing background workers) becomes one event, via a Serilog sink. No SDK package; sends in the background, at most
+  30 events a minute, never blocks or log-loops the app.
+- **Web, desktop window, Android/iOS (Capacitor)**: `frontend/src/lib/telemetry.ts` catches uncaught errors, unhandled rejections
+  and React render errors (ErrorBoundary) and posts them to `POST /api/v1/telemetry/errors`; the API relays them with the same DSN.
+  The apps hold no DSN, need no CSP change and load no third-party script. Tagged `app=web|desktop|android|ios`.
+- **Electron main process**: `apps/desktop/src/errors.js` posts its own uncaught errors to the same endpoint (`app=desktop`).
+- **PII scrubbing** (server and client, same rules): e-mail addresses, phone-like numbers, JWTs, `Bearer`/`Basic` values, `pmk_` API
+  keys, `password=`/`token=`/`secret=`… values, query strings, local user folders. Events carry no user, no IP, no headers, no bodies;
+  page addresses are reduced to patterns (`/projects/:id`) with the workspace name removed.
+- **Release tagging**: images are built with `APP_RELEASE=<short commit>` (Cloud Build passes it), used as the event `release`;
+  environment = `Sentry__Environment` or the ASP.NET environment (`staging` on staging).
+
+**Owner creates**: a project in Sentry/GlitchTip; store its DSN in Secret Manager as `pt-sentry-dsn`, then add to `/opt/pt/api.env`
+on the VM (`Sentry__Dsn=<dsn>`; `3-env.sh` output is the place to keep it) and restart the API. Locally: `SENTRY_DSN` in `.env`.
+`GET /api/v1/telemetry/config` reports `errors: true` once it is on.
+
+## 6. Real-user speed (Core Web Vitals)
+
+- The app measures **LCP, INP, CLS, TTFB, FCP** with the browser's own PerformanceObserver (web-vitals definitions, no dependency) and
+  sends one beacon per page view when the page is hidden to `POST /api/v1/telemetry/vitals` — signed-in only, stored under the
+  caller's **current workspace** (`ctx.RequireTenantId()`), with page pattern and device class (phone/tablet/desktop) only.
+- **Who can read**: `GET /api/v1/telemetry/vitals` — workspace owners/admins see their own workspace; platform admins can pass
+  `all=true` (page patterns only, never which workspace). Members get 403.
+- **Chart**: Platform › System health › *Real-user speed*: 75th percentile per page, by measure (Load/Response/Stability/Server)
+  and device, rated good / needs work / poor with web.dev thresholds.
+- **Storage**: in memory on the API server (newest 300 values per page/device/metric, 7 days, bounded keys). It resets on restart
+  — see gaps.
+
+## Known gaps
+
+- Web-vitals storage is in memory (no migration was allowed in this round). A table `WebVitalSamples` (tenant, day, page, device,
+  metric, histogram) would make it durable and multi-server.
+- Capacitor/Electron **native crashes** (outside the web view / Node) are not captured; only JS errors are.
+- GitHub cron runs at most every 5 minutes; per-minute checks and the 2-minute email alert come from Google Cloud Monitoring.
+- Rolling back images does not roll back database migrations (expand/contract rule above).
+- Staging deploys of labelled PRs run that PR's `cloudbuild.yaml` with Cloud Build's account.

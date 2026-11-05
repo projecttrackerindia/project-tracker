@@ -48,10 +48,12 @@ import { InstallBanner } from './components/install/InstallBanner';
 import { startResponsiveTables } from './lib/responsiveTables';
 import { startNativeApp } from './lib/native';
 import { startDesktopApp } from './lib/desktop';
+import { startTelemetry } from './lib/telemetry';
 import { startUpdateWatch, watchServiceWorker } from './lib/updateWatch';
 
 startNativeApp();
 startDesktopApp();
+startTelemetry();
 
 document.documentElement.setAttribute('data-theme', useUi.getState().theme);
 
