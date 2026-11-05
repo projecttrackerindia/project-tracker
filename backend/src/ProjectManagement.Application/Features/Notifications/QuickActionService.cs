@@ -162,11 +162,11 @@ public class QuickActionService(IAppDbContext db, ICurrentContext ctx, AppClock 
             case "accept" when IsExtension(n):
                 await notifications.SetArchivedAsync(n.Id, true, ct);
                 return new("Noted. The new date stands.", false, null);
-            case "accept" or "decline" or "maybe":
-                return new(await RsvpAsync(n, action, ct), false, null);
             case "decline" when n.Type == NotificationType.Call:
                 await notifications.MarkReadAsync(n.Id, ct);
                 return new("Declined.", false, null);
+            case "accept" or "decline" or "maybe":
+                return new(await RsvpAsync(n, action, ct), false, null);
             case "reject" when string.IsNullOrWhiteSpace(text):
                 throw new ValidationException("text", "Say why, so they know what to change.");
             case "approve" or "reject" when n.Type == NotificationType.Approval:
