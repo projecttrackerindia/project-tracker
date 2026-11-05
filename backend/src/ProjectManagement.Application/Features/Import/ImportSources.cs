@@ -275,9 +275,10 @@ public static class ImportSources
                 rows.Add([S(t, "name"), S(t, "notes"), who, S(t, "start_on"), S(t, "due_on"), section, done, tags]);
                 if (rows.Count > 1000) break;
             }
-            offset = doc.RootElement.TryGetProperty("next_page", out var np) && np.ValueKind == JsonValueKind.Object ? S(np, "offset") : null;
+            offset = doc.RootElement.TryGetProperty("next_page", out var np) && np.ValueKind == JsonValueKind.Object ? Str(np, "offset") : null;
             if (offset == "") offset = null;
         } while (offset is not null && rows.Count <= 1000);
         return Csv(rows);
     }
+    private static string Str(JsonElement e, string p) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 }
