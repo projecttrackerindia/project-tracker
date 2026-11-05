@@ -117,6 +117,14 @@ export const refreshWasRefused = () => lastRefreshRefused;
 export const transientStatus = (status: number) => status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The refresh index.html started for a signed-in visit, handed out once (later refreshes are the app's own). */
+function takeEarlyRefresh(): Promise<Response | null> | null {
+  const w = typeof window !== 'undefined' ? (window as Window & { __ptRefresh?: Promise<Response | null> }) : null;
+  const p = w?.__ptRefresh ?? null;
+  if (w) delete w.__ptRefresh;
+  return p;
+}
+
 // One in-flight refresh shared by every caller (page bootstrap, parallel 401s, React StrictMode double-invoke).
 let refreshing: Promise<AuthResponse | null> | null = null;
 export function refreshSession(): Promise<AuthResponse | null> {
@@ -130,7 +138,9 @@ export function refreshSession(): Promise<AuthResponse | null> {
         // A refresh that is not answered is tried again a couple of times before giving up (without signing out).
         for (let attempt = 0; ; attempt++) {
           let res: Response | null = null;
-          try { res = await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers }); } catch { res = null; }
+          // The page's first refresh may already be in flight from index.html (started before the scripts loaded): use that answer once.
+          const early = attempt === 0 && !BASE ? takeEarlyRefresh() : null;
+          try { res = early ? await early : await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers }); } catch { res = null; }
           if (res && !transientStatus(res.status)) {
             const { data, error } = await parse(res);
             if (error || !data) {
