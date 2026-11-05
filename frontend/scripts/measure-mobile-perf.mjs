@@ -62,6 +62,7 @@ for (const [name, url] of pages) {
       const hit = ep.startsWith('/assets/') && cached.has(ep);
       if (!hit) await wire(ep.startsWith('/assets/') ? zlib.gzipSync(body).length : body.length);
       if (ep.startsWith('/assets/')) cached.add(ep);
+      if (ep.endsWith('.css') || ep.endsWith('.woff2')) (log.other ??= []).push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : (ep.endsWith('.css') ? zlib.gzipSync(body).length : body.length), at: Date.now() - t0 });
       if (ep.endsWith('.js')) log.js.push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : zlib.gzipSync(body).length, at: Date.now() - t0 });
       return await route.fulfill({ contentType: { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' }[path.extname(file)] || 'application/octet-stream', body, headers: ep.startsWith('/assets/') ? {} : { 'content-security-policy': csp } });
       } finally { log.inflight--; log.lastActivity = Date.now(); }
@@ -109,10 +110,13 @@ for (const [name, url] of pages) {
     page: name, rendered, scrollX,
     jsFiles: log.js.length, jsKB: +(log.js.reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     criticalJsFiles: critical.length, criticalJsKB: +(critical.reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    cssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css')).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    criticalCssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css') && c.at <= fcpAt + 50).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    fontKB: +((log.other ?? []).filter((c) => c.file.endsWith('.woff2')).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     fcpMs: Math.round(perf.fcp), lcpMs: Math.round(perf.lcp), ttiMs: Math.round(quietFrom),
     longTasks: perf.long.length, longTaskMs: Math.round(perf.long.reduce((a, [, d]) => a + d, 0)),
     apiCalls: log.api.length, apiWaterfall: log.api.map((a) => `${String(a.start).padStart(5)}→${String(a.end).padStart(5)} ${a.call}`),
-    ...(process.env.ASSETS ? { js: log.js.sort((a, b) => b.gz - a.gz).slice(0, 20).map((j) => `${(j.gz / 1024).toFixed(1).padStart(6)} @${j.at} ${j.file}`) } : {}),
+    ...(process.env.ASSETS ? { js: log.js.sort((a, b) => b.gz - a.gz).slice(0, 20).map((j) => `${(j.gz / 1024).toFixed(1).padStart(6)} @${j.at} ${j.file}`), other: (log.other ?? []).map((j) => `${(j.gz / 1024).toFixed(1).padStart(6)} @${j.at} ${j.file}`) } : {}),
   });
   await ctx.close();
 }
