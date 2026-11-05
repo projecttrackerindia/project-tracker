@@ -60,10 +60,12 @@ for (const [name, url] of pages) {
       const file = path.resolve(dist, ep.startsWith('/assets/') ? ep.slice(1) : 'index.html');
       let body; try { body = await fs.readFile(file); } catch { return route.fulfill({ status: 404, body: '' }); }
       const hit = ep.startsWith('/assets/') && cached.has(ep);
-      if (!hit) await wire(ep.startsWith('/assets/') ? zlib.gzipSync(body).length : body.length);
+      // What nginx sends: the build's pre-compressed copy (gzip_static) when there is one, else gzip on the fly (Caddy).
+      const gzLen = (await fs.stat(`${file}.gz`).then((st) => st.size).catch(() => 0)) || zlib.gzipSync(body).length;
+      if (!hit) await wire(ep.startsWith('/assets/') ? gzLen : body.length);
       if (ep.startsWith('/assets/')) cached.add(ep);
-      if (ep.endsWith('.css') || ep.endsWith('.woff2')) (log.other ??= []).push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : (ep.endsWith('.css') ? zlib.gzipSync(body).length : body.length), at: Date.now() - t0 });
-      if (ep.endsWith('.js')) log.js.push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : zlib.gzipSync(body).length, at: Date.now() - t0 });
+      if (ep.endsWith('.css') || ep.endsWith('.woff2')) (log.other ??= []).push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : (ep.endsWith('.css') ? gzLen : body.length), at: Date.now() - t0 });
+      if (ep.endsWith('.js')) log.js.push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : gzLen, at: Date.now() - t0 });
       return await route.fulfill({ contentType: { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' }[path.extname(file)] || 'application/octet-stream', body, headers: ep.startsWith('/assets/') ? {} : { 'content-security-policy': csp } });
       } finally { log.inflight--; log.lastActivity = Date.now(); }
     }

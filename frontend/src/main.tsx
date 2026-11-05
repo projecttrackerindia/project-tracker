@@ -1,5 +1,5 @@
 import './lib/trustedTypesInit';
-import { loadLateStylesSoon } from './lib/lateStyles';
+import { loadLateStylesSoon, whenSettled } from './lib/lateStyles';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { installStableTabs } from './lib/stableTabs';
@@ -75,12 +75,9 @@ if (document.documentElement.classList.contains('app')) document.getElementById(
 installStableTabs();
 installCapture();
 installKeyboardViewport();
-// The animation engine follows the first screen: fetched once the page has loaded and the browser is idle (at most 1.5 s later), so on
-// a slow phone its bytes never queue ahead of the page's own. Until then elements show in their resting state.
-const loadMotion = () => new Promise<void>((resolve) => {
-  const idle = () => { const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback; if (ric) ric(() => resolve(), { timeout: 1500 }); else setTimeout(resolve, 200); };
-  if (document.readyState === 'complete') idle(); else window.addEventListener('load', idle, { once: true });
-}).then(() => import('./lib/motionFeatures')).then((m) => m.default);
+// The animation engine follows the first screen (see whenSettled), so on a slow phone its bytes never queue ahead of the page's own.
+// Until then elements show in their resting state.
+const loadMotion = () => new Promise<void>((resolve) => whenSettled(resolve)).then(() => import('./lib/motionFeatures')).then((m) => m.default);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

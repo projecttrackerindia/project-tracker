@@ -91,20 +91,22 @@
         var el = document.getElementById('pt-splash'), gone = false;
         window.__ptSplashDone = function () {
           if (gone || !el) return; gone = true;
+          window.__ptFirstScreen = true; dispatchEvent(new Event('pt-first-screen'));
           // Two frames: the screen just committed is on the glass before the splash starts to fade.
           requestAnimationFrame(function () { requestAnimationFrame(function () { el.classList.add('out'); }); });
           setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 420);
         };
         // The first screen is there when the app has put something into #root that is not a loading state (the app's own splash or a
         // page spinner): a page, its skeleton, the sign-in page or an error. lib/splash.ts also ends it when the app says "still connecting".
-        var root = document.getElementById('root');
+        // (#root comes after this script in the page, so it is looked up when something changes.)
         var check = function () {
+          var root = document.getElementById('root');
           if (gone || !root || !root.firstElementChild) return;
-          if (root.querySelector('.app-splash, .page-loader')) return;
+          if (root.querySelector('.app-splash, #root > .page-loader, main > .page-loader')) return;
           mo.disconnect(); window.__ptSplashDone();
         };
         var mo = new MutationObserver(check);
-        if (root) mo.observe(root, { childList: true, subtree: true });
+        mo.observe(document.body, { childList: true, subtree: true });
         addEventListener('load', function () { setTimeout(window.__ptSplashDone, 20000); });
       })();
     </script>

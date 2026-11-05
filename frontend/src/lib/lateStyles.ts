@@ -31,11 +31,26 @@ export function loadLateStyles(): Promise<void> {
   return ready;
 }
 
-/** After the first screen: when the browser is next idle (or within 2 s) once the page has loaded. */
+/**
+ * Runs `cb` once the first screen has settled: 2.5 s after it painted (index.html's splash has gone, see 'pt-first-screen'), at the first
+ * tap or key press if that comes sooner, and in any case 8 s after the page loaded. On a slow phone this keeps what the first screen does
+ * not need (the late styles, the animation engine) from queueing ahead of the first screen's own data.
+ */
+let settledQueue: (() => void)[] | null = [];
+const settle = () => { if (!settledQueue) return; const q = settledQueue; settledQueue = null; q.forEach((f) => f()); };
+if (typeof window !== 'undefined') {
+  const w = window as Window & { __ptFirstScreen?: boolean };
+  const painted = () => setTimeout(settle, 2500);
+  if (w.__ptFirstScreen) painted(); else window.addEventListener('pt-first-screen', painted, { once: true });
+  for (const e of ['pointerdown', 'keydown'] as const) window.addEventListener(e, settle, { once: true, capture: true, passive: true });
+  const late = () => setTimeout(settle, 8000);
+  if (document.readyState === 'complete') late(); else window.addEventListener('load', late, { once: true });
+}
+export function whenSettled(cb: () => void) {
+  if (settledQueue) settledQueue.push(cb); else cb();
+}
+
+/** The late styles once the first screen has settled (see whenSettled). */
 export function loadLateStylesSoon() {
-  const go = () => {
-    const idle = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
-    if (idle) idle(() => void loadLateStyles(), { timeout: 2000 }); else setTimeout(() => void loadLateStyles(), 300);
-  };
-  if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true });
+  whenSettled(() => void loadLateStyles());
 }
