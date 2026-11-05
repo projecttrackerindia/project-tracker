@@ -35,12 +35,18 @@ export const priorityApi = {
   reset: () => del<PriorityInfo[]>('/priorities'),
 };
 
-export interface ImportOptions { skipInvalid: boolean; createMissingLabels: boolean; dateFormat: string }
+export interface ImportOptions { skipInvalid: boolean; createMissingLabels: boolean; dateFormat: string; matchStatuses?: boolean; leaveUnknownOwners?: boolean }
+export type ImportSource = 'csv' | 'excel' | 'jira' | 'trello' | 'asana';
+export interface ImportBatch { id: string; source: ImportSource; fileName: string; created: number; createdAt: string; undoneAt: string | null; canUndo: boolean; remaining: number }
+export interface ImportFetch { source: 'jira' | 'asana'; site?: string; email?: string; token: string; query?: string; project?: string }
 export const importApi = {
-  preview: (projectId: string, file: File, mapping: string | undefined, options: ImportOptions) =>
-    uploadFile<ImportPreview>(`/projects/${projectId}/import/preview`, file, { ...(mapping ? { mapping } : {}), options: JSON.stringify(options) }),
-  run: (projectId: string, file: File, mapping: string, options: ImportOptions) =>
-    uploadFile<ImportResult>(`/projects/${projectId}/import`, file, { mapping, options: JSON.stringify(options) }),
+  preview: (projectId: string, file: File, mapping: string | undefined, options: ImportOptions, source: ImportSource = 'csv') =>
+    uploadFile<ImportPreview>(`/projects/${projectId}/import/preview`, file, { ...(mapping ? { mapping } : {}), options: JSON.stringify(options), source }),
+  run: (projectId: string, file: File, mapping: string, options: ImportOptions, source: ImportSource = 'csv') =>
+    uploadFile<ImportResult>(`/projects/${projectId}/import`, file, { mapping, options: JSON.stringify(options), source }),
+  batches: (projectId: string) => get<ImportBatch[]>(`/projects/${projectId}/import/batches`),
+  undo: (projectId: string, batchId: string) => post<ImportBatch>(`/projects/${projectId}/import/batches/${batchId}/undo`, {}),
+  fetch: (projectId: string, b: ImportFetch) => post<{ source: 'jira' | 'asana'; fileName: string; csv: string }>(`/projects/${projectId}/import/fetch`, b),
 };
 
 export const customFieldApi = {

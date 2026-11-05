@@ -16,13 +16,17 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Application.Features.Import;
 
 public record ImportError(int Row, string Field, string Message);
-public record ImportOptions(bool SkipInvalid, bool CreateMissingLabels, string DateFormat);
+/// <param name="MatchStatuses">A status that is not one of this project's is matched by meaning (Done, In progress, To do) instead of failing the row.</param>
+/// <param name="LeaveUnknownOwners">An owner who is not a member leaves the task unassigned instead of failing the row.</param>
+public record ImportOptions(bool SkipInvalid, bool CreateMissingLabels, string DateFormat, bool MatchStatuses = false, bool LeaveUnknownOwners = false);
 
 /// <summary>What the file looks like and how it would import with the chosen column mapping.</summary>
 public record ImportPreviewDto(char Delimiter, IReadOnlyList<string> Headers, IReadOnlyList<IReadOnlyList<string>> Sample, int TotalRows,
     IReadOnlyDictionary<string, int> SuggestedMapping, int ValidRows, int InvalidRows, IReadOnlyList<ImportError> Errors, int NewLabels,
     IReadOnlyList<string>? Warnings = null);
-public record ImportResultDto(int Created, int Skipped, int LabelsCreated, IReadOnlyList<ImportError> Errors);
+public record ImportResultDto(int Created, int Skipped, int LabelsCreated, IReadOnlyList<ImportError> Errors, Guid? BatchId = null);
+/// <summary>One past import into the project, newest first; <c>CanUndo</c> while it is not undone yet.</summary>
+public record ImportBatchDto(Guid Id, string Source, string FileName, int Created, DateTime CreatedAt, DateTime? UndoneAt, bool CanUndo, int Remaining);
 
 /// <summary>
 /// Imports tasks from a CSV file into a project. The same validation runs for the preview and for the real import, so what the
@@ -92,13 +96,27 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
         return new string(chars);
     }
 
-    private static CsvTable Read(byte[] bytes) => Read(bytes, out _);
+    private static CsvTable Read(byte[] bytes, string source = "csv") => Read(bytes, out _, source);
 
-    private static CsvTable Read(byte[] bytes, out bool legacyEncoding)
+    private static CsvTable Read(byte[] bytes, out bool legacyEncoding, string source = "csv")
     {
-        var text = Decode(bytes, out legacyEncoding);
-        try { return CsvParser.Parse(text, MaxRows); }
-        catch (CsvException e) { throw new ValidationException("file", e.Message); }
+        if (bytes.Length > MaxBytes) throw new ValidationException("file", $"The file is larger than {MaxBytes / 1024 / 1024} MB.");
+        return ImportSources.Read(source, bytes, MaxRows, out legacyEncoding);
+    }
+
+    /// <summary>A status from another tool matched by meaning: Done-like words to this project's first Done status, and so on.</summary>
+    private static WorkflowStatus? GuessStatus(string name, List<WorkflowStatus> statuses)
+    {
+        var n = name.Trim().ToLowerInvariant();
+        StatusCategory? cat = n switch
+        {
+            _ when new[] { "done", "closed", "complete", "completed", "resolved", "finished", "shipped", "released" }.Any(w => n.Contains(w)) => StatusCategory.Done,
+            _ when new[] { "cancel", "won't", "wont", "rejected", "abandoned" }.Any(w => n.Contains(w)) => StatusCategory.Cancelled,
+            _ when new[] { "progress", "doing", "review", "testing", "qa", "active", "started", "develop", "blocked" }.Any(w => n.Contains(w)) => StatusCategory.Active,
+            _ when new[] { "to do", "todo", "backlog", "open", "new", "selected", "ready", "planned", "next", "ideas" }.Any(w => n.Contains(w)) => StatusCategory.Todo,
+            _ => null,
+        };
+        return cat is { } c ? statuses.FirstOrDefault(s => s.Category == c) : null;
     }
 
     /// <summary>Guesses which column is which from the header names (first match wins; a column is used once).</summary>
@@ -203,6 +221,7 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
             if (status.Length > 0)
             {
                 var s = lk.Statuses.FirstOrDefault(x => x.Name.Equals(status, StringComparison.OrdinalIgnoreCase));
+                if (s is null && options.MatchStatuses) s = GuessStatus(status, lk.Statuses) ?? lk.Statuses.First(x => x.Id == defaultStatus);
                 if (s is null) Bad("status", $"Unknown status “{status}”. This project has: {string.Join(", ", lk.Statuses.Select(x => x.Name))}.");
                 else statusId = s.Id;
             }
@@ -212,6 +231,7 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
             if (prio.Length > 0)
             {
                 if (lk.Priorities.TryGetValue(prio, out var pv)) priority = pv;
+                else if (options.MatchStatuses) priority = GuessPriority(prio);
                 else Bad("priority", $"Unknown priority “{prio}”.");
             }
 
@@ -220,7 +240,7 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
             if (who.Length > 0)
             {
                 if (lk.Members.TryGetValue(who, out var uid)) assignee = uid;
-                else Bad("assignee", $"“{who}” is not a member of this workspace.");
+                else if (!options.LeaveUnknownOwners) Bad("assignee", $"“{who}” is not a member of this workspace.");
             }
 
             DateOnly? start = null, due = null;
@@ -275,14 +295,25 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
         return (rows, errors, newLabels, invalid);
     }
 
-    private ImportOptions Clean(ImportOptions? o) => new(o?.SkipInvalid ?? false, o?.CreateMissingLabels ?? true, o?.DateFormat == "mdy" ? "mdy" : "dmy");
+    private ImportOptions Clean(ImportOptions? o) => new(o?.SkipInvalid ?? false, o?.CreateMissingLabels ?? true, o?.DateFormat == "mdy" ? "mdy" : "dmy",
+        o?.MatchStatuses ?? false, o?.LeaveUnknownOwners ?? false);
+
+    /// <summary>Jira / Asana priority words (Highest, Blocker, Minor ...) by meaning.</summary>
+    private static Priority GuessPriority(string p)
+    {
+        var n = p.Trim().ToLowerInvariant();
+        if (n.Contains("highest") || n.Contains("blocker") || n.Contains("critical") || n.Contains("urgent")) return Priority.Critical;
+        if (n.Contains("high") || n.Contains("major")) return Priority.High;
+        if (n.Contains("low") || n.Contains("minor") || n.Contains("trivial")) return Priority.Low;
+        return Priority.Medium;
+    }
 
     // ---------------------------------------------------------------- preview
 
-    public async Task<ImportPreviewDto> PreviewAsync(Guid projectId, byte[] file, string? mappingJson, ImportOptions? options, CancellationToken ct = default)
+    public async Task<ImportPreviewDto> PreviewAsync(Guid projectId, byte[] file, string? mappingJson, ImportOptions? options, CancellationToken ct = default, string source = "csv")
     {
         var lk = await LoadLookupsAsync(projectId, ct);
-        var table = Read(file, out var legacyEncoding);
+        var table = Read(file, out var legacyEncoding, source);
         IReadOnlyList<string>? warnings = legacyEncoding ? new[] { LegacyEncodingWarning } : null;
         var suggested = Suggest(table.Headers, lk.Custom);
         var map = string.IsNullOrWhiteSpace(mappingJson) ? suggested : ParseMapping(mappingJson, table.Headers.Count, lk.Custom.Keys);
@@ -298,11 +329,12 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
     // ---------------------------------------------------------------- import
 
-    public async Task<ImportResultDto> ImportAsync(Guid projectId, byte[] file, string? mappingJson, ImportOptions? options, CancellationToken ct = default)
+    public async Task<ImportResultDto> ImportAsync(Guid projectId, byte[] file, string? mappingJson, ImportOptions? options, CancellationToken ct = default,
+        string source = "csv", string? fileName = null)
     {
         var lk = await LoadLookupsAsync(projectId, ct);
         var opt = Clean(options);
-        var table = Read(file);
+        var table = Read(file, source);
         var map = string.IsNullOrWhiteSpace(mappingJson) ? Suggest(table.Headers, lk.Custom) : ParseMapping(mappingJson, table.Headers.Count, lk.Custom.Keys);
         if (!map.ContainsKey("title")) throw new ValidationException("mapping", "Choose which column holds the task title.");
 
@@ -346,7 +378,13 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
 
         lk.Project.UpdatedAt = now;
         // One summary entry instead of one per task, and no assignment notifications: a bulk import should not flood anyone's inbox.
-        recorder.Activity("task.imported", "Project", projectId, $"Imported {rows.Count} task{(rows.Count == 1 ? "" : "s")} from a CSV file into {lk.Project.Key}", projectId);
+        var sourceName = source switch { "excel" => "an Excel file", "jira" => "Jira", "trello" => "Trello", "asana" => "Asana", _ => "a CSV file" };
+        recorder.Activity("task.imported", "Project", projectId, $"Imported {rows.Count} task{(rows.Count == 1 ? "" : "s")} from {sourceName} into {lk.Project.Key}", projectId);
+        var batch = new ImportBatch
+        {
+            TenantId = tid, ProjectId = projectId, Source = source, FileName = Shorten(fileName ?? sourceName, 200), Created = rows.Count, CreatedAt = now, CreatedBy = uid,
+        };
+        db.ImportBatches.Add(batch);
         recorder.Audit("task.import", "Project", projectId, newValue: new { Created = rows.Count, Skipped = invalid, LabelsCreated = newLabels.Count });
         for (var retry = 0; ; retry++)
         {
@@ -359,7 +397,52 @@ public class TaskImportService(IAppDbContext db, ICurrentContext ctx, AppClock c
                 foreach (var task in created) task.Number = ++next;
             }
         }
-        return new ImportResultDto(rows.Count, invalid, newLabels.Count, errors.Take(MaxErrorsShown).ToList());
+        // The ids are known once saved (task numbers may have been redone above, ids never change).
+        batch.TaskIds = string.Join(",", created.Select(t => t.Id));
+        await db.SaveChangesAsync(ct);
+        return new ImportResultDto(rows.Count, invalid, newLabels.Count, errors.Take(MaxErrorsShown).ToList(), batch.Id);
+    }
+
+    private static string Shorten(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "\u2026";
+
+    private static List<Guid> IdsOf(ImportBatch b) =>
+        b.TaskIds.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+
+    /// <summary>The project's imports, newest first (the last 20).</summary>
+    public async Task<IReadOnlyList<ImportBatchDto>> BatchesAsync(Guid projectId, CancellationToken ct = default)
+    {
+        await access.GetProjectAsync(projectId, ct);
+        var batches = await db.ImportBatches.AsNoTracking().Where(b => b.ProjectId == projectId).OrderByDescending(b => b.CreatedAt).Take(20).ToListAsync(ct);
+        var all = batches.SelectMany(IdsOf).ToList();
+        var alive = (await db.Tasks.Where(t => all.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct)).ToHashSet();
+        return batches.Select(b =>
+        {
+            var remaining = IdsOf(b).Count(alive.Contains);
+            return new ImportBatchDto(b.Id, b.Source, b.FileName, b.Created, b.CreatedAt, b.UndoneAt, b.UndoneAt is null && remaining > 0, remaining);
+        }).ToList();
+    }
+
+    /// <summary>
+    /// Undo an import: the tasks it created (and their subtasks) are deleted the usual soft way, so they can still be restored one by one.
+    /// Tasks already deleted are left as they are.
+    /// </summary>
+    public async Task<ImportBatchDto> UndoAsync(Guid projectId, Guid batchId, CancellationToken ct = default)
+    {
+        await permissions.RequireAsync(Permissions.TasksDelete, ct);
+        await access.GetProjectAsync(projectId, ct);
+        await access.EnsureWritableAsync(projectId, "undo an import", ct);
+        var batch = await db.ImportBatches.FirstOrDefaultAsync(b => b.Id == batchId && b.ProjectId == projectId, ct) ?? throw new NotFoundException("Import not found.");
+        if (batch.UndoneAt is not null) throw new ConflictException("This import was already undone.", "IMPORT_ALREADY_UNDONE");
+        var ids = IdsOf(batch);
+        var now = clock.Now; var uid = ctx.RequireUserId();
+        var gone = await db.Tasks.Where(t => t.ProjectId == projectId && (ids.Contains(t.Id) || (t.ParentTaskId != null && ids.Contains(t.ParentTaskId.Value)))).ToListAsync(ct);
+        foreach (var t in gone) { t.IsDeleted = true; t.DeletedAt = now; t.DeletedBy = uid; }
+        await ProjectManagement.Application.Features.Projects.DeletedWorkTraces.ArchiveNotificationsAsync(db, now, null, gone.Select(t => t.Id).ToList(), ct);
+        batch.UndoneAt = now; batch.UpdatedAt = now; batch.UpdatedBy = uid;
+        recorder.Audit("task.import_undone", "Project", projectId, newValue: new { Batch = batch.Id, Removed = gone.Count });
+        recorder.Activity("task.import_undone", "Project", projectId, $"Undid an import: removed {gone.Count} task{(gone.Count == 1 ? "" : "s")}", projectId);
+        await db.SaveChangesAsync(ct);
+        return new ImportBatchDto(batch.Id, batch.Source, batch.FileName, batch.Created, batch.CreatedAt, batch.UndoneAt, false, 0);
     }
 
     private async Task<int> HighestNumberAsync(Guid projectId, CancellationToken ct) =>

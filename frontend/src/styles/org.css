@@ -322,6 +322,23 @@
 .import-summary.bad { background: rgba(251, 113, 133, .12); }
 .import-errors { margin-top: 10px; max-height: 190px; overflow: auto; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; }
 @media (max-width: 720px) { .import-row { grid-template-columns: 1fr; } }
+/* import wizard: where from */
+.imp-sources { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.imp-source { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 64px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface, transparent); color: inherit; text-align: left; cursor: pointer; transition: transform .2s, border-color .2s; }
+.imp-source b { font-size: 14px; }
+.imp-source span { font-size: 12px; color: var(--text-muted, var(--muted)); }
+.imp-source:hover { transform: translateY(-1px); }
+.imp-source.on { border-color: var(--primary, var(--primary-fill)); box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 124, 58, 237), .14); }
+.imp-via { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2, rgba(127, 127, 127, .1)); margin-bottom: 12px; }
+.imp-via button { min-height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 13px; cursor: pointer; }
+.imp-via button.on { background: var(--surface, #fff); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); font-weight: 600; }
+.imp-cred { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.imp-note { font-size: 12.5px; color: var(--text-muted, var(--muted)); margin: 10px 0 0; }
+.imp-recent { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.imp-recent h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--text-muted, var(--muted)); }
+.imp-batch { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 36px; font-size: 13px; }
+@media (max-width: 720px) { .imp-sources { grid-template-columns: 1fr 1fr; } .imp-cred { grid-template-columns: 1fr; } .imp-source, .imp-batch { min-height: 48px; } }
+@media (prefers-reduced-motion: reduce) { .imp-source { transition: none; } .imp-source:hover { transform: none; } }
 
 /* ---- custom fields ---- */
 .cf-box { margin-top: 18px; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-2, rgba(var(--accent-rgb), .05)); }

@@ -113,6 +113,7 @@ public static class DependencyInjection
         services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(()=>new SocketsHttpHandler{AllowAutoRedirect=false});
         services.AddHttpClient("slack", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient("import-sources", c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient("voice-speech", c => c.Timeout = TimeSpan.FromSeconds(25));
         services.AddHttpClient("support-whatsapp", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient("pwned-passwords", c => c.Timeout = TimeSpan.FromSeconds(5));

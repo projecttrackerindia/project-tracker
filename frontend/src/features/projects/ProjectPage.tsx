@@ -174,7 +174,7 @@ export function ProjectPage() {
             { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
             { label: 'Edit details', icon: 'edit', hint: 'Every field: priority, status, group, type, delivery', hidden: !canEdit, onSelect: () => setEditing(true) },
             { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
-            { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
+            { label: 'Import tasks', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
             { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },
             pinItem(pins, p.id),
             { label: 'Delete project', icon: 'trash', danger: true, hidden: !canDelete, onSelect: () => void remove() },

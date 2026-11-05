@@ -609,7 +609,7 @@ export interface ImportPreview {
   /** Things worth checking that do not stop the import (e.g. the file was not UTF-8). */
   warnings?: string[] | null;
 }
-export interface ImportResult { created: number; skipped: number; labelsCreated: number; errors: ImportError[] }
+export interface ImportResult { created: number; skipped: number; labelsCreated: number; errors: ImportError[]; batchId?: string | null }
 
 // ---- custom fields
 export type CustomFieldType = 'Text' | 'Number' | 'Date' | 'Dropdown' | 'Checkbox';
