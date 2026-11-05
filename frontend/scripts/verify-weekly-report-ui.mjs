@@ -93,8 +93,8 @@ try{
  await shot(page,'weekly-light-1440.png');
 
  // Recipients: add a person (switches Mail on), then Approve & send to chat + mail.
- await page.getByRole('button',{name:'＋ Add person or channel'}).click();
- await page.getByLabel('Add person or channel').selectOption(U2);
+ await page.getByTestId('wrp-add').click();
+ await page.locator('.cpk-pop .cpk-opt, .cpk-sheet .cpk-opt').filter({hasText:'Daniel Okafor'}).click();
  assert.equal(await page.getByRole('button',{name:'Mail'}).getAttribute('aria-pressed'),'true');
  await page.locator('.wrp-approve-side').click();
  await page.waitForFunction(()=>true);await page.waitForTimeout(300);
