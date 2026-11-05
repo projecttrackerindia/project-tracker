@@ -12,7 +12,8 @@
 .ab-need[data-tone='orange'] .ab-n { color: var(--calm-orange); background: color-mix(in srgb, var(--calm-orange) 13%, transparent); }
 .ab-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ab-t b { font-size: var(--calm-row); font-weight: 600; color: var(--calm-ink); overflow-wrap: anywhere; }
-.ab-t small { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--calm-small); line-height: 1.45; color: var(--calm-ink2); overflow-wrap: anywhere; }
+.ab-t small { display: block; font-size: var(--calm-small); line-height: 1.45; color: var(--calm-ink2); overflow-wrap: anywhere; }
+.ab-t small .calm-dot { display: inline-block; margin-right: 6px; vertical-align: 1px; }
 .ab-t a { color: var(--calm-ink); font-weight: 600; font-size: var(--calm-row); text-decoration: none; }
 .ab-t a:hover { color: var(--calm-accent-text); }
 .ab-act { min-height: 36px; padding: 0 14px; border: 0; border-radius: var(--calm-r-pill); background: var(--calm-fill); color: var(--calm-ink); font: inherit; font-size: var(--calm-small); font-weight: 600; cursor: pointer; white-space: nowrap; transition: transform .15s ease; }

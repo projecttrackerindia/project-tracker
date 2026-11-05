@@ -35,7 +35,8 @@ export default function AuraBriefing({ fallback, extra, quiet }: { fallback: Rea
   const [params, setParams] = useSearchParams();
   const q = useCachedWsQuery(['inbox', 'aura-briefing'], auraBriefApi.briefing, { staleTime: 30_000, retry: false });
   const [done, setDone] = useState<Record<string, string>>({});
-  const b = q.data;
+  // An older server (or a mocked one) without the briefing answers with something else: Today's own hero stays.
+  const b = q.data && Array.isArray(q.data.needsYou) && Array.isArray(q.data.atRisk) && Array.isArray(q.data.meetings) ? q.data : undefined;
 
   const fromUrl = params.get('aura');
   const sheet: Sheet = fromUrl === 'review' ? { kind: 'review', runId: params.get('run') }
@@ -242,7 +243,7 @@ function ReviewSheet({ open, runId, onClose }: { open: boolean; runId: string | 
         return changed ? { id: i.id, approve: true, title: d.title.trim() || i.title, assigneeId: d.assigneeId || null, dueDate: d.dueDate || null } : { id: i.id, approve: true };
       });
       const res = await auraBriefApi.decide(r.runId, items, true);
-      toast(res.created.length ? `✓ Created ${res.created.join(', ')}` : `✓ Approved ${res.approved}`);
+      toast(res.created.length ? `Created ${res.created.join(', ')}` : `Approved ${res.approved}`);
       void invalidateWorkspace(wid, 'inbox'); void invalidateWorkspace(wid, 'work'); void invalidateWorkspace(wid, 'tasks');
       onClose();
     } catch (e) { toast(errText(e, 'Could not approve the minutes.'), 'error'); }
@@ -314,7 +315,7 @@ function FridaySheet({ open, onClose }: { open: boolean; onClose: () => void }) 
     setBusy(true);
     try {
       const res = await auraBriefApi.sendFriday(chosen.map((p) => ({ projectId: p.projectId, text: texts[p.projectId] ?? p.text })));
-      if (res.failed.length) toast(`Sent ${res.sent}. Not sent: ${res.failed.join('; ')}`, 'error'); else toast(`✓ Sent ${res.sent} report${res.sent === 1 ? '' : 's'}`);
+      if (res.failed.length) toast(`Sent ${res.sent}. Not sent: ${res.failed.join('; ')}`, 'error'); else toast(`Sent ${res.sent} report${res.sent === 1 ? '' : 's'}`);
       if (res.sent > 0) onClose();
     } catch (e) { toast(errText(e, 'Could not send the report.'), 'error'); }
     finally { setBusy(false); }
