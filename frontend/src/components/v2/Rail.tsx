@@ -29,6 +29,8 @@ import { Popover } from '../../lib/popover';
 import { PALETTES, avatarBg, meshOf, themeOf, type PersonThemeId } from '../../lib/personTheme';
 import { useTabBadges } from '../../features/notifications/centre/NotificationCentre';
 import type { Destination } from '../../features/notifications/centre/tabBadges';
+import { openProblemReport, openWhatsNew } from '../../features/feedback/capture';
+import { useFlag } from '../../lib/flags';
 import './v2.css';
 
 /** The cache key of my /me/ui/profile (the card theme); the theme picker writes it too. */
@@ -306,6 +308,7 @@ export function AvatarMenu({ variant = 'icon' }: { variant?: 'row' | 'icon' }) {
   const toggleTheme = useUi((s) => s.toggleTheme);
   const personal = useIsPersonal();
   const nav = useNavigate();
+  const reportOn = useFlag('report-problem');
   const [open, setOpen] = useState(false);
   const [wsOpen, setWsOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -371,6 +374,8 @@ export function AvatarMenu({ variant = 'icon' }: { variant?: 'row' | 'icon' }) {
             <span className="acct-seg" aria-hidden="true"><i className={theme !== 'dark' ? 'on' : ''}>Light</i><i className={theme === 'dark' ? 'on' : ''}>Dark</i></span></button>
           <div className="v2-menu-sep" />
           <a role="menuitem" className="v2-menu-item" href={supportMailto('Help with Project Tracker')} onClick={close}><Icon name="mail" size={16} /><span className="grow">Help</span></a>
+          {!admin && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(); openWhatsNew(); }}><Icon name="sparkle" size={16} /><span className="grow">What’s new</span></button>}
+          {!admin && reportOn && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(); window.setTimeout(openProblemReport, 60); }}><Icon name="alert" size={16} /><span className="grow">Report a problem</span></button>}
           <button type="button" role="menuitem" className="v2-menu-item danger" onClick={() => { close(); void logout(); }}><Icon name="logout" size={16} /><span className="grow">Sign out</span></button>
         </div>
       </Popover>

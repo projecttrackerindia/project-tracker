@@ -8,6 +8,8 @@ import { toast } from '../../stores/ui';
 import { reminderApi, type ReminderSettings } from '../reminders/api';
 import { SGroup, SPaneHead, SPop, SRow, SSwitch, STile } from './Grouped';
 import '../../styles/notify-smart.css';
+import { openProblemReport, openWhatsNew } from '../feedback/capture';
+import { useFlag } from '../../lib/flags';
 
 const WINDOWS = [15, 30, 60, 120, 240].map((m) => ({ id: String(m), label: m < 60 ? `${m} minutes` : `${m / 60} hour${m === 60 ? '' : 's'}` }));
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
@@ -35,6 +37,7 @@ export function SmartNotificationsPane() {
   const q = useWsQuery(key, smartNotifyApi.get, { retry: false });
   const sched = useWsQuery(SETTINGS_KEY, reminderApi.settings, { retry: false });
   const { saved, tick } = useSavedTick();
+  const reportOn = useFlag('report-problem');
   const data = q.data && Array.isArray(q.data.kinds) ? q.data : undefined;
   const s = sched.data && Array.isArray(sched.data.workDays) ? sched.data : undefined;
 
@@ -115,6 +118,11 @@ export function SmartNotificationsPane() {
           </SRow>
         ))}
         {data && data.mutes.length === 0 && <SRow title="Nothing muted" sub="Open a group in the Notification Centre and choose Mute to quiet a project or thread." />}
+      </SGroup>
+
+      <SGroup label="Help">
+        <SRow icon={<STile color="#5856d6">✦</STile>} title="What’s new" sub="The latest release in a few lines" onClick={openWhatsNew} />
+        {reportOn && <SRow icon={<STile color="#ff9500">!</STile>} title="Report a problem" sub="A screenshot and the recent errors come along" onClick={openProblemReport} />}
       </SGroup>
     </div>
   );

@@ -108,6 +108,7 @@ const SecretLinkPage = page(() => import('./features/vault/SecretLinkPage'), 'Se
 const PublicStatusPage = page(() => import('./features/platform/PublicStatusPage'), 'PublicStatusPage');
 /** The public landing page: "/" for someone signed out, and /welcome for anyone. */
 const LandingPage = lazy(() => import('./features/landing/LandingPage'));
+const FeedbackSheets = lazy(() => import('./features/feedback/Feedback'));
 const landingFallback = <div style={{ minHeight: '100vh', background: '#000' }} />;
 const Landing = () => <Suspense fallback={landingFallback}><LandingPage /></Suspense>;
 /** "Try it free" on the website: the sign-up page, with whatever the link carried. */
@@ -615,6 +616,8 @@ export default function App() {
       {/* Outside the router and the error screen: a newer release is worth knowing about everywhere, signed in or not, and most of all when
           a page of the old one fails to load. */}
       <UpdateBanner />
+      {/* Report a problem and What's new: sheets opened from anywhere (the ⋯ menu, Settings, a shake), loaded after the page. */}
+      <Suspense fallback={null}><FeedbackSheets /></Suspense>
     </>
   );
 }
