@@ -99,7 +99,7 @@ const actionTone = (a: string) => /(delete|remove|revok|fail|denied|block|breach
   : /(reveal|copied|copy|export|step|decoy)/i.test(a) ? 'warning' : /(approv|restor|grant|verif|creat|invit|join)/i.test(a) ? 'success' : 'plain';
 
 /** The audit trail's tamper check, as the design's banner: intact (green) with how many records, or which record failed (red). */
-function ChainBanner() {
+export function ChainBanner() {
   const q = useWsQuery(['audit', 'chain'], documentApi.security, { staleTime: 60_000, retry: false });
   const c = q.data?.chain;
   if (!c) return null;
@@ -119,7 +119,7 @@ function ChainBanner() {
 }
 
 /** Re-checks the whole chain now (owners and admins). */
-function VerifyChainButton() {
+export function VerifyChainButton() {
   const wid = useWorkspaceId();
   const run = useMutation({
     mutationFn: documentApi.verifyAudit,

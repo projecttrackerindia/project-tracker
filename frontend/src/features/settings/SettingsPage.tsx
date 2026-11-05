@@ -26,7 +26,7 @@ import './settings-ds.css';
 import { useAuth, useCan, useIsPersonal, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
 import { PasswordChecklist, passwordProblem, usePasswordPolicy } from '../auth/passwordPolicy';
-import { AuditPage } from '../activity/ActivityPages';
+import { AuditViewer } from '../trust/AuditViewer';
 import { BillingPage } from '../billing/BillingPage';
 import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
 import { MemberSecurityPanel } from '../organization/MemberSecurityPanel';
@@ -525,7 +525,7 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><RolesMovedCard /><OrgSecurityPanel /><SGroup label="Sessions"><WorkspaceSessionPolicyRow /></SGroup><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
     case 'sso': return <><SsoSettings /><SectionHistory section="sso" /></>;
     case 'billing': return <><BillingPage /><SectionHistory section="billing" /></>;
-    case 'audit': return <AuditPage />;
+    case 'audit': return <AuditViewer />;
     case 'project-groups': return <><ProjectGroupsPage /><SectionHistory section="project-groups" /></>;
     case 'timeline-templates': return <><TimelineTemplatesSettings /><SectionHistory section="timeline-templates" /></>;
     case 'labels': return <LabelSettings />;
