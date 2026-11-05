@@ -1,5 +1,5 @@
 # Build context is this (backend) folder:  docker build -t pm-api backend
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Restore first (cached until a .csproj changes)
