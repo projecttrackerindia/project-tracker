@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { reportError } from '../lib/telemetry';
 
 /** A new version was deployed while this page was open: its old script files are gone. Reloading fetches the new ones. */
 const isStale = (e: Error) => /dynamically imported module|Importing a module script failed|error loading dynamically|ChunkLoadError/i.test(`${e.name} ${e.message}`);
@@ -10,6 +11,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
   static getDerivedStateFromError(error: Error) { return { error }; }
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('Unhandled UI error', error, info.componentStack);
+    if (!isStale(error)) reportError(error);
     // Once per tab: a stale deployment is fixed by reloading, without the person seeing the error page at all.
     if (isStale(error)) { try { if (sessionStorage.getItem('pm_stale_reload') !== '1') { sessionStorage.setItem('pm_stale_reload', '1'); location.reload(); } } catch { /* storage unavailable */ } }
   }
