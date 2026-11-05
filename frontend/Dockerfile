@@ -8,7 +8,9 @@ ARG SITE_URL=
 ARG GOOGLE_SITE_VERIFICATION=
 ARG BING_SITE_VERIFICATION=
 ARG INDEXNOW_KEY=
-ENV SITE_URL=$SITE_URL GOOGLE_SITE_VERIFICATION=$GOOGLE_SITE_VERIFICATION BING_SITE_VERIFICATION=$BING_SITE_VERIFICATION INDEXNOW_KEY=$INDEXNOW_KEY
+# The release (image tag = short commit id) that error reports and speed numbers are tagged with.
+ARG APP_RELEASE=dev
+ENV SITE_URL=$SITE_URL GOOGLE_SITE_VERIFICATION=$GOOGLE_SITE_VERIFICATION BING_SITE_VERIFICATION=$BING_SITE_VERIFICATION INDEXNOW_KEY=$INDEXNOW_KEY VITE_APP_RELEASE=$APP_RELEASE
 RUN npm run build
 # The app's Content-Security-Policy lists its inline scripts by hash: fill them in from the index.html just built (fails if there are none).
 RUN node scripts/csp-nginx.mjs nginx.conf dist/index.html > nginx.generated.conf

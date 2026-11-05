@@ -5,11 +5,14 @@ const path = require('node:path');
 const { appUrl, RELEASES_API, DOWNLOAD_PAGE } = require('./config');
 const { autoUpdater } = require('electron-updater');
 const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer, clampBadge } = require('./links');
+const { startErrorReporting } = require('./errors');
 
 // Alert sounds must play while the window is hidden in the tray or nobody has clicked yet: the page's timers and audio keep running.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const BASE = appUrl();
+// Main-process errors go to the server's error relay (off unless the server has a DSN); see docs/ops.md › Error tracking.
+startErrorReporting({ base: BASE, release: `desktop-${app.getVersion()}` });
 let win = null, tray = null, quitting = false, pendingLink = null;
 /** The page's notifications still on screen, by tag (so a repeat replaces, and reading closes them). */
 const shown = new Map();

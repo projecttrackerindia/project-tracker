@@ -9,6 +9,11 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Unexpected errors go to a Sentry-compatible service when Sentry__Dsn is set (off otherwise); see docs/ops.md › Error tracking.
+var errorReporter = ProjectManagement.Api.Logging.ErrorReporter.FromConfiguration(builder.Configuration, builder.Environment.EnvironmentName);
+builder.Services.AddSingleton(errorReporter);
+builder.Services.AddSingleton<ProjectManagement.Api.Logging.WebVitalsStore>();
+
 builder.Host.UseSerilog((context, services, cfg) => cfg
     .ReadFrom.Configuration(context.Configuration)
     .Enrich.FromLogContext()
@@ -16,7 +21,8 @@ builder.Host.UseSerilog((context, services, cfg) => cfg
     // Locally: readable text. Deployed: one JSON line per event with a real severity ("warn" is not "info").
     .WriteTo.Console(context.HostingEnvironment.IsDevelopment() || context.Configuration["Logging:Format"] == "text"
         ? new Serilog.Formatting.Display.MessageTemplateTextFormatter("[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-        : new ProjectManagement.Api.Logging.JsonLineFormatter()));
+        : new ProjectManagement.Api.Logging.JsonLineFormatter())
+    .WriteTo.Sink(new ProjectManagement.Api.Logging.ErrorReporterSink(errorReporter), Serilog.Events.LogEventLevel.Error));
 
 builder.Services
     .AddApplication()

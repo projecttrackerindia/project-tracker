@@ -16,6 +16,9 @@ RUN dotnet publish src/ProjectManagement.Api/ProjectManagement.Api.csproj -c Rel
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0.21
 WORKDIR /app
+# The release (image tag = short commit id) that error reports are tagged with (Sentry:Release falls back to APP_RELEASE).
+ARG APP_RELEASE=dev
+ENV APP_RELEASE=$APP_RELEASE
 COPY --from=build /app .
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     ASPNETCORE_ENVIRONMENT=Production

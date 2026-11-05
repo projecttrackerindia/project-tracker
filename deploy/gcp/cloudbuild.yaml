@@ -2,11 +2,11 @@
 steps:
   - name: gcr.io/cloud-builders/docker
     id: api
-    args: ["build", "-t", "${_IMAGES}/api:${_TAG}", "-t", "${_IMAGES}/api:${_ALIAS}", "backend"]
+    args: ["build", "-t", "${_IMAGES}/api:${_TAG}", "-t", "${_IMAGES}/api:${_ALIAS}", "--build-arg", "APP_RELEASE=${_TAG}", "backend"]
   - name: gcr.io/cloud-builders/docker
     id: web
     waitFor: ["-"]
-    args: ["build", "-t", "${_IMAGES}/web:${_TAG}", "-t", "${_IMAGES}/web:${_ALIAS}", "--build-arg", "SITE_URL=${_SITE_URL}",
+    args: ["build", "-t", "${_IMAGES}/web:${_TAG}", "-t", "${_IMAGES}/web:${_ALIAS}", "--build-arg", "SITE_URL=${_SITE_URL}", "--build-arg", "APP_RELEASE=${_TAG}",
            "--build-arg", "GOOGLE_SITE_VERIFICATION=${_GOOGLE}", "--build-arg", "BING_SITE_VERIFICATION=${_BING}", "--build-arg", "INDEXNOW_KEY=${_INDEXNOW}", "frontend"]
   - name: gcr.io/cloud-builders/docker
     id: meetbot
