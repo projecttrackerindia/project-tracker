@@ -49,6 +49,45 @@ self.addEventListener('fetch', (event) => {
 const URGENT = ['Reminder', 'Nudge', 'DueSoon', 'Overdue', 'ServiceLevel', 'Support', 'Security', 'SignInRequest'];
 const CHAT = ['Message', 'Mention'];
 
+// Quick actions (QuickActionService on the server): the buttons a notice carries, in the person's words. Text ones take an inline reply where the
+// browser supports it (Chrome, Edge); elsewhere pressing them opens the app at the notice. Only urgent notices show buttons: a notice the server
+// marks 'normal' priority stays quiet and simply opens.
+const QUICK_LABELS = {
+  approve: 'Approve', reject: 'Reject', reply: 'Reply', read: 'Mark read', done: 'Done', snooze: 'Snooze 1h', open: 'Open', join: 'Join',
+  late: 'Running late', accept: 'Accept', decline: 'Decline', maybe: 'Maybe', review: 'Review', discuss: 'Discuss', callback: 'Call back', message: 'Message',
+};
+const QUICK_TEXT = { reply: 'Reply…', reject: 'Reason for rejecting' };
+const QUICK_OPENS = ['open', 'join', 'review', 'discuss', 'callback', 'message'];
+function quickActions(data) {
+  if (!data || !data.qa || !Array.isArray(data.actions) || data.priority === 'normal') return [];
+  const max = (self.Notification && self.Notification.maxActions) || 2;
+  return data.actions.filter((a) => QUICK_LABELS[a]).slice(0, max).map((a) => (QUICK_TEXT[a]
+    ? { action: a, title: QUICK_LABELS[a], type: 'text', placeholder: QUICK_TEXT[a] }
+    : { action: a, title: QUICK_LABELS[a] }));
+}
+function openApp(link) {
+  const href = new URL(link || '/', self.location.origin).href;
+  return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+    const open = wins.find((w) => new URL(w.url).origin === self.location.origin);
+    if (open) { open.focus(); return open.navigate(href); }
+    return self.clients.openWindow(href);
+  });
+}
+// Press a button without opening the app: the notice's signed one-time key acts for the person. When the key has expired, or the person must
+// sign in again (suspended, a new device rule), or a reason is still needed, the app opens at the notice instead.
+function pressQuick(data, action, reply) {
+  if (QUICK_OPENS.includes(action)) {
+    fetch(`/api/v1/notification-actions/${encodeURIComponent(data.qa)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', body: JSON.stringify({ action: 'read' }) }).catch(() => undefined);
+    return openApp(data.link);
+  }
+  const text = typeof reply === 'string' ? reply.trim() : '';
+  if (QUICK_TEXT[action] && !text) return openApp(data.link);
+  return fetch(`/api/v1/notification-actions/${encodeURIComponent(data.qa)}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
+    body: JSON.stringify({ action, text: text || undefined, preset: action === 'snooze' ? '1h' : undefined }),
+  }).then((res) => (res.ok ? undefined : openApp(data.link)), () => openApp(data.link));
+}
+
 // ------------------------------------------------------------------ the app icon's badge
 // While signed in, the installed app's icon (desktop Chrome / Edge, Android, iOS 16.4+ home-screen apps) shows the unread count even with
 // no window open: every push carries it (`badge`), an open page keeps it exact (`pm-badge` messages), and opening a notification takes one off.
@@ -138,11 +177,11 @@ self.addEventListener('push', (event) => {
     }
     await self.registration.showNotification(data.title || 'Project Tracker', {
       body: data.body || '', tag: data.tag || undefined, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
-      data: { link: data.link || '/', token: data.token || null },
+      data: { link: data.link || '/', token: data.token || null, qa: data.qa || null, actions: quickActions(data).map((a) => a.action) },
       // Urgent ones stay on screen until dismissed; a repeated tag pops up again instead of updating quietly.
       requireInteraction: urgent || signIn, silent: played && !signIn, renotify: !!data.tag,
       ...((played && !signIn) ? {} : { vibrate: signIn ? [200, 80, 200, 80, 400] : urgent ? [300, 100, 300, 100, 300] : [120, 60, 120] }),
-      actions: reminder ? [{ action: 'done', title: '✓ Done' }, { action: 'snooze', title: 'Snooze 1 hour' }] : [],
+      actions: reminder ? [{ action: 'done', title: '✓ Done' }, { action: 'snooze', title: 'Snooze 1 hour' }] : quickActions(data),
     });
     delivered();
   }));
@@ -156,6 +195,11 @@ self.addEventListener('notificationclick', (event) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
       body: JSON.stringify(event.action === 'done' ? { action: 'done' } : { action: 'snooze', preset: '1h' }),
     }).catch(() => undefined));
+    return;
+  }
+  const nd = event.notification.data || {};
+  if (nd.qa && event.action && QUICK_LABELS[event.action]) {
+    event.waitUntil(pressQuick(nd, event.action, event.reply));
     return;
   }
   const call = event.notification.data && event.notification.data.call;
