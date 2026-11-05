@@ -16,7 +16,9 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_response(code); self.end_headers(); self.wfile.write(body)
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
 P
-port=$((20000 + RANDOM % 20000)); python3 -I "$t/srv.py" "$port" "$t/down" & srv=$!; sleep 1
+port=$((20000 + RANDOM % 20000)); python3 -I "$t/srv.py" "$port" "$t/down" & srv=$!
+# Wait for the stand-in to listen (a fixed sleep raced on a busy runner).
+for _ in $(seq 1 50); do curl -s -o /dev/null --noproxy 127.0.0.1 "http://127.0.0.1:$port/" && break; sleep 0.2; done
 export BASE_URL="http://127.0.0.1:$port" FAILED_FILE="$t/failed" NO_PROXY=127.0.0.1 no_proxy=127.0.0.1
 bash "$here/uptime-check.sh" >/dev/null || { echo "FAIL: healthy site reported down"; exit 1; }
 [ ! -s "$t/failed" ] || { echo "FAIL: failures listed for a healthy site"; exit 1; }
