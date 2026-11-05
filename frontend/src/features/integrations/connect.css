@@ -63,3 +63,20 @@ html body .cn-scopes button { border: 0; background: var(--calm-fill); border-ra
 html body .cn-scopes button.on { background: var(--calm-accent-soft); color: var(--calm-ink); box-shadow: inset 0 0 0 1.5px var(--calm-accent); }
 html body .cn-scopes button.on svg { color: var(--calm-accent-text); }
 html body .cn-actions .btn { border-radius: var(--calm-r-pill); min-height: 44px; }
+
+/* Round 4: the consent page rebuilt on the calm kit (hero title, section labels, calm picker, one ink Go + quiet Cancel). */
+.cn-calm .cn-card { width: min(560px, 100%); gap: 12px; padding: 36px 36px 28px; }
+.cn-calm .cn-hero { text-align: center; margin: 6px 0 8px; }
+.cn-calm .cn-hero .calm-hero-title { font-size: 28px; font-weight: 300; letter-spacing: -.025em; line-height: 1.15; color: var(--calm-ink); }
+.cn-calm .cn-hero .calm-hero-title b { font-weight: 600; }
+.cn-calm .cn-hero .calm-hero-sub { font-size: 15px; color: var(--calm-ink2); }
+.cn-calm .calm-sec { margin: 8px 0 0; }
+.cn-calm .cn-scopes button { position: relative; background: var(--calm-fill); color: var(--calm-ink); min-height: 64px; }
+.cn-calm .cn-scopes button.on { background: var(--calm-solid); box-shadow: 0 0 0 2px var(--calm-accent); }
+.cn-calm .cn-scopes button span { flex: 1; }
+.cn-tick { font-style: normal; color: var(--calm-accent-text); font-weight: 700; align-self: center; }
+.cn-calm .cn-actions { display: flex; align-items: center; gap: 18px; justify-content: flex-start; margin-top: 10px; }
+.cn-calm .cn-foot { color: var(--calm-ink3-text); text-align: left; }
+@media (max-width: 520px) { .cn-calm .cn-card { padding: 24px 18px; border-radius: 22px; } .cn-calm .cn-actions { flex-direction: row; } .cn-calm .cn-actions .calm-go { flex: 1; min-height: 48px; } }
+.cn-calm .cn-foot { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 760px) { .cn-calm.cn-page { padding-bottom: 140px; place-items: start center; } }
