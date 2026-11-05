@@ -21,7 +21,7 @@ public record TaskDto(Guid Id, Guid ProjectId, string ProjectKey, string Project
     DateTime? CompletedAt, DateTime CreatedAt, DateTime? UpdatedAt, int Version, bool IsOverdue,
     Guid? MilestoneId, string? MilestoneName, int DependsOnCount, int BlocksCount, bool IsBlocked, Guid? SprintId = null, string? SprintName = null,
     int ChecklistTotal = 0, int ChecklistDone = 0, bool CanEdit = true, Guid? StageId = null, string? StageName = null,
-    TimeOnly? DueTime = null, DateTime? DueAt = null);
+    TimeOnly? DueTime = null, DateTime? DueAt = null, DateOnly? OriginalDate = null, int ExtensionCount = 0, int TotalSlipDays = 0);
 public record TaskDetailDto(TaskDto Task, IReadOnlyList<TaskDto> Subtasks);
 
 public record TaskQuery(Guid? ProjectId, bool Mine = false, Guid? AssigneeId = null, Guid? StatusId = null, StatusCategory? Category = null,
@@ -34,7 +34,7 @@ public record CreateTaskRequest(string Title, string? Description, Guid? StatusI
 /// <param name="DueTime">The time of day it is due; left out keeps the current time (cleared with the date, or with <paramref name="ClearDueTime"/>).</param>
 public record UpdateTaskRequest(string Title, string? Description, Guid StatusId, Priority Priority, Guid? AssigneeId, DateOnly? StartDate,
     DateOnly? DueDate, decimal? EstimatedHours, decimal? ActualHours, IReadOnlyList<Guid>? LabelIds, int Version, Guid? MilestoneId = null, Guid? StageId = null,
-    string? DueDateReason = null, string? DueDateDependency = null, TimeOnly? DueTime = null, bool ClearDueTime = false);
+    string? DueDateReason = null, string? DueDateDependency = null, TimeOnly? DueTime = null, bool ClearDueTime = false, string? ExtensionReason = null);
 /// <param name="Version">The version the caller saw; when given, a move over someone else's newer change is refused (409) instead of overwriting it.</param>
 public record MoveTaskRequest(Guid StatusId, double? Position, int? Version = null);
 
@@ -45,7 +45,8 @@ public record UpdateCommentRequest(string Body);
 public class TaskService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
     EntitlementService entitlements, ProjectAccess access, NotificationService notifications, PlanningService planning, AutomationEngine automation, TaskCompletionService completion,
-    DueDateHistory dueHistory, ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync)
+    DueDateHistory dueHistory, ProjectManagement.Application.Features.Reminders.ReminderSync reminderSync,
+    ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices notices)
 {
     private const double PositionStep = 1024;
 
@@ -84,10 +85,13 @@ public class TaskService(
                         ? d.DependsOnTask!.Status!.Category != StatusCategory.Done && d.DependsOnTask.Status.Category != StatusCategory.Cancelled
                     : d.Type == DependencyType.StartToStart && d.DependsOnTask!.Status!.Category == StatusCategory.Todo)),
         }).ToListAsync(ct);
+        // How far each due date slipped (the date history): original date, how many extensions, days late against the original.
+        var slips = await DateSlips.ItemsAsync(db, rows.Select(r => r.Task.Id).ToList(), ct);
 
         return rows.Select(r =>
         {
             var t = r.Task;
+            var slip = slips.GetValueOrDefault(t.Id) ?? DateSlip.None;
             var open = r.Category is not (StatusCategory.Done or StatusCategory.Cancelled);
             return new TaskDto(t.Id, t.ProjectId, r.ProjectKey, r.ProjectName, t.Number, $"{r.ProjectKey}-{t.Number}", t.Title, t.Description,
                 t.StatusId, r.StatusName, r.Category, r.StatusColor, t.Priority,
@@ -96,7 +100,8 @@ public class TaskService(
                 t.Position, t.ParentTaskId, r.SubtaskTotal, r.SubtaskDone, r.CommentCount, r.Labels, t.CompletedAt, t.CreatedAt, t.UpdatedAt,
                 t.Version, open && clock.IsPastDue(t.DueDate, t.DueTime),
                 t.MilestoneId, r.MilestoneName, r.DependsOn, r.Blocks, open && r.Unmet > 0, t.SprintId, r.SprintName, r.ChecklistTotal, r.ChecklistDone,
-                canEditAny || (canEditAssigned && t.AssigneeId == uid), t.StageId, r.StageName, t.DueTime, clock.DueAt(t.DueDate, t.DueTime));
+                canEditAny || (canEditAssigned && t.AssigneeId == uid), t.StageId, r.StageName, t.DueTime, clock.DueAt(t.DueDate, t.DueTime),
+                slip.OriginalDate, slip.ExtensionCount, slip.TotalSlipDays);
         }).ToList();
     }
 
@@ -240,6 +245,8 @@ public class TaskService(
         recorder.Activity("task.created", "Task", task.Id, $"Created task {key} \"{task.Title}\"", projectId);
         if (task.AssigneeId is { } who)
             await notifications.AddAsync(who, NotificationType.TaskAssigned, $"You were assigned {key}", task.Title, $"/projects/{projectId}?task={task.Id}");
+        // The project's manager hears of new work in it (the assignee already has "You were assigned").
+        await notices.TellAsync(Notice(task, key), $"created in {project.Name}", [project.OwnerId], ct, task.AssigneeId is { } created ? new[] { created } : null);
         await automation.RunAsync(task, key, AutomationTrigger.TaskCreated, task.StatusId, task.Priority, (req.LabelIds ?? []).Distinct().ToList(), ct);
         project.UpdatedAt = now;
         await SaveNewTaskAsync(task, project.Key, ct);
@@ -276,6 +283,10 @@ public class TaskService(
         }
     }
 
+    /// <summary>The change notice target of a task: its key, where it opens, and its watchers.</summary>
+    private static ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget Notice(TaskItem task, string key) =>
+        new(task.Id, key, $"/projects/{task.ProjectId}?task={task.Id}", NotificationType.TaskUpdated, Watchers: true);
+
     public async Task<TaskDto> UpdateAsync(Guid id, UpdateTaskRequest req, CancellationToken ct = default)
     {
         var task = await access.VisibleTasks().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("Task not found.");
@@ -289,7 +300,9 @@ public class TaskService(
         ValidateHours(req.EstimatedHours, "estimatedHours");
         ValidateHours(req.ActualHours, "actualHours");
         var nextDueTime = DueDateHistory.NextTime(req.DueDate, req.DueTime, req.ClearDueTime, task.DueTime);
-        var dueNote = DueDateHistory.Prepare(task.DueDate, task.DueTime, req.DueDate, nextDueTime, req.DueDateReason, req.DueDateDependency);   // a delay (a later day or time) needs a reason
+        var extensionReason = DueDateHistory.ReasonOf(req.ExtensionReason, req.DueDateReason);
+        var dueNote = DueDateHistory.Prepare(task.DueDate, task.DueTime, req.DueDate, nextDueTime, extensionReason, req.DueDateDependency);   // a delay (a later day or time) needs a reason
+        var startReason = dueHistory.Require("start date", task.StartDate, req.StartDate, extensionReason);   // so does a later start
 
         var project = await db.Projects.FirstAsync(p => p.Id == task.ProjectId, ct);
         var status = await db.WorkflowStatuses.FirstOrDefaultAsync(x => x.Id == req.StatusId && x.ProjectId == task.ProjectId, ct)
@@ -367,6 +380,8 @@ public class TaskService(
         if (oldPriority != task.Priority) await automation.RunAsync(task, key, AutomationTrigger.PriorityChanged, null, task.Priority, null, ct);
         // The rest of a task's timeline and identity: when it starts, which phase it belongs to, what it is called.
         if (oldStart != task.StartDate)
+            dueHistory.RecordDate(task.TenantId, task.ProjectId, DateKinds.Task, id, DateKinds.Start, oldStart, task.StartDate, startReason);
+        if (oldStart != task.StartDate)
             recorder.Activity("task.start_changed", "Task", id, $"{key}: start date {oldStart?.ToString("dd MMM yyyy") ?? "none"} → {task.StartDate?.ToString("dd MMM yyyy") ?? "none"}", task.ProjectId,
                 oldStart?.ToString("yyyy-MM-dd"), task.StartDate?.ToString("yyyy-MM-dd"));
         var stageMoved = task.StageId != oldStageId;
@@ -390,12 +405,23 @@ public class TaskService(
         if (oldPriority != task.Priority) changeNotes.Add($"priority: {oldPriority} → {task.Priority}");
         if (oldStart != task.StartDate) changeNotes.Add("start date changed");
         if (renamed) changeNotes.Add($"renamed to “{task.Title}”");
-        if (changeNotes.Count > 0)
+        // Everyone on the task hears it (assignee, the previous assignee, who raised it, its watchers), never the person who made the change;
+        // a date moved later also tells the project manager, with the reason. Changes in quick succession fold into one notice per person.
+        var notice = new ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget(id, key, $"/projects/{task.ProjectId}?task={id}", NotificationType.TaskUpdated, Watchers: true);
+        Guid?[] onTask = [task.AssigneeId, oldAssignee, task.ReporterId];
+        if (oldAssignee != task.AssigneeId)
         {
-            var updateLink = $"/projects/{task.ProjectId}?task={id}";
-            foreach (var who in new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value).Distinct())
-                await notifications.AddAsync(who, NotificationType.TaskUpdated, $"{key} updated", string.Join(" · ", changeNotes), updateLink, ct: ct);
+            var name = task.AssigneeId is { } a2 ? await db.Users.Where(u => u.Id == a2).Select(u => u.DisplayName).FirstAsync(ct) : "nobody";
+            await notices.TellAsync(notice, $"assigned to {name}", onTask, ct, task.AssigneeId is { } na ? new[] { na } : null);
         }
+        var dueLater = dueNote is not null && DueDateHistory.NeedsReason(oldDue, oldDueTime, task.DueDate, task.DueTime);
+        if (dueLater)
+            await notices.ExtendedAsync(notice, task.ProjectId, "Due date", oldDue, task.DueDate, dueNote!.Reason, onTask, ct);
+        if (DueDateHistory.IsLater(oldStart, task.StartDate))
+            await notices.ExtendedAsync(notice, task.ProjectId, "Start date", oldStart, task.StartDate, startReason, onTask, ct);
+        foreach (var line in changeNotes.Where(l => !(dueLater && dueNote is not null && l == DueDateHistory.Describe(oldDue, oldDueTime, task.DueDate, task.DueTime, dueNote.Reason))
+            && !(l == "start date changed" && DueDateHistory.IsLater(oldStart, task.StartDate))))
+            await notices.TellAsync(notice, line, onTask, ct);
 
         await db.SaveChangesAsync(ct);
         // Due date, assignee, status or title changed: its reminders follow now, not at the planner's next pass.
@@ -482,6 +508,7 @@ public class TaskService(
             recorder.Activity("task.status_changed", "Task", id, $"{key}: status {oldName} → {status.Name}", task.ProjectId, oldName, status.Name);
             new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Status", oldName, status.Name).Record(recorder, "task", "Task", id);
             await automation.RunAsync(task, key, AutomationTrigger.StatusChanged, status.Id, null, null, ct);
+            await notices.TellAsync(Notice(task, key), status.Category == StatusCategory.Done ? "completed" : $"status: {oldName} → {status.Name}", [task.AssigneeId, task.ReporterId], ct);
         }
         await db.SaveChangesAsync(ct);
         if (changed) await reminderSync.OnWorkChangedAsync(ReminderTarget.Task, id, ct);
@@ -502,6 +529,10 @@ public class TaskService(
         await ProjectManagement.Application.Features.Projects.DeletedWorkTraces.ArchiveNotificationsAsync(db, now, null, gone.Select(t => t.Id).ToList(), ct);
         recorder.Audit("task.deleted", "Task", id, new { task.Title });
         recorder.Activity("task.deleted", "Task", id, $"Deleted task \"{task.Title}\"", task.ProjectId);
+        {
+            var key = $"{await db.Projects.Where(p => p.Id == task.ProjectId).Select(p => p.Key).FirstAsync(ct)}-{task.Number}";
+            await notices.TellAsync(Notice(task, key) with { Link = $"/projects/{task.ProjectId}" }, "deleted", [task.AssigneeId, task.ReporterId], ct);
+        }
         await db.SaveChangesAsync(ct);
         // Their reminders are orphaned (not lost): Undo brings them back.
         foreach (var t in gone) await reminderSync.OnWorkChangedAsync(ReminderTarget.Task, t.Id, ct);
@@ -524,8 +555,14 @@ public class TaskService(
         var back = await db.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tid && (t.Id == id || (t.ParentTaskId == id && t.IsDeleted && t.DeletedAt == deletedAt))).ToListAsync(ct);
         foreach (var t in back)
         { t.IsDeleted = false; t.DeletedAt = null; t.DeletedBy = null; }
+        // The notifications the delete put away come back to the inbox.
+        await ProjectManagement.Application.Features.Projects.DeletedWorkTraces.UnarchiveNotificationsAsync(db, deletedAt, null, back.Select(t => t.Id).ToList(), ct);
         recorder.Audit("task.restored", "Task", id, new { task.Title });
         recorder.Activity("task.restored", "Task", id, $"Restored task \"{task.Title}\"", task.ProjectId);
+        {
+            var key = $"{await db.Projects.Where(p => p.Id == task.ProjectId).Select(p => p.Key).FirstAsync(ct)}-{task.Number}";
+            await notices.TellAsync(Notice(task, key), "restored", [task.AssigneeId, task.ReporterId], ct);
+        }
         await db.SaveChangesAsync(ct);
         foreach (var t in back) await reminderSync.OnWorkChangedAsync(ReminderTarget.Task, t.Id, ct);
         if (task.ParentTaskId is null) await completion.SyncStagesAsync([task.StageId], ct);
@@ -576,6 +613,8 @@ public class TaskService(
             await notifications.AddAsync(uid, NotificationType.Comment, $"New comment on {key}", Text.Truncate(comment.Body, 200), link);
 
         recorder.Activity("task.commented", "Task", taskId, $"Commented on {key} \"{task.Title}\"", task.ProjectId);
+        // Watchers hear of the comment too (the assignee, who raised it and anyone mentioned were told above).
+        await notices.TellAsync(Notice(task, key), "new comment", [], ct, valid.Concat(new[] { task.AssigneeId, (Guid?)task.ReporterId }.Where(x => x is not null).Select(x => x!.Value)));
         await db.SaveChangesAsync(ct);
         return (await GetCommentsAsync(taskId, ct)).First(c => c.Id == comment.Id);
     }

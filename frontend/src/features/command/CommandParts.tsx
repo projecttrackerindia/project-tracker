@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { delegateApi } from '../../api/endpoints';
@@ -93,15 +94,15 @@ export function WhatIfModal({ onClose }: { onClose: () => void }) {
       <div className="cmd-whatif">
         <div className="form-grid">
           <Field label="Project">
-            <select className="input" aria-label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <Select className="input" aria-label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
               {(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Task">
-            <select className="input" aria-label="Task" value={taskId} onChange={(e) => setTaskId(e.target.value)} disabled={!tasks.data?.length}>
+            <Select className="input" aria-label="Task" value={taskId} onChange={(e) => setTaskId(e.target.value)} disabled={!tasks.data?.length}>
               <option value="">{tasks.isLoading ? 'Loading…' : tasks.data?.length ? 'Choose a task' : 'No open tasks'}</option>
               {(tasks.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.key} · {t.title}{t.dependents ? ` (${t.dependents} depend on it)` : ''}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label={`Slips by ${days} day${days === 1 ? '' : 's'}`} full>
             <input type="range" min={1} max={30} value={days} aria-label="Days" className="cmd-range" onChange={(e) => setDays(Number(e.target.value))} />
@@ -145,9 +146,9 @@ export function SettingsCard() {
           </ul>
           {s.meetingBriefs && (
             <Field label="Brief arrives">
-              <select className="input" aria-label="Brief arrives" value={s.briefMinutes} disabled={busy} onChange={(e) => void save({ briefMinutes: Number(e.target.value) })}>
+              <Select className="input" aria-label="Brief arrives" value={s.briefMinutes} disabled={busy} onChange={(e) => void save({ briefMinutes: Number(e.target.value) })}>
                 {[5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes before</option>)}
-              </select>
+              </Select>
             </Field>
           )}
           {!s.googleConnected && <p className="ag-hint"><Icon name="info" size={12} />Connect Google (My account › Connected accounts) so calls on your calendar count when spotting double-bookings.</p>}
@@ -194,10 +195,10 @@ export function AuditView() {
   return (
     <section className="cmd-registry" aria-label="Audit trail">
       <div className="cmd-audit-bar">
-        <select className="input" aria-label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        <Select className="input" aria-label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           <option value="">All projects I may decide on</option>
           {(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-        </select>
+        </Select>
         {list.data && <span className="cmd-muted">{list.data.length} decisions · {auto} carried out by the agent</span>}
       </div>
       {list.isLoading ? <PageLoader /> : list.isError ? <ErrorState error={list.error} retry={() => list.refetch()} /> : !list.data?.length

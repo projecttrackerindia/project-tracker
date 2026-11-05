@@ -1,15 +1,19 @@
 'use strict';
-const { app, BrowserWindow, Menu, Tray, Notification, shell, nativeImage, nativeTheme, session, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, Tray, Notification, shell, nativeImage, nativeTheme, session, globalShortcut, ipcMain, net, screen } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { appUrl, RELEASES_API, DOWNLOAD_PAGE } = require('./config');
 const { autoUpdater } = require('electron-updater');
 const { deepLinkToUrl, isInternal, unreadFromTitle, isNewer, clampBadge } = require('./links');
+const quick = require('./quick');
+const { startErrorReporting } = require('./errors');
 
 // Alert sounds must play while the window is hidden in the tray or nobody has clicked yet: the page's timers and audio keep running.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const BASE = appUrl();
+// Main-process errors go to the server's error relay (off unless the server has a DSN); see docs/ops.md › Error tracking.
+startErrorReporting({ base: BASE, release: `desktop-${app.getVersion()}` });
 let win = null, tray = null, quitting = false, pendingLink = null;
 /** The page's notifications still on screen, by tag (so a repeat replaces, and reading closes them). */
 const shown = new Map();
@@ -114,12 +118,53 @@ function createWindow() {
   if (pendingLink) { open(pendingLink); pendingLink = null; }
 }
 
+/** The one-time keys of the quick-action notices still on screen, by tag (kept in memory only, never on disk). */
+const quickKeys = new Map();
+/** A button on a native notice: act through the one-time key with the window closed; open the app when it must finish there. */
+async function pressQuick(tag, action, text) {
+  const k = quickKeys.get(tag);
+  if (!k) return;
+  const plan = quick.pressPlan(action, text);
+  const post = (body) => net.fetch(new URL(`/api/v1/notification-actions/${encodeURIComponent(k.qa)}`, BASE).href, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'omit',
+  });
+  if (plan.body && plan.open) post(plan.body).catch(() => undefined);
+  if (plan.open) { go(k.link); return; }
+  quickKeys.delete(tag);
+  try { const res = await post(plan.body); if (!res.ok) go(k.link); } catch { go(k.link); }
+}
 function open(link) {
+  const q = quick.parseQuickLink(link);
+  if (q) { if (q.action === 'open') { const k = quickKeys.get(q.tag); go(k ? k.link : '/'); } else void pressQuick(q.tag, q.action); return; }
   const url = deepLinkToUrl(link, BASE);
   if (!url) return;
   if (!win) { pendingLink = link; return; }
   if (win.isMinimized()) win.restore();
   win.show(); win.focus(); win.loadURL(url).catch(() => undefined);
+}
+
+/** The tray / menu-bar mini window: Today, the next meeting with Join, the check-in ring, quick add (the app's /mini page). */
+let mini = null;
+function createMini() {
+  mini = new BrowserWindow({ width: 360, height: 520, show: false, frame: false, resizable: false, movable: false, skipTaskbar: true, alwaysOnTop: true, fullscreenable: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#ffffff', roundedCorners: true, vibrancy: MAC ? 'popover' : undefined,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
+  mini.loadURL(new URL('/mini', BASE).href).catch(() => undefined);
+  mini.on('blur', () => { if (mini && !mini.webContents.isDevToolsOpened()) mini.hide(); });
+  mini.on('closed', () => { mini = null; });
+}
+function toggleMini() {
+  if (!mini || mini.isDestroyed()) createMini();
+  if (mini.isVisible()) { mini.hide(); return; }
+  // Next to the tray icon (menu bar on macOS, taskbar corner on Windows), inside the screen.
+  const t = tray ? tray.getBounds() : null;
+  const area = screen.getDisplayNearestPoint(t ? { x: t.x, y: t.y } : screen.getCursorScreenPoint()).workArea;
+  const [w, h] = mini.getSize();
+  const x = Math.round(Math.min(Math.max((t ? t.x + t.width / 2 : area.x + area.width) - w / 2, area.x + 8), area.x + area.width - w - 8));
+  const y = t && t.y < area.y + area.height / 2 ? area.y + 6 : area.y + area.height - h - 6;
+  mini.setPosition(x, y, false);
+  mini.show(); mini.focus();
+  mini.webContents.executeJavaScript(`document.querySelector('.mini-add input')?.focus()`).catch(() => undefined);
 }
 
 let pageBadges = false, shownBadge = -1;
@@ -164,7 +209,8 @@ function createTray() {
   tray.setToolTip('Project Tracker');
   const build = () => Menu.buildFromTemplate([
     { label: 'Open Project Tracker', click: () => { win.show(); win.focus(); } },
-    { label: 'Search…', accelerator: 'CommandOrControl+Shift+Space', click: quickSearch },
+    { label: 'Quick add or ask Aura…', accelerator: 'CommandOrControl+Shift+Space', click: toggleMini },
+    { label: 'Search…', click: quickSearch },
     { label: 'My work', click: () => go('/my-work') },
     { label: 'Reminders', click: () => go('/reminders') },
     { type: 'separator' },
@@ -177,7 +223,7 @@ function createTray() {
   ]);
   tray.setContextMenu(build());
   rebuildTray = () => tray && tray.setContextMenu(build());
-  tray.on('click', () => { if (win.isVisible()) win.focus(); else win.show(); });
+  tray.on('click', toggleMini);
 }
 
 function buildMenu() {
@@ -296,7 +342,22 @@ else {
       const tag = typeof n.tag === 'string' ? n.tag.slice(0, 80) : '';
       // One entry per tag: a repeat replaces the earlier toast instead of stacking.
       if (tag && shown.has(tag)) { try { shown.get(tag).close(); } catch { /* already gone */ } }
-      const note = new Notification({ title, body, silent: n.silent === true, urgency: n.urgent ? 'critical' : 'normal', timeoutType: n.urgent ? 'never' : 'default' });
+      // Quick actions (urgent notices only): buttons that work with the window closed, through the notice's one-time key.
+      const buttons = tag && settings().quickActions !== false ? quick.buttonsFor(n.qa, n.actions) : [];
+      if (buttons.length) { quickKeys.set(tag, { qa: n.qa, link }); if (quickKeys.size > 200) quickKeys.delete(quickKeys.keys().next().value); }
+      const options = { title, body, silent: n.silent === true, urgency: n.urgent ? 'critical' : 'normal', timeoutType: n.urgent ? 'never' : 'default' };
+      if (buttons.length && MAC) {
+        // macOS: the buttons are in the notice's menu; Reply is the native inline reply field.
+        const plain = buttons.filter((a) => a !== 'reply');
+        Object.assign(options, { actions: plain.map((a) => ({ type: 'button', text: quick.LABELS[a] })), hasReply: buttons.includes('reply'), replyPlaceholder: 'Reply…' });
+        options._plain = plain;
+      } else if (buttons.length && WIN) {
+        options.toastXml = quick.toastXml({ title, body, tag, buttons, urgent: n.urgent === true });
+      }
+      const plain = options._plain || []; delete options._plain;
+      const note = new Notification(options);
+      note.on('action', (_ev, index) => { const a = plain[index]; if (a) void pressQuick(tag, a); });
+      note.on('reply', (_ev, reply) => { void pressQuick(tag, 'reply', reply); });
       note.on('click', () => { go(link); if (tag) shown.delete(tag); });
       note.on('close', () => { if (tag && shown.get(tag) === note) shown.delete(tag); });
       if (tag) shown.set(tag, note);
@@ -313,8 +374,16 @@ else {
       if (MAC) app.dock?.bounce(urgent ? 'critical' : 'informational');
       else win.flashFrame(true);
     });
-    buildMenu(); if (!MAC) createTray(); createWindow();
-    globalShortcut.register('CommandOrControl+Shift+Space', quickSearch);
+    buildMenu(); createTray(); createWindow();
+    // One shortcut anywhere on the computer: the mini window, ready to add a reminder or ask Aura.
+    globalShortcut.register('CommandOrControl+Shift+Space', toggleMini);
+    ipcMain.on('mini-open', (e, link) => {
+      if (!mini || mini.isDestroyed() || e.sender !== mini.webContents || !isInternal(e.sender.getURL(), BASE)) return;
+      if (typeof link !== 'string' || !link.startsWith('/') || link.startsWith('//')) return;
+      mini.hide(); if (win) { win.show(); win.focus(); } go(link);
+    });
+    ipcMain.on('mini-hide', (e) => { if (mini && !mini.isDestroyed() && e.sender === mini.webContents) mini.hide(); });
+    ipcMain.on('quick-actions', (e, on) => { if (win && e.sender === win.webContents) saveSettings({ quickActions: on === true }); });
     updaterSetup();
     setTimeout(() => checkUpdates(false), 15000);
     setInterval(() => checkUpdates(false), 4 * 60 * 60 * 1000);   // and every few hours while it stays open

@@ -1,4 +1,6 @@
+import { Select } from '../../components/Select';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
@@ -115,7 +117,7 @@ function Describe({ onDraft }: { onDraft: (f: Flow) => void }) {
   return (
     <form className="au-describe" onSubmit={(e) => { e.preventDefault(); void go(); }}>
       <div className="au-describe-h">Describe it in words</div>
-      <div className="au-describe-line"><span className="au-orb" aria-hidden="true" />
+      <div className="au-describe-line"><SiriOrb className="au-orb" />
         <textarea rows={2} value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} disabled={!ai || busy} aria-label="Describe the automation in words"
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void go(); } }}
           placeholder={ai ? '“If a critical ticket sits 30 min without reply, give it to on-call and tell the incidents channel.”' : 'AI is off for this workspace: build it with the sentence.'} />
@@ -130,7 +132,7 @@ function Describe({ onDraft }: { onDraft: (f: Flow) => void }) {
 function Tok({ label, value, onChange, disabled, children, plain }: { label: string; value: string; onChange: (v: string) => void; disabled?: boolean; children: ReactNode; plain?: boolean }) {
   return (
     <span className={`au-tok ${plain ? '' : 'v'}`}>
-      <select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>{children}</select>
+      <Select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>{children}</Select>
       {!disabled && <Icon name="chevronD" size={12} />}
     </span>
   );
@@ -274,9 +276,9 @@ function Builder({ rule, initial, canEdit, onCount, onSaved, onRemoved }: {
             ))}
             {!ro && free.length > 0 && (
               <label className="au-add">
-                <select aria-label="Add condition" value="" onChange={(e) => { if (e.target.value) set('conditions', [...f.conditions, newCondition(e.target.value as AutomationConditionField, subject)]); }}>
+                <Select aria-label="Add condition" value="" onChange={(e) => { if (e.target.value) set('conditions', [...f.conditions, newCondition(e.target.value as AutomationConditionField, subject)]); }}>
                   <option value="">＋ Add condition</option>{free.map((c) => <option key={c.field} value={c.field}>{c.label}</option>)}
-                </select>
+                </Select>
                 <span aria-hidden="true">＋ Add condition</span>
               </label>
             )}

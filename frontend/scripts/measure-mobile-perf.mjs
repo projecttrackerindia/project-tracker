@@ -32,13 +32,16 @@ const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? 
 const results = [];
 for (const [name, url] of pages) {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
-  await ctx.addInitScript(() => {
+  // A person who has signed in on this phone before (pm_hint), opening the app with an empty cache: the first-visit case for the app.
+  // HINT=0 measures a browser that has never signed in here.
+  await ctx.addInitScript((hint) => {
     localStorage.setItem('pm_alerts_prompt', '1');
+    if (hint) localStorage.setItem('pm_hint', '1');
     window.__perf = { lcp: 0, fcp: 0, long: [] };
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__perf.lcp = e.startTime; }).observe({ type: 'largest-contentful-paint', buffered: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') window.__perf.fcp = e.startTime; }).observe({ type: 'paint', buffered: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__perf.long.push([e.startTime, e.duration]); }).observe({ type: 'longtask', buffered: true });
-  });
+  }, process.env.HINT !== '0');
   pipeFree = 0;
   const page = await ctx.newPage();
   const cdp = await ctx.newCDPSession(page);

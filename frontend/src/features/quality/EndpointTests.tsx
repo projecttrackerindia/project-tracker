@@ -1,4 +1,6 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { qualityApi, type CaseDraft, type CasePriority, type EndpointTests as Tests } from '../../api/qualityApi';
@@ -94,7 +96,7 @@ export function EndpointTests({ endpointId, projectId }: { endpointId: string; p
 
       {asked && proposals.data && (
         <div className="et-proposals" aria-label="Proposed test cases">
-          <p className="et-groot"><span className="et-orb" aria-hidden="true" /> Aura proposes {cards.length} case{cards.length === 1 ? '' : 's'} from this endpoint&apos;s description. Nothing is added until you confirm.</p>
+          <p className="et-groot"><SiriOrb className="et-orb" /> Aura proposes {cards.length} case{cards.length === 1 ? '' : 's'} from this endpoint&apos;s description. Nothing is added until you confirm.</p>
           <ul>
             {cards.map((d) => (
               <li key={d.kind} className="et-card" data-testid="proposal">
@@ -132,7 +134,7 @@ function CaseSheet({ draft, tests, onClose, onSave, busy }: { draft: CaseDraft; 
         <label className="field-label" htmlFor="et-exp">Expected</label>
         <input id="et-exp" className="input" value={d.expected} onChange={(e) => setD({ ...d, expected: e.target.value })} />
         <label className="field-label" htmlFor="et-pri">Priority</label>
-        <select id="et-pri" className="select" value={d.priority} onChange={(e) => setD({ ...d, priority: e.target.value as CasePriority })}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</select>
+        <Select id="et-pri" className="select" value={d.priority} onChange={(e) => setD({ ...d, priority: e.target.value as CasePriority })}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</Select>
       </div>
     </Modal>
   );

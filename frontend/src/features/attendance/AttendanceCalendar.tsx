@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { createPortal } from 'react-dom';
 import { ApiError } from '../../api/client';
 import { Face } from '../../components/Face';
@@ -124,7 +125,7 @@ function Head({ emoji, kind, title, when, why }: { emoji: string; kind: string; 
       <div className="ed-kind"><span className="ed-ico" aria-hidden="true">{emoji}</span>{kind}</div>
       <h2 className="ed-title">{title}</h2>
       <p className="ed-when">{when}</p>
-      {why && <p className="ed-why"><span className="wp-orb sm" aria-hidden="true" /><span>{why}</span></p>}
+      {why && <p className="ed-why"><SiriOrb className="wp-orb sm" /><span>{why}</span></p>}
     </header>
   );
 }

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { SiriOrb } from '../aura/SiriOrb';
 import { Select } from '../Select';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ApiError, uploadFile } from '../../api/client';
@@ -20,6 +21,7 @@ import { guessType, useNewSheet, type NewType } from './state';
 import { openScheduleFromWords } from '../../features/meet/openFromWords';
 import './v2.css';
 
+const TemplatePicker = lazy(() => import('../../features/recurring/TemplatePicker').then((m) => ({ default: m.TemplatePicker })));
 const ProjectFormModal = lazy(() => import('../../features/projects/ProjectFormModal').then((m) => ({ default: m.ProjectFormModal })));
 
 /** The eight kind tiles of the design (apple/s-new): glyph, colour, and the sidebar place each one lands in. Time stays reachable by words. */
@@ -65,12 +67,13 @@ const spell = (min: number) => {
 /** The sheet itself; mounted once in the layout. */
 export function NewSheetHost() {
   const open = useNewSheet((s) => s.open);
-  const [making, setMaking] = useState<'project' | null>(null);
+  const [making, setMaking] = useState<'project' | 'template' | null>(null);
   const nav = useNavigate();
   return (
     <>
-      {open && <NewSheet onProject={() => setMaking('project')} />}
+      {open && <NewSheet onProject={() => setMaking('project')} onTemplate={() => setMaking('template')} />}
       <Suspense fallback={null}>
+        {making === 'template' && <TemplatePicker onClose={() => setMaking(null)} onCreated={(r) => { setMaking(null); if (r.projectId) nav(`/work/projects/${r.projectId}`); }} />}
         {making === 'project' && <ProjectFormModal onClose={() => setMaking(null)} onSaved={(id: string) => { setMaking(null); nav(`/work/projects/${id}`); }} />}
       </Suspense>
     </>
@@ -84,7 +87,7 @@ export function NewSheetHost() {
  * the sheet shrinks into the matching sidebar item, whose badge bumps, and the item opens in the Work side panel. The other kinds open
  * where they are written, with the words carried over.
  */
-function NewSheet({ onProject }: { onProject: () => void }) {
+function NewSheet({ onProject, onTemplate }: { onProject: () => void; onTemplate: () => void }) {
   const { type: presetType, text: presetText, project: inProject, close } = useNewSheet();
   const still = useReducedMotion();
   const nav = useNavigate();
@@ -289,20 +292,20 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   if (understood) {
     chips.push(
       <Chip key="kind" label="Type" value={type === 'task' ? pkLabel : label} glyph={def?.glyph} color={color}>
-        <select aria-label="Change type" value={type === 'ticket' ? `ticket:${chosenType?.id ?? ''}` : type === 'task' ? `task:${pkind}` : type}
+        <Select aria-label="Change type" value={type === 'ticket' ? `ticket:${chosenType?.id ?? ''}` : type === 'task' ? `task:${pkind}` : type}
           onChange={(e) => { const [t, sub] = e.target.value.split(':'); setPicked(t as NewType); if (t === 'ticket' && sub) setWorkTypeId(sub); if (t === 'task' && sub) setKind(sub as ProjectKind); }}>
           {TYPES.filter((t) => allowed(t.id)).flatMap((t) => t.id === 'ticket' && activeTypes.length
             ? activeTypes.map((w) => <option key={`ticket:${w.id}`} value={`ticket:${w.id}`}>Ticket · {w.name}</option>)
             : t.id === 'task' ? PROJECT_KINDS.filter((k) => k.id !== 'issue' && kindAllowed(k.id)).map((k) => <option key={`task:${k.id}`} value={`task:${k.id}`}>{k.label}</option>)
             : [<option key={t.id} value={t.id}>{t.label}</option>])}
           {type === 'ticket' && !activeTypes.length && <option value="ticket:">Ticket</option>}
-        </select>
+        </Select>
       </Chip>,
     );
     if (work) {
       chips.push(
         <Chip key="pr" label="Priority" value={pr} glyph="!" color={PRIORITY_COLOR[pr]} tone={pr === 'Critical' ? 'critical' : undefined}>
-          <select aria-label="Change priority" value={pr} onChange={(e) => setPriority(e.target.value as Priority)}>{PRIORITIES.map((p) => <option key={p} value={p}>{p}{slaOf(p) ? ` · ${spell(slaOf(p)!)}` : ''}</option>)}</select>
+          <Select aria-label="Change priority" value={pr} onChange={(e) => setPriority(e.target.value as Priority)}>{PRIORITIES.map((p) => <option key={p} value={p}>{p}{slaOf(p) ? ` · ${spell(slaOf(p)!)}` : ''}</option>)}</Select>
         </Chip>,
         <Chip key="who" label="Owner" value={owner?.name ?? 'Nobody yet'} avatar={owner ? initials(owner.name) : undefined}>
           <Select aria-label="Change owner" value={owner?.id ?? ''} onChange={(e) => setOwnerId(e.target.value)}><option value="">Nobody yet</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.id === me?.id ? ' (you)' : ''}</option>)}</Select>
@@ -333,7 +336,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
         </label>
         <div className="v2-understood" aria-live="polite">
           <div className="v2-new-chips">
-            <span className="v2-understood-label"><span className="v2-orb" aria-hidden="true" />Understood as{understood ? <span className="sr-only"> {/^[aeiou]/.test(shownLabel) ? 'an' : 'a'} {shownLabel}</span> : null}</span>
+            <span className="v2-understood-label"><SiriOrb className="v2-orb" />Understood as{understood ? <span className="sr-only"> {/^[aeiou]/.test(shownLabel) ? 'an' : 'a'} {shownLabel}</span> : null}</span>
             {chips.map((c, i) => (
               <motion.span key={(c as React.ReactElement).key} className="v2-new-chip-wrap" initial={still ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                 transition={still ? instant : { ...t.enter, delay: staggerDelay(i) }}>{c}</motion.span>
@@ -364,6 +367,7 @@ function NewSheet({ onProject }: { onProject: () => void }) {
               </button>
             </>
           )}
+          <button type="button" className="v2-new-btn sm" data-testid="new-from-template" onClick={() => { close(); onTemplate(); }}>From template…</button>
           <span className="v2-new-sp" />
           <button type="button" className="v2-new-btn" onClick={close}>Cancel</button>
           <button type="button" className="v2-new-create" disabled={blocked} onClick={() => void createIt()}>

@@ -19,6 +19,8 @@ import { NotificationsOverview } from './NotificationsOverview';
 import './settings-mac.css';
 import { leafHref, PLACE_LEAVES, PLACE_OF, useWorkspaceSections, type SettingsPlace, type WorkspaceSection } from './sections';
 import { NotificationCenterPage } from '../notifications/NotificationCenter';
+import { SmartNotificationsPane } from './SmartNotifications';
+import { FeatureFlagsSection, ProblemReportsSection } from './FeatureFlagsAdmin';
 import { AiSettings, type AiTab } from './AiControlCentre';
 import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -164,7 +166,7 @@ export function SettingsPage() {
   const wsSecurity = places.includes('security');
 
   const inWorkspace = place === 'general' || place === 'fields' || place === 'timelines';
-  const notifTabs: SubTab[] = [{ id: 'delivery', label: 'Every event' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
+  const notifTabs: SubTab[] = [{ id: 'smart', label: 'Smart' }, { id: 'delivery', label: 'Every event' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
     ...leaves.filter((l) => PLACE_LEAVES.notifications.includes(l.id)).map((l) => ({ id: l.id, label: l.id === 'notifications' ? 'Member defaults' : l.label }))];
   const tabs: SubTab[] = place === 'profile'
     ? [{ id: 'profile', label: 'Profile' },
@@ -275,6 +277,7 @@ function NotificationsTab({ sub }: { sub: string }) {
   switch (sub) {
     case 'notifications': return <NotificationDefaultsSection />;
     case 'reminders': return <><PageHead title="Escalation" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><div data-setting="reminders.escalation"><ReminderPolicySettings /><LastChanged k="reminders.escalation" section="reminders" /></div><SectionHistory section="reminders" /></>;
+    case 'smart': return <SmartNotificationsPane />;
     case 'device': return <NotificationCenterPage section="devices" />;
     case 'schedule': return <NotificationCenterPage section="schedule" />;
     case 'history': return <NotificationCenterPage section="inbox" />;
@@ -543,6 +546,8 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'notifications': case 'reminders': return <NotificationsTab sub={id} />;
     case 'holidays': return <HolidaysSection />;
     case 'attendance': return <AttendanceSettings />;
+    case 'features': return <FeatureFlagsSection />;
+    case 'problem-reports': return <ProblemReportsSection />;
     case 'data-location': return <DataLocationSection />;
     case 'status-page': return <StatusPageSection />;
     case 'data': return <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /><SectionHistory section="data" /></>;

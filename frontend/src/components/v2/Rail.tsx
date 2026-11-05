@@ -22,6 +22,8 @@ import { inRail, useMainNav, type NavDef } from '../../layouts/navigation';
 import { CreateOrganizationModal } from '../../layouts/parts';
 import { supportMailto } from '../../lib/support';
 import { Sheet } from '../Sheet';
+import { SwitchList } from '../shell/TeamSwitcher';
+import { useTeamLens } from '../../lib/teamLens';
 import { useAfterFirstPaint } from '../../lib/afterFirstPaint';
 import { useMailUnread } from '../../features/mail/useMail';
 import { get } from '../../api/client';
@@ -29,6 +31,8 @@ import { Popover } from '../../lib/popover';
 import { PALETTES, avatarBg, meshOf, themeOf, type PersonThemeId } from '../../lib/personTheme';
 import { useTabBadges } from '../../features/notifications/centre/NotificationCentre';
 import type { Destination } from '../../features/notifications/centre/tabBadges';
+import { openProblemReport, openWhatsNew } from '../../features/feedback/capture';
+import { useFlag } from '../../lib/flags';
 import './v2.css';
 
 /** The cache key of my /me/ui/profile (the card theme); the theme picker writes it too. */
@@ -250,36 +254,23 @@ export function Rail() {
 /** The workspace switcher at the top of the sidebar: the logo, ProjectTracker and the workspace; a menu to switch or create one. */
 function WorkspaceSwitcher() {
   const ctx = useAuth((s) => s.ctx)!;
-  const switchWorkspace = useAuth((s) => s.switchWorkspace);
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const admin = ctx.user.isPlatformAdmin;
   const cur = ctx.current;
-  const pick = async (id: string) => {
-    setOpen(false);
-    if (id === cur?.id) return;
-    try { await switchWorkspace(id); toast('Workspace switched.', 'info'); } catch { toast('Could not switch workspace.', 'error'); }
-  };
+  const lens = useTeamLens();
   return (
     <>
-      <button type="button" ref={trigger} className="shell-ws-btn" aria-haspopup="menu" aria-expanded={open} title={admin ? BRAND : `${BRAND} · ${cur?.name ?? ''}`}
+      <button type="button" ref={trigger} className="shell-ws-btn" data-testid="team-switcher" aria-haspopup="dialog" aria-expanded={open} title={admin ? BRAND : `${BRAND} · ${cur?.name ?? ''}`}
         onClick={() => (admin ? nav('/admin') : setOpen((o) => !o))}>
         <Logo size={28} />
-        <span className="v2-side-ws-text shell-wn"><b>{BRAND}</b><small>{admin ? 'Platform administration' : `${cur?.name ?? 'Workspace'} workspace`}</small></span>
+        <span className="v2-side-ws-text shell-wn"><b>{BRAND}</b><small>{admin ? 'Platform administration' : `${cur?.name ?? 'Workspace'} ▾ · ${cur?.type === 'Personal' ? 'Personal' : cur?.role ?? ''}${lens.team ? ` · ${lens.team.name}` : ''}`}</small></span>
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchorRef={trigger} role="menu" aria-label="Workspaces" className="acct-menu shell-ws-menu" side="bottom" align="start" gap={6}>
-        <div className="acct-items">
-          {ctx.workspaces.map((w) => (
-            <button key={w.id} type="button" role="menuitem" className="v2-menu-item" aria-current={w.id === cur?.id ? 'true' : undefined} title={w.name} onClick={() => void pick(w.id)}>
-              <span className="v2-ws">{w.name[0]?.toUpperCase()}</span><span className="grow">{w.name}<small className="shell-ws-sub">{w.type === 'Personal' ? 'Personal' : w.role}</small></span>{w.id === cur?.id && <Icon name="tick" size={15} />}
-            </button>
-          ))}
-          <div className="v2-menu-sep" />
-          <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { setOpen(false); setCreating(true); }}><Icon name="plus" size={16} /><span className="grow">Create organization</span></button>
-          <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { setOpen(false); nav('/settings/general'); }}><Icon name="settings" size={16} /><span className="grow">Workspace settings</span></button>
-        </div>
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={trigger} role="dialog" aria-label="Switch workspace or team" className="ts-pop" side="bottom" align="start" gap={6}>
+        <SwitchList onDone={() => setOpen(false)} />
+        <button type="button" className="ts-row" onClick={() => { setOpen(false); nav('/settings/general'); }}><span className="ts-mark ghost"><Icon name="settings" size={15} /></span><span className="ts-row-t">Workspace settings</span></button>
       </Popover>
       {creating && <CreateOrganizationModal onClose={() => setCreating(false)} />}
     </>
@@ -306,6 +297,7 @@ export function AvatarMenu({ variant = 'icon' }: { variant?: 'row' | 'icon' }) {
   const toggleTheme = useUi((s) => s.toggleTheme);
   const personal = useIsPersonal();
   const nav = useNavigate();
+  const reportOn = useFlag('report-problem');
   const [open, setOpen] = useState(false);
   const [wsOpen, setWsOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -371,6 +363,8 @@ export function AvatarMenu({ variant = 'icon' }: { variant?: 'row' | 'icon' }) {
             <span className="acct-seg" aria-hidden="true"><i className={theme !== 'dark' ? 'on' : ''}>Light</i><i className={theme === 'dark' ? 'on' : ''}>Dark</i></span></button>
           <div className="v2-menu-sep" />
           <a role="menuitem" className="v2-menu-item" href={supportMailto('Help with Project Tracker')} onClick={close}><Icon name="mail" size={16} /><span className="grow">Help</span></a>
+          {!admin && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(); openWhatsNew(); }}><Icon name="sparkle" size={16} /><span className="grow">What’s new</span></button>}
+          {!admin && reportOn && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(); window.setTimeout(openProblemReport, 60); }}><Icon name="alert" size={16} /><span className="grow">Report a problem</span></button>}
           <button type="button" role="menuitem" className="v2-menu-item danger" onClick={() => { close(); void logout(); }}><Icon name="logout" size={16} /><span className="grow">Sign out</span></button>
         </div>
       </Popover>

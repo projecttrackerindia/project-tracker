@@ -1,0 +1,9 @@
+/* Quick actions on in-app banners: calm pills, the primary one in the accent, Reject in red only when it is about to happen. */
+.qa-row { justify-content: flex-end; }
+.qa-ask { display: flex; gap: 6px; margin-top: 6px; }
+.qa-ask input { flex: 1; min-width: 0; }
+.ncx-btn.qa-danger { background: color-mix(in srgb, var(--calm-red, #ff3b30) 14%, transparent); color: var(--calm-red-text, #d70015); }
+@media (pointer: coarse), (max-width: 600px) {
+  .qa-row .ncx-btn, .qa-ask .ncx-btn { height: 44px; padding: 0 18px; border-radius: 22px; }
+  .qa-ask input { min-height: 44px; }
+}

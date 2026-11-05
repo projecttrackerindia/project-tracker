@@ -1,4 +1,6 @@
+import { Select } from '../../components/Select';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon';
 import { ErrorState, Spinner } from '../../components/ui';
@@ -188,7 +190,7 @@ export function VaultItemPanel({ id, policy, lockEpoch, binned = false, collecti
               </div>
             )}
             {insight && !binned && (
-              <div className="pw-ai" role="note"><span className="pw-orb" aria-hidden="true" /><span>{insight.text}</span><button type="button" className="pw-btn white" onClick={insight.act}>Change it</button></div>
+              <div className="pw-ai" role="note"><SiriOrb className="pw-orb" /><span>{insight.text}</span><button type="button" className="pw-btn white" onClick={insight.act}>Change it</button></div>
             )}
             {d.links.length > 0 && (
               <div className="pw-used">
@@ -458,7 +460,7 @@ function HistoryTab({ item }: { item: VaultItem }) {
     <div className="vlt-history">
       {secretFields.length > 1 && (
         <label className="field vlt-inline-field"><span>Field</span>
-          <select className="input" value={field} onChange={(e) => setField(e.target.value)}>{secretFields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}</select>
+          <Select className="input" value={field} onChange={(e) => setField(e.target.value)}>{secretFields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}</Select>
         </label>
       )}
       <ul>

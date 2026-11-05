@@ -56,9 +56,9 @@ function ServicePicker({ value, onChange }: { value: MeetingServiceKey; onChange
   ];
   return (
     <Field label="Meeting service" hint={value === 'auto' ? c?.reason ?? q.data?.meetingProblem ?? undefined : value === 'ours' ? 'Held in Project Tracker. People join from the invitation in Meet.' : 'Sent from your own calendar, which delivers the invitations and keeps the replies.'}>
-      <select className="select" aria-label="Meeting service" value={value} onChange={(e) => onChange(e.target.value as MeetingServiceKey)}>
+      <Select className="select" aria-label="Meeting service" value={value} onChange={(e) => onChange(e.target.value as MeetingServiceKey)}>
         {options.filter((o) => o.ok || o.key === value).map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-      </select>
+      </Select>
     </Field>
   );
 }
@@ -270,13 +270,13 @@ function StartNowForm({ mode, project: initialProject, title: initialTitle, deta
           <Field label="Date"><input className="input" type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           <Field label="Start"><input className="input" type="time" aria-label="Start" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></Field>
           <Field label="Duration">
-            <select className="select" aria-label="Duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+            <Select className="select" aria-label="Duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
               {[15, 30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <div className="gm-repeat-grid">
-          <Field label="Repeat"><select className="select" aria-label="Repeat" value={frequency} onChange={(e) => setFrequency(e.target.value as typeof frequency)}><option value="Once">Does not repeat</option><option value="Daily">Every day</option><option value="Weekdays">Every weekday (Mon–Fri)</option><option value="Weekly">Every week</option></select></Field>
+          <Field label="Repeat"><Select className="select" aria-label="Repeat" value={frequency} onChange={(e) => setFrequency(e.target.value as typeof frequency)}><option value="Once">Does not repeat</option><option value="Daily">Every day</option><option value="Weekdays">Every weekday (Mon–Fri)</option><option value="Weekly">Every week</option></Select></Field>
           {frequency !== 'Once' && <Field label="Sessions" hint="Including the first, up to 120"><input className="input" aria-label="Total sessions" type="number" min={2} max={120} value={occurrences} onChange={(e) => setOccurrences(Number(e.target.value))} /></Field>}
         </div>
         <p className="gm-invite-note">{calendarName

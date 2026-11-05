@@ -202,6 +202,8 @@ public static class DependencyInjection
         services.AddHostedService<SlaWorker>();
         services.Configure<TimesheetNudgeOptions>(config.GetSection(TimesheetNudgeOptions.Section));
         services.AddHostedService<TimesheetNudgeWorker>();
+        services.Configure<RecurringWorkOptions>(config.GetSection(RecurringWorkOptions.Section));
+        services.AddHostedService<RecurringWorkWorker>();
         services.Configure<MailWatchOptions>(config.GetSection(MailWatchOptions.Section));
         services.AddHostedService<MailWatchWorker>();
         services.Configure<AttendanceOptions>(config.GetSection(AttendanceOptions.Section));

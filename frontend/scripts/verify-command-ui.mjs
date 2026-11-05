@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { cutOff, fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -50,6 +51,7 @@ let agent={projectId:pid,enabled:true,readMailbox:true,readChat:true,readMeeting
   captionLanguage:null,autoJoinCalendar:false,sendMinutes:true,slackChannelId:null,slackAvailable:false,readWhatsApp:true,whatsAppAvailable:false,autonomyLevel:4,autoApplyConfidence:90,autoApplyKinds:['CreateActionItem','Decision','Suggestion','Missed'],followUps:true,meetingBriefs:true};
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
+await shimSelect(browser);
 try{
  // home: 'classic' starts on the classic Home (the person chose it once); null keeps the default, which is the AI-first Home.
  const make=async(theme,home='classic')=>{

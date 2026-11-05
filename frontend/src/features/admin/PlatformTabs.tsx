@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { invoiceSellerApi, platformApi } from '../../api/endpoints';
 import { EmailPanel } from './EmailPanel';
+import { SpeedCard } from './SpeedCard';
 import { NotetakerAccountsCard } from '../notetaker/NotetakerAccounts';
 import '../notetaker/notetaker.css';
 import type { AdminUsage, BillingSettings, InvoiceSeller, ConsentDocument, GoLive, PasswordPolicy, PlatformSettings } from '../../api/types';
@@ -485,6 +486,7 @@ export function HealthTab() {
           </div>
         </div>
       </div>
+      <SpeedCard />
       <div className="card">
         <div className="card-head"><h3>Background workers</h3></div>
         <div className="card-body">

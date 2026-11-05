@@ -13,6 +13,8 @@ import { reminderApi, watchApi, type Reminder, type ReminderList, type SnoozePre
 import { openReminderComposer, refreshReminders } from './store';
 import { addDays, dayFirst, describeInstant, deviceZone, hhmm, iso, parseReminder, sameDay, toRRule, wall } from './time';
 import './reminders-calm.css';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 type Smart = 'today' | 'scheduled' | 'flagged' | 'all' | 'done';
 type View = Smart | `list:${string}` | 'others' | 'sent' | 'auto' | 'watching';
@@ -171,8 +173,8 @@ export function RemindersPage() {
   };
   const remove = async (r: Reminder) => {
     setOpenId(null);
-    try { await reminderApi.remove(r.id); await refreshReminders(wid); toast(r.source === 'Personal' ? 'Reminder deleted.' : 'Dismissed.', 'success'); }
-    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not remove it.', 'error'); }
+    await deleteWithUndo({ what: 'Reminder', remove: () => reminderApi.remove(r.id), restore: () => restoreApi.reminder(r.id),
+      onRemoved: () => void refreshReminders(wid), onRestored: () => void refreshReminders(wid) });
   };
 
   if (list.isLoading) return <PageLoader />;

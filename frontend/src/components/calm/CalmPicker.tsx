@@ -10,6 +10,7 @@ export interface PickItem { id: string; label: string; sub?: string | null; dot?
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const LIMIT = 8;
 
+
 function readRecent(key?: string): string[] {
   if (!key) return [];
   try { const v = JSON.parse(localStorage.getItem(`pt_pick_${key}`) ?? '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, LIMIT) : []; } catch { return []; }
@@ -24,13 +25,14 @@ function pushRecent(key: string | undefined, id: string) {
  * Opening it shows your recent picks, then the top 8; typing narrows the list (or asks the server with `search` for long lists, debounced);
  * arrows move, Enter picks, Escape closes. On a phone it opens as a bottom sheet with 44px rows.
  */
-export function CalmPicker({ value, onChange, items = [], search, placeholder = 'Choose…', label, recentKey, allowClear, disabled, selected: selectedProp, className = '', testId, empty }: {
+export function CalmPicker({ value, onChange, items = [], search, placeholder = 'Choose…', label, recentKey, allowClear, disabled, selected: selectedProp, className = '', testId, empty, limit = LIMIT }: {
   value: string | null | undefined; onChange: (id: string | null, item: PickItem | null) => void;
   /** Every choice (filtered on the device). */ items?: PickItem[];
   /** Server search for large lists: called with what was typed (debounced); its results replace the local filter. */ search?: (q: string) => Promise<PickItem[]>;
   placeholder?: string; label: string; recentKey?: string; allowClear?: boolean; disabled?: boolean;
   /** The chosen item when it is not in `items` (an async list). */ selected?: PickItem | null;
   className?: string; testId?: string; empty?: ReactNode;
+  /** How many suggestions show before anything is typed (recent first). */ limit?: number;
 }) {
   const phone = useIsMobile();
   const listId = useId();
@@ -67,9 +69,9 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
     const f = fold(q.trim());
     if (f) return pool.filter((i) => fold(`${i.label} ${i.sub ?? ''} ${i.keywords ?? ''}`).includes(f)).slice(0, 50);
     const rec = readRecent(recentKey).map((id) => known.current.get(id)).filter((x): x is PickItem => !!x).map((x) => ({ ...x, group: 'Recent' }));
-    const rest = pool.filter((i) => !rec.some((r) => r.id === i.id)).slice(0, Math.max(0, LIMIT - rec.length) + (rec.length ? 0 : 0));
-    return [...rec, ...rest.slice(0, LIMIT)];
-  }, [q, items, remote, search, recentKey, open]); // eslint-disable-line react-hooks/exhaustive-deps
+    const rest = pool.filter((i) => !rec.some((r) => r.id === i.id));
+    return [...rec, ...rest].slice(0, limit);
+  }, [q, items, remote, search, recentKey, open, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => setActive(0), [q, open]);
   useLayoutEffect(() => {

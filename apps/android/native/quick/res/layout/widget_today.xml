@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Today widget: three tasks on the left; the check-in ring and the next meeting's Join on the right. Calm: one surface, one accent. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/pt_widget"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:padding="14dp"
+    android:background="@android:drawable/dialog_holo_light_frame">
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical">
+        <TextView android:id="@+id/pt_today" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="11sp" android:textStyle="bold" android:textColor="#6E6E73" />
+        <TextView android:id="@+id/pt_task1" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" android:paddingTop="6dp" android:textColor="#1D1D1F" />
+        <TextView android:id="@+id/pt_task2" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" android:paddingTop="4dp" android:textColor="#1D1D1F" />
+        <TextView android:id="@+id/pt_task3" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" android:paddingTop="4dp" android:textColor="#1D1D1F" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:orientation="vertical" android:gravity="end">
+        <ProgressBar android:id="@+id/pt_ring" style="?android:attr/progressBarStyleHorizontal" android:layout_width="64dp" android:layout_height="6dp" android:max="100" />
+        <TextView android:id="@+id/pt_ring_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="11sp" android:textColor="#6E6E73" />
+        <TextView android:id="@+id/pt_join" android:layout_width="wrap_content" android:layout_height="40dp" android:layout_marginTop="12dp" android:gravity="center"
+            android:paddingStart="14dp" android:paddingEnd="14dp" android:textColor="#FFFFFF" android:textStyle="bold" android:background="#2563EB" />
+    </LinearLayout>
+</LinearLayout>

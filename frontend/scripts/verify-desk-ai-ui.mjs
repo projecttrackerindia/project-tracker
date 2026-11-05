@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { appCsp } from './lib/csp.mjs';
 import { fitsPhone } from './lib/phone.mjs';
@@ -69,6 +70,8 @@ const detail = (w) => ({ ...row(w), description: w.description, startDate: null,
   detail: { id: w.id, status: 'ToDo', workTypeId: g(81), workType: 'Customer support', relatedProject: null, can: { edit: true, delete: true } }, activity: [], channel: w.channel });
 
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+
+await shimSelect(browser);
 const make = async (theme, s) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
   await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);

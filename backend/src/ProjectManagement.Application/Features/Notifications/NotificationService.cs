@@ -19,7 +19,7 @@ namespace ProjectManagement.Application.Features.Notifications;
 public record NotificationDto(Guid Id, NotificationType Type, string Title, string? Body, string? Link, bool IsRead, DateTime CreatedAt, bool Browser, bool NeedsYou = false,
     bool Archived = false, DateTime? SnoozedUntil = null, DateTime? ShownAt = null, IReadOnlyList<string>? Actions = null,
     string Category = NotificationCategories.Work, DateTime? StartsAt = null, string? JoinLink = null, string? Reason = null, DateTime? DeliverAfter = null,
-    bool Emailed = false, bool CanUndo = false);
+    bool Emailed = false, bool CanUndo = false, string Priority = NotificationPriority.Normal, string? GroupKey = null, string? GroupLabel = null, bool Muted = false);
 /// <summary>
 /// The inbox at a glance: unread overall, in each lane, and in each category of the Notification Centre (the badges on the bell, the app
 /// icon and the tabs all read this one answer).
@@ -245,8 +245,54 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
                 if (n.DeliverAfter is null || n.DeliverAfter < at) n.DeliverAfter = at;
             }
         }
+        if (c.Any) await ShapeAsync(n, ct);
         return c.Any;
     }
+
+    private readonly Dictionary<(Guid, Guid), (NotificationTuning? Tuning, IReadOnlyDictionary<NotificationType, string> Priorities, List<NotificationMute> Mutes)> _smart = new();
+
+    /// <summary>A person's grouping and priority choices and their muted projects and threads, loaded once per person per request.</summary>
+    private async Task<(NotificationTuning? Tuning, IReadOnlyDictionary<NotificationType, string> Priorities, List<NotificationMute> Mutes)> SmartAsync(Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        if (!_smart.TryGetValue((userId, tenantId), out var s))
+        {
+            var tuning = await db.NotificationTunings.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(t => t.TenantId == tenantId && t.UserId == userId, ct);
+            var now = clock.Now;
+            var mutes = await db.NotificationMutes.IgnoreQueryFilters().AsNoTracking().Where(m => m.TenantId == tenantId && m.UserId == userId && (m.Until == null || m.Until > now)).ToListAsync(ct);
+            s = (tuning, NotificationPriority.Parse(tuning?.PriorityOverrides), mutes);
+            _smart[(userId, tenantId)] = s;
+        }
+        return s;
+    }
+
+    /// <summary>
+    /// Smart notifications, on top of the channels: a muted project or thread still lands in the Notification Centre but never rings, pops up,
+    /// pushes or e-mails; and a normal (not urgent) update about something that already has an unread update from the last window joins that
+    /// group quietly (only the first of a burst pings). Urgent kinds, what asks something of the person (assignments, messages ...), calls and
+    /// security alerts are never held back.
+    /// </summary>
+    private async Task ShapeAsync(Notification n, CancellationToken ct)
+    {
+        if (NotificationCatalog.For(n.Type).Locked || n.Type == NotificationType.Call) return;
+        var (tuning, priorities, mutes) = await SmartAsync(n.UserId, n.TenantId, ct);
+        if (NotificationGroups.IsMuted(mutes, n.Link, clock.Now))
+        {
+            n.Browser = false; n.PushPending = false; n.EmailPending = false; n.SlackPending = false;
+            return;
+        }
+        if (NotificationPriority.Of(n.Type, priorities) == NotificationPriority.Urgent || NotificationLanes.IsNeedsYou(n.Type) || !(tuning?.Grouping ?? true) || !(n.Browser || n.PushPending)) return;
+        if (NotificationGroups.LinkPrefix(n.Link) is not { } prefix) return;
+        var since = clock.Now.AddMinutes(-(tuning?.GroupWindowMinutes ?? 60));
+        var earlier = await db.Notifications.IgnoreQueryFilters().AsNoTracking().AnyAsync(x => x.TenantId == n.TenantId && x.UserId == n.UserId && x.InApp && x.ReadAt == null
+            && x.ArchivedAt == null && x.CreatedAt >= since && x.Link != null && x.Link.StartsWith(prefix), ct);
+        if (earlier) { n.Browser = false; n.PushPending = false; }
+    }
+
+    /// <summary>The priority of each kind for this person (urgent or normal), with their own choices applied.</summary>
+    public async Task<IReadOnlyDictionary<NotificationType, string>> PrioritiesAsync(Guid userId, Guid tenantId, CancellationToken ct = default) => (await SmartAsync(userId, tenantId, ct)).Priorities;
+
+    /// <summary>Their muted projects and threads, now.</summary>
+    public async Task<IReadOnlyList<NotificationMute>> MutesAsync(Guid userId, Guid tenantId, CancellationToken ct = default) => (await SmartAsync(userId, tenantId, ct)).Mutes;
 
     private readonly Dictionary<(Guid, Guid), string> _slack = new();
 
@@ -430,10 +476,18 @@ public class NotificationService(IAppDbContext db, ICurrentContext ctx, AppClock
         var undoFrom = now.AddDays(-ProjectManagement.Application.Features.Projects.PlanSheetService.UndoDays);
         var undoable = changeIds.Count == 0 ? new HashSet<Guid>() : (await db.TaskChanges.AsNoTracking().Where(c => changeIds.Contains(c.Id) && c.UndoneAt == null && c.FromProjectId == null && c.CreatedAt >= undoFrom).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
         bool CanUndo(Notification n) => ProjectManagement.Application.Features.Projects.PlanSheetService.ChangeIdOf(n.DedupeKey) is { } cid && undoable.Contains(cid);
+        // Smart notifications: each one's priority for this person, the group it belongs to (and that group's name), and whether it is muted.
+        var tenant = ctx.RequireTenantId();
+        var priorities = await router.PrioritiesAsync(uid, tenant, ct);
+        var mutes = await router.MutesAsync(uid, tenant, ct);
+        var projectIds = rows.Select(n => NotificationGroups.ProjectOf(n.Link)).Where(x => x != null).Select(x => x!.Value).Distinct().ToList();
+        var projectNames = projectIds.Count == 0 ? new Dictionary<Guid, string>() : await db.Projects.AsNoTracking().Where(x => projectIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+        string? GroupLabel(Notification n) => NotificationGroups.ProjectOf(n.Link) is { } pid ? projectNames.GetValueOrDefault(pid) : null;
         return new PagedResult<NotificationDto>(
             rows.Select(n => new NotificationDto(n.Id, n.Type, n.Title, ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Body, n.Link, n.ReadAt != null, n.CreatedAt, n.Browser, NotificationLanes.IsNeedsYou(n.Type), n.ArchivedAt != null,
                 n.SnoozedUntil > now ? n.SnoozedUntil : null, n.SnoozedUntil is { } back && back <= now ? back : n.CreatedAt, null, NotificationCategories.Of(n.Type, n.Link), Reason: ProjectManagement.Application.Features.Reminders.DueReminderRules.SplitReason(n.Body).Reason, DeliverAfter: n.DeliverAfter,
-                Emailed: n.EmailedAt != null || n.EmailPending, CanUndo: CanUndo(n))).ToList(),
+                Emailed: n.EmailedAt != null || n.EmailPending, CanUndo: CanUndo(n), Priority: NotificationPriority.Of(n.Type, priorities), GroupKey: NotificationGroups.KeyOf(n.Link),
+                GroupLabel: GroupLabel(n), Muted: NotificationGroups.IsMuted(mutes, n.Link, now))).ToList(),
             p.SafePage, p.SafeSize(), total);
     }
 

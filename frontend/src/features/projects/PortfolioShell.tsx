@@ -21,6 +21,7 @@ import './planSheet.css';
 import './planSheetTabs.css';
 import './portfolioShell.css';
 import './portfolioCalm.css';
+import { PortfolioViewsBar } from './PortfolioSavedViews';
 export { PortfolioSkeleton } from './portfolioSkeleton';
 
 /**
@@ -272,6 +273,7 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
           <DotsMenu label={mode === 'sheet' ? 'More on the plan sheet' : 'More on Portfolio'} items={menu} />
           {!phone && <button type="button" className="pfc-week" onClick={() => url.setMode('present')} title="Present the week">Week {weekNo(today)} ›</button>}
         </div>
+        {mode !== 'present' && <PortfolioViewsBar url={url} />}
         {classic && <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={tab} onPick={pick} prefs={tabPrefs} save={saveTabs} compact={phone} />}
         <div ref={pageRef} className={`ps4-page pfx-page pc-${pageColour} ${mode === 'sheet' && (tab || folderProject) ? 'tabbed' : ''} ${mode === 'sheet' && tab === tabOrder0 ? 'first' : ''} ${classic ? 'pfc-sheetpage' : 'pfc-plain'}`}>
           {/* The field shows on Overview only while a filter is on, so an active filter is never invisible. */}

@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { cutOff, fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -38,6 +39,7 @@ let autonomy={projectId:pid,level:2,minDecisions:30,minRate:95,
  hints:[{projectId:pid,projectKey:'PAY',projectName:'Payments Core',kind:'CreateActionItem',decided:41,rate:97,level:2,message:"The team approved 97% of the agent's action items unchanged (41 decisions in 90 days). Let it create them by itself? The project goes to level 4 (Delegate) for this kind only."}]};
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
+await shimSelect(browser);
 try{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
  await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme','light');localStorage.setItem('pt_classic_pages','1');});

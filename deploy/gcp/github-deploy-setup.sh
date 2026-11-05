@@ -9,6 +9,7 @@
 #     the server over SSH with OS Login, and acting as the server's own account for that sign-in;
 #   - a workload identity pool "github" with a provider "github-oidc" that accepts only this repository's main branch;
 #   - OS Login on the server (SSH keys tied to Google accounts instead of keys in project metadata; you keep signing in the same way).
+# STAGING=1 also sets up the separate staging pool/account (run ./staging-setup.sh first).
 # At the end it prints the three values to add in GitHub › Settings › Secrets and variables › Actions › Variables.
 set -euo pipefail
 cd "$(dirname "$0")"; source ./config.sh
@@ -49,6 +50,37 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" --role=roles/iam
 
 echo "== OS Login on ${VM_NAME}"
 gcloud compute instances add-metadata "$VM_NAME" --zone="$ZONE" --metadata=enable-oslogin=TRUE >/dev/null
+
+if [ "${STAGING:-0}" = 1 ]; then
+  # Staging gets its OWN pool, provider and account: a pull-request token must never be able to act as pt-deploy (production).
+  ST_SA_NAME="pt-staging-deploy"; ST_SA="${ST_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+  ST_POOL="github-staging"; ST_PROVIDER="github-oidc"; STAGING_VM="${STAGING_VM:-pt-staging}"
+  echo "== Staging deploy account ${ST_SA} (release-* branches and same-repository pull requests)"
+  gcloud iam service-accounts describe "$ST_SA" >/dev/null 2>&1 || \
+    gcloud iam service-accounts create "$ST_SA_NAME" --display-name="ProjectTracker staging deploys from GitHub" >/dev/null
+  for role in roles/cloudbuild.builds.editor roles/logging.viewer roles/serviceusage.serviceUsageConsumer roles/compute.viewer roles/artifactregistry.reader; do
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:${ST_SA}" --role="$role" --condition=None >/dev/null
+  done
+  # Source uploads only (not every bucket in the project), and SSH only to the staging server.
+  gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}_cloudbuild" --member="serviceAccount:${ST_SA}" --role=roles/storage.admin >/dev/null
+  gcloud compute instances add-iam-policy-binding "$STAGING_VM" --zone="$ZONE" --member="serviceAccount:${ST_SA}" --role=roles/compute.osAdminLogin >/dev/null
+  gcloud iam service-accounts add-iam-policy-binding "pt-staging@${PROJECT_ID}.iam.gserviceaccount.com" --member="serviceAccount:${ST_SA}" --role=roles/iam.serviceAccountUser >/dev/null
+  for builder in "${NUMBER}@cloudbuild.gserviceaccount.com" "${NUMBER}-compute@developer.gserviceaccount.com"; do
+    gcloud iam service-accounts describe "$builder" >/dev/null 2>&1 && \
+      gcloud iam service-accounts add-iam-policy-binding "$builder" --member="serviceAccount:${ST_SA}" --role=roles/iam.serviceAccountUser >/dev/null || true
+  done
+  gcloud iam workload-identity-pools describe "$ST_POOL" --location=global >/dev/null 2>&1 || \
+    gcloud iam workload-identity-pools create "$ST_POOL" --location=global --display-name="GitHub Actions (staging)" >/dev/null
+  gcloud iam workload-identity-pools providers describe "$ST_PROVIDER" --location=global --workload-identity-pool="$ST_POOL" >/dev/null 2>&1 || \
+    gcloud iam workload-identity-pools providers create-oidc "$ST_PROVIDER" --location=global --workload-identity-pool="$ST_POOL" \
+      --display-name="GitHub (staging)" --issuer-uri="https://token.actions.githubusercontent.com" \
+      --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
+      --attribute-condition="assertion.repository=='${REPOSITORY}' && (assertion.ref.startsWith('refs/heads/release') || assertion.ref.startsWith('refs/pull/') || assertion.environment=='staging')" >/dev/null
+  gcloud iam service-accounts add-iam-policy-binding "$ST_SA" --role=roles/iam.workloadIdentityUser \
+    --member="principalSet://iam.googleapis.com/projects/${NUMBER}/locations/global/workloadIdentityPools/${ST_POOL}/attribute.repository/${REPOSITORY}" >/dev/null
+  echo "Staging variables:  GCP_STAGING_WIF_PROVIDER=projects/${NUMBER}/locations/global/workloadIdentityPools/${ST_POOL}/providers/${ST_PROVIDER}"
+  echo "                    GCP_STAGING_DEPLOY_SA=${ST_SA}   (and STAGING_VM=${STAGING_VM} if you renamed it)"
+fi
 
 cat <<EOF
 

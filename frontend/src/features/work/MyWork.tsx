@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ApiError, get, put } from '../../api/client';
 import { timeApi } from '../../api/endpoints';
@@ -309,7 +310,7 @@ export function MyWork({ onOpen }: { onOpen: (id: string) => void }) {
             </div>
           </div>
           <div className="mw-ai" role="status">
-            <div className="mw-ai-line"><span className="mw-orb" aria-hidden="true" />
+            <div className="mw-ai-line"><SiriOrb className="mw-orb" />
               <span>{tip ? `${tip.title} can wait — it isn't due till ${dayText(tip.dueDate)}${tip.priority === 'Low' ? ' and it is low priority' : ''}.`
                 : overdue ? `${overdue} item${overdue === 1 ? ' is' : 's are'} overdue. Clear ${overdue === 1 ? 'it' : 'them'} first, or give ${overdue === 1 ? 'it' : 'them'} a date you can meet.`
                 : 'Your week looks doable. Nothing needs moving.'}</span></div>

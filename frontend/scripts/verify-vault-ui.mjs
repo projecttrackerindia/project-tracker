@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { webcrypto, createHash } from 'node:crypto';
@@ -72,6 +73,8 @@ const writes = [], errors = [], checks = [];
 const err = (status, code, message) => ({ status, body: { errors: [{ code, message }], message } });
 
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+
+await shimSelect(browser);
 try {
   const make = async (theme = 'light', extra = {}) => {
     const ctx = await browser.newContext({ ...extra, timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });

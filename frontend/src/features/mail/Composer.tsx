@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Icon } from '../../components/Icon';
 import { Select } from '../../components/Select';
 import { Modal, Spinner } from '../../components/ui';
@@ -118,7 +119,7 @@ export function Composer({ accounts, init, agent, onClose, onSent, update }: {
       {accounts.length === 0 ? <p className="muted">Connect a mail account that can send first (Settings › Integrations › Mail).</p> : <div className="mb-compose ml-compose" data-testid="ml-composer">
         {agent && (
           <form className="ml-idea" onSubmit={(e) => { e.preventDefault(); void draftFromIdea(); }}>
-            <span className="ml-orb" aria-hidden="true" />
+            <SiriOrb className="ml-orb" />
             <input value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Describe the mail — “ask CRIF to whitelist our UAT IP by Thursday”" aria-label="Describe the mail for the assistant" />
             <button type="submit" className="btn btn-sm" disabled={drafting || !idea.trim()}>{drafting ? <Spinner /> : null} Draft it</button>
           </form>

@@ -11,6 +11,7 @@ import { reminderApi, type ReminderSettings } from '../reminders/api';
 import { liveBannersOn, setLiveBanners } from '../../components/v2/liveBannersPref';
 import { whatsAppPrefsUrl, type WhatsAppPreferences } from './WhatsAppNotificationPreferences';
 import { SGroup, SPaneHead, SPop, SRow, SSwitch, STile } from './Grouped';
+import { QuickActionsSettings } from '../notifications/quick/QuickActionsSettings';
 
 const PREFS_KEY = ['notification-prefs'];
 const SETTINGS_KEY = ['reminder-settings', 'nc'];
@@ -124,6 +125,8 @@ export function NotificationsOverview({ more }: { more: { id: string; label: str
           </SRow>
         )}
       </SGroup>
+
+      <QuickActionsSettings />
 
       <SGroup label="Quiet hours">
         <SRow icon={<STile color="#5856d6">☾</STile>} title="Quiet hours" sub="Hold everything except critical">

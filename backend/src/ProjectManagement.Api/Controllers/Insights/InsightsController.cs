@@ -34,9 +34,21 @@ public class InsightsController(DashboardService dashboard, CalendarService cale
     [HttpGet("search"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("search")]
     public async Task<IActionResult> Search([FromQuery] string q, CancellationToken ct) => Ok(await search.SearchAsync(q ?? "", ct));
 
-    [HttpGet("activity"), RequireModule(Modules.Activity)]
-    public async Task<IActionResult> Activity([FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default) =>
-        Ok(await activity.ListAsync(null, page, pageSize, ct));
+    /// <summary>
+    /// Without entityType: the workspace's activity feed (needs the Activity module). With entityType (task, project, actionitem, reminder, note,
+    /// approval) and entityId: that item's field-level history, newest first, for anyone who may see the item
+    /// (<see cref="ProjectManagement.Application.Features.WorkHistory.WorkActivityService"/>).
+    /// </summary>
+    [HttpGet("activity")]
+    public async Task<IActionResult> Activity([FromServices] ProjectManagement.Application.Features.WorkHistory.WorkActivityService items,
+        [FromServices] ProjectManagement.Application.Services.PermissionService permissions, [FromQuery] string? entityType = null, [FromQuery] Guid? entityId = null,
+        [FromQuery] int page = 1, [FromQuery] int? pageSize = null, CancellationToken ct = default)
+    {
+        if (!string.IsNullOrWhiteSpace(entityType) || entityId is not null)
+            return Ok(await items.ListAsync(entityType, entityId ?? Guid.Empty, page, pageSize ?? 50, ct));
+        await permissions.RequireModuleAsync(Modules.Activity, ProjectManagement.Domain.AccessLevel.View, ct);
+        return Ok(await activity.ListAsync(null, page, pageSize ?? 25, ct));
+    }
 
     [HttpGet("audit-logs"), RequireModule(Modules.Audit)]
     public async Task<IActionResult> Audit([FromQuery] string? action, [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default) =>

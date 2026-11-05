@@ -116,7 +116,21 @@ public partial class ProjectService
         stage.Name = req.Name.Trim();
         if (req.DurationDays is < 0 or > 36500) throw new ValidationException("durationDays", "Use 0 to 36500 calendar days; zero represents a milestone.");
         stage.DurationDays = req.DurationDays ?? StageScheduler.Duration(null, req.PlannedStart, req.PlannedEnd) ?? stage.DurationDays;
+        // A phase's planned dates moving later need a reason, like every other date (kept in the date history and told to the project's manager).
+        var why = DueDateHistory.ReasonOf(req.ExtensionReason, req.ScheduleReason);
+        var startWhy = dueHistory.Require("phase's planned start", stage.PlannedStart, req.PlannedStart, why);
+        var endWhy = dueHistory.Require("phase's planned end", stage.PlannedEnd, req.PlannedEnd, why);
+        var (wasStart, wasEnd) = (stage.PlannedStart, stage.PlannedEnd);
         stage.PlannedStart = req.PlannedStart; stage.PlannedEnd = req.PlannedEnd;
+        if (wasStart is not null) dueHistory.RecordDate(stage.TenantId, stage.ProjectId, DateKinds.Stage, stage.Id, DateKinds.Start, wasStart, stage.PlannedStart, startWhy);
+        if (wasEnd is not null) dueHistory.RecordDate(stage.TenantId, stage.ProjectId, DateKinds.Stage, stage.Id, DateKinds.End, wasEnd, stage.PlannedEnd, endWhy);
+        if (DueDateHistory.IsLater(wasEnd, stage.PlannedEnd) || DueDateHistory.IsLater(wasStart, stage.PlannedStart))
+        {
+            var later = DueDateHistory.IsLater(wasEnd, stage.PlannedEnd);
+            await notices.ExtendedAsync(new ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget(stage.ProjectId, $"Phase {req.Name.Trim()}", $"/projects/{stage.ProjectId}?tab=timeline", NotificationType.ProjectUpdated),
+                stage.ProjectId, later ? "Planned end" : "Planned start", later ? wasEnd : wasStart, later ? stage.PlannedEnd : stage.PlannedStart, later ? endWhy : startWhy,
+                [stage.OwnerId, stage.AssigneeId], ct);
+        }
         stage.ActualStart = req.ActualStart; stage.ActualEnd = req.ActualEnd;
         // Set by a person now: never put back automatically.
         db.StageAutoStarts.RemoveRange(await db.StageAutoStarts.Where(a => a.StageId == stage.Id).ToListAsync(ct));

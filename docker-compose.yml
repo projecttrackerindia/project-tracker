@@ -65,6 +65,9 @@ services:
       # Shared cache and rate limits for running several API servers: set REDIS_URL=redis:6379 and start with `--profile redis`. Empty = in-process memory.
       Redis__ConnectionString: ${REDIS_URL:-}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-projectmanagement-api}
+      # Error tracking (Sentry-compatible: Sentry, GlitchTip, self-hosted). Empty = off. See docs/ops.md.
+      Sentry__Dsn: ${SENTRY_DSN:-}
+      Sentry__Environment: ${SENTRY_ENVIRONMENT:-}
       # The project agent's own meeting bot (apps/meetbot): set MEETBOT_SECRET (16+ characters) and start with `--profile meetbot`.
       Agent__MeetingBotUrl: http://meetbot:8080
       Agent__MeetingBotSecret: ${MEETBOT_SECRET:-}

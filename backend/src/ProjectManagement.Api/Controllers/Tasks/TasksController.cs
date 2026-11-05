@@ -25,6 +25,14 @@ public class TasksController(TaskService tasks, NotificationService notification
     [HttpPatch("tasks/{id:guid}/move")]
     public async Task<IActionResult> Move(Guid id, [FromBody] MoveTaskRequest req, CancellationToken ct) => Ok(await tasks.MoveAsync(id, req, ct));
 
+    /// <summary>Undo of a delete (the person who deleted it, or an owner/admin): the task and the subtasks deleted with it come back.</summary>
+    [HttpPost("tasks/{id:guid}/restore")]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken ct)
+    {
+        await tasks.RestoreAsync(id, ct);
+        return Ok(await tasks.GetAsync(id, ct));
+    }
+
     [HttpDelete("tasks/{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

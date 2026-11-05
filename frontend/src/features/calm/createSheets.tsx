@@ -16,6 +16,7 @@ import { refreshWork } from '../work/workUi';
 import { parseQuick } from './quickParse';
 import { openNew } from '../../components/v2/state';
 import './calm-pages.css';
+import { ActivityHistory } from '../dates/ActivityHistory';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 /** "Fri 6 Nov" */
@@ -228,9 +229,8 @@ export function ProjectSheet({ open, onClose, project }: { open: boolean; onClos
     try {
       const base = { name: name.trim(), description: desc.trim() || undefined, ownerId: ownerId || null, teamId: teamId || null, startDate: start || null, dueDate: target || null };
       if (edit && project) {
-        const moved = (project.dueDate ?? '') < (target ?? '') && !!project.dueDate;
         await projectApi.update(project.id, { ...base, priority: project.priority, status: project.status, version: project.version, enforceDependencies: project.enforceDependencies,
-          projectGroupId: project.projectGroupId, projectType: project.projectType, deliveryMethod: project.deliveryMethod, dueDateReason: moved ? 'Target moved from the project sheet' : null });
+          projectGroupId: project.projectGroupId, projectType: project.projectType, deliveryMethod: project.deliveryMethod, dueDateReason: null });   // a later target asks for the reason in the shared sheet
         toast('Saved.'); await invalidateWorkspace(wid); onClose();
       } else {
         const pickable = (groups.data ?? []).filter((g) => g.isActive);
@@ -268,6 +268,8 @@ export function ProjectSheet({ open, onClose, project }: { open: boolean; onClos
                 <div className="cm-lab">Colour</div>
                 <p className="cm-note"><CalmDot color={projectColor(project!.id)} /> Every project keeps one dot colour, the same on every screen.</p>
                 <p className="cm-note">Phases, members, workflow and automation are in the project’s ⋯ menu.</p>
+                <div className="cm-lab">Activity</div>
+                <div className="cm-activity"><ActivityHistory type="project" id={project!.id} /></div>
               </>
             ) : (
               <>

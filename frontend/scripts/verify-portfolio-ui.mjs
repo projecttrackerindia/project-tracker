@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -36,6 +37,7 @@ const timeline={from:day(-40),to:day(60),projects:[
  {id:web,key:'WEB',name:'Website',health:'OnTrack',group:'Delivery',start:day(-10),due:day(40),originalDue:null,forecast:day(45),progress:20,milestones:[],dependsOn:[]}]};
 const writes=[],errors=[],checks=[],boardQueries=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
+await shimSelect(browser);
 try{
  const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block',acceptDownloads:true});
  await ctx.addInitScript(()=>{localStorage.setItem('pm_alerts_prompt','1');localStorage.setItem('pm_theme','light');localStorage.setItem('pm_home_mode','classic');localStorage.setItem('pt_classic_pages','1');});
