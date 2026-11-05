@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -150,8 +151,8 @@ function TimePicker({ days, today, day0, start0, len, onSave, onCancel }: { days
   const times = Array.from({ length: Math.round((END - len - START) / SNAP) + 1 }, (_, i) => START + i * SNAP);
   return (
     <div className="ed-pick" data-testid="ed-pick">
-      <label><span>Day</span><select className="ed-sel" aria-label="Day" value={day} onChange={(e) => setDay(e.target.value)}>{choices.map((d) => <option key={d} value={d}>{dayLabel(d, today)}</option>)}</select></label>
-      <label><span>Starts</span><select className="ed-sel" aria-label="Start time" value={start} onChange={(e) => setStart(Number(e.target.value))}>{times.map((t) => <option key={t} value={t}>{clockAP(t)}</option>)}</select></label>
+      <label><span>Day</span><Select className="ed-sel" aria-label="Day" value={day} onChange={(e) => setDay(e.target.value)}>{choices.map((d) => <option key={d} value={d}>{dayLabel(d, today)}</option>)}</Select></label>
+      <label><span>Starts</span><Select className="ed-sel" aria-label="Start time" value={start} onChange={(e) => setStart(Number(e.target.value))}>{times.map((t) => <option key={t} value={t}>{clockAP(t)}</option>)}</Select></label>
       <div className="ed-pick-act"><button type="button" className="ed-btn ghost" onClick={onCancel}>Cancel</button><button type="button" className="ed-btn primary" onClick={() => onSave(day, start)}>Move</button></div>
     </div>
   );

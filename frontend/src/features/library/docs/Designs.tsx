@@ -1,3 +1,4 @@
+import { Select } from '../../../components/Select';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
@@ -184,7 +185,7 @@ function AddDesign({ projectId, groups, onClose, onAdd }: { projectId: string | 
         <div className="dz-fields">
           <label>Name<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder="Payment success" /></label>
           <label>Flow<input value={group} onChange={(e) => setGroup(e.target.value)} maxLength={80} list="dz-groups" placeholder="Onboarding" /><datalist id="dz-groups">{groups.map((g) => <option key={g} value={g} />)}</datalist></label>
-          <label>Device<select value={device} onChange={(e) => setDevice(e.target.value as DesignData['device'])}>{(Object.keys(SIZE) as DesignData['device'][]).map((k) => <option key={k} value={k}>{SIZE[k].label}</option>)}</select></label>
+          <label>Device<Select value={device} onChange={(e) => setDevice(e.target.value as DesignData['device'])}>{(Object.keys(SIZE) as DesignData['device'][]).map((k) => <option key={k} value={k}>{SIZE[k].label}</option>)}</Select></label>
         </div>
         {how === 'figma' && (<>
           <label className="dz-wide">Figma link<input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.figma.com/design/…/Onboarding?node-id=12-4" /></label>

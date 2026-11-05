@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -48,6 +49,7 @@ const publicStatus = { title: 'Kestrel API status', workspace: 'Kestrel Lending'
 
 const errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+await shimSelect(browser);
 const make = async (theme, state, signedIn = true) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
   await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);

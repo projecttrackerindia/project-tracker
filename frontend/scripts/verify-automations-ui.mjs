@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { appCsp } from './lib/csp.mjs';
 import { fitsPhone } from './lib/phone.mjs';
@@ -36,6 +37,7 @@ const backtest = (b) => {
 
 const errors = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+await shimSelect(browser);
 const make = async (theme, state) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
   await ctx.addInitScript((t) => { localStorage.setItem('pm_alerts_prompt', '1'); localStorage.setItem('pm_theme', t); }, theme);
@@ -107,7 +109,7 @@ try {
     assert.equal(await main.getByLabel('Step 2', { exact: true }).inputValue(), 'PostToChannel');
     assert.equal(await main.getByLabel('Step 3', { exact: true }).inputValue(), 'TellCustomer');
     assert.equal(await main.getByLabel('Messages channel').inputValue(), g(60));
-    assert.match(await main.getByLabel('Step 2', { exact: true }).locator('option:checked').innerText(), /② Post in/);
+    assert.match(await main.getByLabel('Step 2', { exact: true }).locator('.ss-value').innerText(), /② Post in/);
     // The dry run, from the backtest endpoint.
     await main.getByText('Dry run · would have fired 6 times last week').waitFor();
     assert.equal(await main.locator('.au-bars i').count(), 7);

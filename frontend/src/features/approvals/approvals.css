@@ -167,3 +167,15 @@
   .apq-note { margin-left: 0; width: 100%; }
   .ap-row, .ap-hrow, .apq-types button, .ap-lk, .ap-pill { min-height: 44px; }
 }
+
+/* Round 4: type tabs wrap as readable chips (never cut off), full-contrast text in both themes. */
+html body .apq-types { display: flex; flex-wrap: wrap; gap: 8px; }
+html body .apq-types button { flex: 0 0 auto; white-space: nowrap; padding: 8px 13px; border-radius: 999px; color: var(--calm-ink); background: var(--calm-fill); box-shadow: none; font-size: 13px; }
+html body .apq-types button:hover { background: var(--calm-fill-2); }
+html body .apq-types button.on { background: color-mix(in srgb, var(--calm-accent) 16%, transparent); box-shadow: inset 0 0 0 1.5px var(--calm-accent); color: var(--calm-ink); }
+/* "+ Link" is a quiet chip that opens the calm picker. */
+html body .cpk-trigger.apq-link-pick { width: auto; min-height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; background: none; box-shadow: inset 0 0 0 1px var(--calm-fill-2); color: var(--calm-ink2); }
+html body .cpk-trigger.apq-link-pick .cpk-v.ph { color: var(--calm-ink2); }
+html body .cpk-trigger.apq-link-pick .cpk-chev { display: none; }
+html body .apq-edit-row .cpk-trigger { flex: 1; }
+@media (max-width: 760px) { html body .apq-types button { min-height: 40px; } }

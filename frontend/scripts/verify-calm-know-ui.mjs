@@ -119,6 +119,11 @@ try {
         assert.ok(await page.getByTestId('doc-comment').isVisible(), `doc-reader ${suffix}: Comment… box`);
       }
       if (headline) assert.match(await page.locator('.calm-hero-title').first().innerText(), headline, `${name}: calm headline`);
+      if (name === 'org-chart') {
+        const dup = await page.locator('main').getByRole('tab', { name: 'Teams', exact: true }).or(page.locator('main').getByRole('radio', { name: 'Teams', exact: true })).or(page.locator('.pr-org-head').getByRole('button', { name: 'Teams', exact: true })).count();
+        assert.ok(dup <= 1, `org-chart ${suffix}: one Teams tab, not two (${dup})`);
+        await page.screenshot({ path: path.join(path.resolve('test-results/calm-round4b'), `org-chart-${suffix}.png`) });
+      }
       if (w < 500) await fitsPhone(page, `${name} ${suffix}`, assert).catch((e) => { throw new Error(`${name} ${suffix}: ${e.message.split('\n').slice(0, 6).join(' ')}`); });
       if (process.env.DUMP === name) console.log('DUMP', await page.evaluate(() => [...document.querySelector('.rd-page')?.children ?? []].map((e) => `${e.tagName}.${e.className} ${Math.round(e.getBoundingClientRect().top)} ${Math.round(e.getBoundingClientRect().height)}`).join(' | ')));
       const file = path.join(out, `${name}-${suffix}.png`); await page.screenshot({ path: file }); console.log(file);

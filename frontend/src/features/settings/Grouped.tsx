@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import type { ReactNode } from 'react';
 import './grouped.css';
 
@@ -44,9 +45,9 @@ export function SSwitch({ on, onChange, label, disabled, locked }: { on: boolean
 export function SPop<T extends string>({ value, options, onChange, label, disabled }: { value: T; options: { id: T; label: string }[]; onChange: (v: T) => void; label: string; disabled?: boolean }) {
   return (
     <span className="sg-pop">
-      <select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as T)}>
+      <Select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as T)}>
         {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-      </select>
+      </Select>
     </span>
   );
 }

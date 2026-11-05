@@ -26,6 +26,8 @@ interface Props {
   children?: ReactNode; className?: string; style?: CSSProperties; id?: string; title?: string; disabled?: boolean; name?: string; required?: boolean; autoFocus?: boolean;
   value?: string | number | readonly string[]; defaultValue?: string | number | readonly string[]; onChange?: ChangeEventHandler<HTMLSelectElement>;
   'aria-label'?: string; 'aria-labelledby'?: string; 'aria-describedby'?: string;
+  tabIndex?: number; 'data-testid'?: string;
+  /** Called when the field is left: after the list closes (chosen or dismissed), or on blur while closed. */ onBlur?: () => void;
 }
 
 /**
@@ -34,7 +36,7 @@ interface Props {
  * Opening it shows the list with a search field; typing narrows the options, arrows move, Enter chooses, Escape closes.
  * The native select stays in the page, hidden, as the single source of truth (value, options, change events).
  */
-export function Select({ children, className = '', style, id, title, disabled, value, defaultValue, onChange, name, required, autoFocus, ...aria }: Props) {
+export function Select({ children, className = '', style, id, title, disabled, value, defaultValue, onChange, name, required, autoFocus, tabIndex, onBlur, ...aria }: Props) {
   const native = useRef<HTMLSelectElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const pop = useRef<HTMLDivElement>(null);
@@ -83,13 +85,13 @@ export function Select({ children, className = '', style, id, title, disabled, v
     const onScroll = (e: Event) => { if (!pop.current?.contains(e.target as Node)) reposition(); };
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (!pop.current?.contains(t) && !trigger.current?.contains(t)) setOpen(false);
+      if (!pop.current?.contains(t) && !trigger.current?.contains(t)) { setOpen(false); if (onBlur) window.setTimeout(onBlur, 0); }
     };
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', reposition);
     document.addEventListener('mousedown', onDown);
     return () => { window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', reposition); document.removeEventListener('mousedown', onDown); };
-  }, [open, reposition]);
+  }, [open, reposition, onBlur]);
 
   useEffect(() => { if (open) search.current?.focus(); }, [open, place !== null]);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -106,7 +108,7 @@ export function Select({ children, className = '', style, id, title, disabled, v
     setActive(prefill ? 0 : Math.max(0, at));
     setOpen(true);
   };
-  const close = (refocus = true) => { setOpen(false); if (refocus) trigger.current?.focus(); };
+  const close = (refocus = true) => { setOpen(false); if (refocus) trigger.current?.focus(); if (onBlur) window.setTimeout(onBlur, 0); };
 
   const choose = (opt: Opt) => {
     const el = native.current;
@@ -150,7 +152,8 @@ export function Select({ children, className = '', style, id, title, disabled, v
 
   return (
     <>
-      <button {...aria} ref={trigger} type="button" id={id} title={title} disabled={disabled} autoFocus={autoFocus}
+      <button {...aria} ref={trigger} type="button" id={id} title={title} disabled={disabled} autoFocus={autoFocus} tabIndex={tabIndex}
+        onBlur={(e) => { if (!open && onBlur && !pop.current?.contains(e.relatedTarget as Node)) onBlur(); }}
         className={`${className} ss-trigger`} style={style} role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? listId : undefined}
         onClick={() => (open ? close(false) : openList())} onKeyDown={onTriggerKey}>
         <span className="ss-value">{selected?.label ?? ' '}</span>

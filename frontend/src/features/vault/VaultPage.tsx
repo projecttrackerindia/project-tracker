@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ApiError } from '../../api/client';
 import { createPortal } from 'react-dom';
@@ -271,9 +272,9 @@ function Vault() {
                     {view === 'items' && (
                       <div className="vlt-filters">
                         <label className="vlt-search"><Icon name="search" size={15} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search names, addresses, tags" aria-label="Search the vault" /></label>
-                        <select className="input" value={kind} onChange={(e) => setKind(e.target.value as VaultItemKind | '')} aria-label="Kind">
+                        <Select className="input" value={kind} onChange={(e) => setKind(e.target.value as VaultItemKind | '')} aria-label="Kind">
                           <option value="">All kinds</option>{(Object.keys(KIND_LABEL) as VaultItemKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
-                        </select>
+                        </Select>
                         {health && <button className="chip vlt-chip-on" onClick={() => set({ health: null })}>{health === 'any' ? 'At risk' : HEALTH_LABEL[health]} <Icon name="close" size={12} /></button>}
                       </div>
                     )}

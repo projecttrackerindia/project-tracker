@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -31,6 +32,7 @@ const weekly={projectId:P,projectName:'Payments Hub',from:'2026-10-20',to:'2026-
 let scheduled=null;
 const writes=[],errors=[],checks=[];
 const browser=await chromium.launch({...(process.env.PM_BROWSER_EXECUTABLE?{executablePath:process.env.PM_BROWSER_EXECUTABLE}:{}),headless:true});
+await shimSelect(browser);
 try{
  const make=async(theme,mailLinked=false)=>{
   const ctx=await browser.newContext({timezoneId:'Asia/Kolkata',serviceWorkers:'block'});
@@ -91,8 +93,8 @@ try{
  await shot(page,'weekly-light-1440.png');
 
  // Recipients: add a person (switches Mail on), then Approve & send to chat + mail.
- await page.getByRole('button',{name:'＋ Add person or channel'}).click();
- await page.getByLabel('Add person or channel').selectOption(U2);
+ await page.getByTestId('wrp-add').click();
+ await page.locator('.cpk-pop .cpk-opt, .cpk-sheet .cpk-opt').filter({hasText:'Daniel Okafor'}).click();
  assert.equal(await page.getByRole('button',{name:'Mail'}).getAttribute('aria-pressed'),'true');
  await page.locator('.wrp-approve-side').click();
  await page.waitForFunction(()=>true);await page.waitForTimeout(300);

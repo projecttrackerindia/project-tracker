@@ -45,6 +45,16 @@
           document.addEventListener('touchmove', function (e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
         }
       } catch (e) { document.documentElement.className = 'app'; }
+      // First-visit speed: someone signed in on this device starts the session refresh now, while the app's scripts are still
+      // downloading, instead of after them (the app picks this one answer up in api/client.ts; same lock, same request).
+      try {
+        if (document.documentElement.className === 'app' && localStorage.getItem('pm_hint') === '1' && !window.Capacitor
+          && !/^\/(login|register|reset|verify|forgot|terms|privacy|status|s|connect)(\/|$)/.test(location.pathname)) {
+          var go = function () { return fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }).catch(function () { return null; }); };
+          var locks = navigator.locks;
+          window.__ptRefresh = locks && locks.request ? locks.request('pt-refresh', go) : go();
+        }
+      } catch (e) {}
       // Only the public screens are for search engines. Every other address (an organization's pages, a reset link, a mistyped path) is
       // answered with this same file, so it says "do not index" instead of looking like a duplicate of the home page.
       try {

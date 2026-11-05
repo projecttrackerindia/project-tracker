@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { connectedAppApi } from '../../api/endpoints';
 import { Icon } from '../../components/Icon';
+import { CalmGo, CalmHero, CalmLink, CalmPicker, CalmSection, type PickItem } from '../../components/calm';
 import { ErrorState, PageLoader } from '../../components/ui';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
@@ -43,37 +44,36 @@ export function ConnectPage() {
   };
   const host = (() => { try { return new URL(redirectUri).host; } catch { return redirectUri; } })();
 
+  const wsItems: PickItem[] = workspaces.map((w) => ({ id: w.id, label: w.name, sub: w.type === 'Personal' ? 'Personal' : w.role ?? null }));
   return (
-    <div className="cn-page">
+    <div className="cn-page cn-calm">
       <div className="cn-card" role="dialog" aria-labelledby="cn-title">
         <div className="cn-logos" aria-hidden>
           <span className="cn-app">{app.logoUri ? <img src={app.logoUri} alt="" /> : app.name.charAt(0).toUpperCase()}</span>
           <span className="cn-link"><i /><i /><i /></span>
           <span className="cn-us"><Icon name="check" size={20} /></span>
         </div>
-        <h1 id="cn-title"><b>{app.name}</b> wants to work in ProjectTracker for you</h1>
-        <p className="muted cn-sub">It will act as <b>{ctx?.user.displayName}</b>, with your own role and permissions. It never sees your password, and you can disconnect it at any time.</p>
+        <CalmHero as="h1" className="cn-hero" title={<span id="cn-title"><b>{app.name}</b> wants to work in ProjectTracker for you</span>}
+          sub={<>It acts as <b>{ctx?.user.displayName}</b>, with your role and permissions. It never sees your password, and you can disconnect it any time.</>} />
 
-        <label className="cn-field"><span>Workspace</span>
-          <select className="select" value={ctx?.current?.id ?? ''} disabled={switching || busy} aria-label="Workspace"
-            onChange={async (e) => { setSwitching(true); try { await activate(e.target.value); } finally { setSwitching(false); } }}>
-            {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
-        </label>
+        <CalmSection>Workspace</CalmSection>
+        <CalmPicker label="Workspace" testId="cn-workspace" items={wsItems} value={ctx?.current?.id ?? null} disabled={switching || busy} limit={4}
+          onChange={async (id) => { if (!id || id === ctx?.current?.id) return; setSwitching(true); try { await activate(id); } finally { setSwitching(false); } }} />
 
+        <CalmSection>What it may do</CalmSection>
         <div className="cn-scopes" role="radiogroup" aria-label="What it may do">
           <button type="button" role="radio" aria-checked={!write} className={!write ? 'on' : ''} onClick={() => setWrite(false)}>
-            <Icon name="eye" size={18} /><span><b>Read only</b><small>Projects, tasks, your work, operations and API docs.</small></span></button>
+            <Icon name="eye" size={18} /><span><b>Read only</b><small>Projects, tasks, your work, operations and API docs.</small></span>{!write && <i className="cn-tick" aria-hidden>✓</i>}</button>
           <button type="button" role="radio" aria-checked={write} className={write ? 'on' : ''} onClick={() => setWrite(true)}>
-            <Icon name="edit" size={18} /><span><b>Read and make changes</b><small>Also create tasks and work items, change status, comment and log time.</small></span></button>
+            <Icon name="edit" size={18} /><span><b>Read and make changes</b><small>Also create tasks and work items, change status, comment and log time.</small></span>{write && <i className="cn-tick" aria-hidden>✓</i>}</button>
         </div>
 
         {error && <div className="doc-alert" role="alert"><Icon name="alert" size={16} /><div>{error}</div></div>}
         <div className="cn-actions">
-          <button className="btn btn-ghost" disabled={busy} onClick={() => void decide(false)}>Cancel</button>
-          <button className="btn btn-primary" disabled={busy || switching} onClick={() => void decide(true)}>{busy && <span className="spinner" />}Allow and connect</button>
+          <CalmGo disabled={busy || switching} onClick={() => void decide(true)}>{busy ? 'Connecting…' : 'Allow and connect'}</CalmGo>
+          <CalmLink onClick={() => { if (!busy) void decide(false); }}>Cancel</CalmLink>
         </div>
-        <p className="cn-foot muted"><Icon name="lock" size={12} /> You will return to <b>{host}</b>. Manage it in Workspace settings › Connected AI apps.</p>
+        <p className="cn-foot"><Icon name="lock" size={12} /> You return to <b>{host}</b>. Manage it in Settings › Connected AI apps.</p>
       </div>
     </div>
   );

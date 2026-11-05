@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -130,7 +131,7 @@ function Describe({ onDraft }: { onDraft: (f: Flow) => void }) {
 function Tok({ label, value, onChange, disabled, children, plain }: { label: string; value: string; onChange: (v: string) => void; disabled?: boolean; children: ReactNode; plain?: boolean }) {
   return (
     <span className={`au-tok ${plain ? '' : 'v'}`}>
-      <select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>{children}</select>
+      <Select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>{children}</Select>
       {!disabled && <Icon name="chevronD" size={12} />}
     </span>
   );
@@ -274,9 +275,9 @@ function Builder({ rule, initial, canEdit, onCount, onSaved, onRemoved }: {
             ))}
             {!ro && free.length > 0 && (
               <label className="au-add">
-                <select aria-label="Add condition" value="" onChange={(e) => { if (e.target.value) set('conditions', [...f.conditions, newCondition(e.target.value as AutomationConditionField, subject)]); }}>
+                <Select aria-label="Add condition" value="" onChange={(e) => { if (e.target.value) set('conditions', [...f.conditions, newCondition(e.target.value as AutomationConditionField, subject)]); }}>
                   <option value="">＋ Add condition</option>{free.map((c) => <option key={c.field} value={c.field}>{c.label}</option>)}
-                </select>
+                </Select>
                 <span aria-hidden="true">＋ Add condition</span>
               </label>
             )}

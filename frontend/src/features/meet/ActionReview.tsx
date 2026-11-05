@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -296,9 +297,9 @@ function DecisionPop({ kind, item, review, people, onClose, onSubmit, busy }: {
               {item.owner && <span className="ms-chip ms-person"><Avatar name={item.owner.name} userId={item.owner.id} size="sm" />{item.owner.name}</span>}
               <span aria-hidden="true">→</span>
               <label className={`ms-chip ms-select${owner !== (item.owner?.id ?? '') ? ' on' : ''}`}><span>{newOwner?.name ?? (owner ? '…' : 'No owner')}</span>
-                <select aria-label="New owner" value={owner} onChange={(e) => setOwner(e.target.value)}>
+                <Select aria-label="New owner" value={owner} onChange={(e) => setOwner(e.target.value)}>
                   <option value="">No owner</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select></label>
+                </Select></label>
             </div>
           </div>
         )}

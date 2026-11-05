@@ -1,3 +1,4 @@
+import { Select } from '../../../components/Select';
 import { createContext, useState } from 'react';
 import type { Editor, JSONContent } from '@tiptap/core';
 import { ApiError } from '../../../api/client';
@@ -154,7 +155,7 @@ export function AiWriteDialog({ editor, onClose }: { editor: Editor; onClose: ()
         <textarea className="input" rows={4} autoFocus maxLength={2000} value={prompt} onChange={(e) => setPrompt(e.target.value)}
           placeholder="e.g. A short onboarding checklist for new support agents: tools, first-week tasks, who to ask" /></label>
       <label className="field"><span>Language</span>
-        <select className="input" value={language} onChange={(e) => setLanguage(e.target.value as AiLanguage)}>{LANGUAGES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+        <Select className="input" value={language} onChange={(e) => setLanguage(e.target.value as AiLanguage)}>{LANGUAGES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</Select></label>
     </Modal>
   );
 }

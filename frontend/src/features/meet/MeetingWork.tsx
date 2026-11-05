@@ -185,7 +185,7 @@ export function OccurrenceEditor({ kind, id, occurrence, start, end, zone, title
         <label>Title<input className="input" aria-label="Session title" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} /></label>
         <label>Date<input className="input" type="date" aria-label="New date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         <label>Start<input className="input" type="time" aria-label="New start" value={time} onChange={(e) => setTime(e.target.value)} /></label>
-        <label>Length<select className="select" aria-label="New duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>{[15, 30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select></label>
+        <label>Length<Select className="select" aria-label="New duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>{[15, 30, 45, 60, 90, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}</Select></label>
       </div>
       <p className="mt-hint">In {zone}. Everyone invited is told; reminders follow the change.</p>
       <div className="mt-row">

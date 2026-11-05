@@ -4,6 +4,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { cutOff } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -73,6 +74,7 @@ const timeline = (from, to) => ({ from, to, timeZone: 'Asia/Kolkata', scope: 'me
 const errors = [], checks = [], writes = [];
 const doneIds = new Set();
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+await shimSelect(browser);
 try {
   async function context(theme) {
     const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
@@ -174,8 +176,8 @@ try {
   // move a focus block to another time, then take one out of the plan (kept on this device, with Undo)
   await focusOf('Settlement report export').click();
   await page.locator('[data-testid="ed-move"]').click();
-  await page.locator('[data-testid="ed-pick"] select[aria-label="Day"]').selectOption(thu);
-  await page.locator('[data-testid="ed-pick"] select[aria-label="Start time"]').selectOption('14');
+  await page.locator('[data-testid="ed-pick"] [aria-label="Day"]').selectOption(thu);
+  await page.locator('[data-testid="ed-pick"] [aria-label="Start time"]').selectOption('14');
   await page.locator('[data-testid="ed-pick"] button', { hasText: 'Move' }).click();
   const moved = page.locator(`.wp-col[data-day="${thu}"] .wp-e.f`, { hasText: 'Settlement report export' });
   await moved.waitFor();

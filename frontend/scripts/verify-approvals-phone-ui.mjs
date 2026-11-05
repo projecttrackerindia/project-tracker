@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
+import { darkPopups } from './lib/popups.mjs';
 
 // Calm build (demo shots 04-04d, 29-29b, 70-75): Approvals (needs me, history, chain detail, the type-adaptive request sheet and the + button's
 // `pt:new` event), Time (the hero, requests for attendance correction and leave), Reminders (smart tiles, the day by morning / afternoon /
@@ -99,6 +100,7 @@ const noteOne = { ...notes[0], content: blocks, sharedWith: [MC, LP], links: [],
 const members = [RM, LP, SJ, TN, PG, MC, DO].map((u) => ({ userId: u.id, displayName: u.name, email: `${u.name.split(' ')[0].toLowerCase()}@example.test`, role: 'Member', joinedAt: iso(-99999), jobRole: null }));
 
 const writes = [], errors = [], checks = [];
+const r4 = path.resolve('test-results/calm-round4b'); await fs.mkdir(r4, { recursive: true });
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 try {
   const make = async (theme, dev = {}) => {
@@ -193,6 +195,46 @@ try {
     assert.match(await page.locator('.sa-title').innerText(), /Approve this sign-in\?/);
     await fitsPhone(page, `approve sign-in ${w} ${theme}`, assert);
     await shot(page, `approve-signin-${theme}-${w}.png`); checks.push(`approve-signin ${w} ${theme}`);
+    await c.close();
+  }
+  // Round 4: the Request approval sheet. Type chips wrap and are never cut off; "+ Link" and every approver slot are searchable pickers
+  // with 3–4 suggestions; in dark mode no popup is white (demo 04d; user's screenshot of the white native list).
+  for (const theme of ['light', 'dark']) for (const [w, h, dev] of [[1440, 900, {}], [1920, 1080, {}], [390, 844, devices['iPhone 13']]]) {
+    const c = await make(theme, dev); const page = await c.newPage(); if (w > 500) await page.setViewportSize({ width: w, height: h });
+    page.on('pageerror', (e) => errors.push(`request ${w} ${theme}: ${e.message}`));
+    await page.goto(`${origin}/preview-org/approvals`); await page.locator('.ap-hero-title').first().waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Request approval' }).first().click();
+    await page.locator('.apq-types button').first().waitFor();
+    const clipped = await page.evaluate(() => { const box = document.querySelector('.apq-types').getBoundingClientRect(); return [...document.querySelectorAll('.apq-types button')].filter((b) => { const r = b.getBoundingClientRect(); return b.scrollWidth > b.clientWidth + 1 || r.right > box.right + 1 || r.left < box.left - 1; }).map((b) => b.textContent); });
+    assert.deepEqual(clipped, [], `request ${w} ${theme}: type chips readable`);
+    const tag = `${w}-${theme}`;
+    await shot(page, '../calm-round4b/request-' + tag + '.png');
+    await page.getByRole('button', { name: 'Edit chain' }).click();
+    const ap = page.getByTestId('apq-approver-0'); await ap.waitFor(); await ap.click();
+    const opts = page.locator('.cpk-pop .cpk-opt, .cpk-sheet .cpk-opt'); await opts.first().waitFor();
+    assert.ok((await opts.count()) >= 3 && (await opts.count()) <= 4, `request ${tag}: 3–4 approver suggestions (${await opts.count()})`);
+    await page.locator('.cpk-input').fill('Tom'); await page.waitForTimeout(200);
+    assert.match(await opts.first().innerText(), /Tom Nguyen/, 'approver search narrows');
+    await shot(page, '../calm-round4b/request-approver-' + tag + '.png');
+    await opts.first().click();
+    assert.match(await ap.getAttribute('aria-label'), /Tom Nguyen/, 'approver chosen');
+    const lk = page.getByTestId('apq-link'); await lk.click(); await opts.first().waitFor();
+    assert.ok((await opts.count()) >= 1 && (await opts.count()) <= 4, `request ${tag}: up to 4 link suggestions`);
+    await page.locator('.cpk-input').fill('ATL'); await page.waitForTimeout(600);
+    await shot(page, '../calm-round4b/request-link-' + tag + '.png');
+    await opts.first().click(); await page.waitForTimeout(150);
+    assert.ok(await page.locator('.ap-tag').filter({ hasText: 'ATL-482' }).count() >= 1, `request ${tag}: linked item chip`);
+    if (theme === 'dark') { const n = await darkPopups(page, `request sheet ${tag}`, assert); assert.ok(n >= 2, `request ${tag}: opened ${n} popups`); }
+    if (w < 500) await fitsPhone(page, `request ${tag}`, assert);
+    checks.push(`request sheet ${tag}: chips, approver picker, link picker${theme === 'dark' ? ', dark popups' : ''}`);
+    await c.close();
+  }
+  // Dark-mode popup sweep on the other pages this file serves.
+  for (const [route, ready] of [['approvals', '.ap-hero-title'], ['time', 'h1'], ['reminders', 'h1'], ['notes', 'body']]) {
+    const c = await make('dark'); const page = await c.newPage(); await page.setViewportSize({ width: 1440, height: 900 });
+    page.on('pageerror', (e) => errors.push(`${route} dark: ${e.message}`));
+    await page.goto(`${origin}/preview-org/${route}`); await page.locator(ready).first().waitFor({ timeout: 15000 }); await page.waitForTimeout(500);
+    const n = await darkPopups(page, `${route} dark`, assert); checks.push(`${route} dark: ${n} popups, none white`);
     await c.close();
   }
   assert.deepEqual(errors, []);

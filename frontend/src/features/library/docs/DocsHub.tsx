@@ -1,3 +1,4 @@
+import { Select } from '../../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../../api/client';
@@ -321,11 +322,11 @@ function NeedsReview({ onChanged, canCreate, projects }: { onChanged: () => void
         {canCreate && projects.length > 0 && !make && <button type="button" className="dx-link" onClick={() => setMake({ kind: 'release-notes', projectId: projects[0].id })}>Make a draft</button>}</div>
       {make && (
         <form className="dx-make" onSubmit={(e) => { e.preventDefault(); void generate(); }}>
-          <select className="input" aria-label="What to write" value={make.kind} onChange={(e) => setMake({ ...make, kind: e.target.value as DocProposal['kind'] })}>
+          <Select className="input" aria-label="What to write" value={make.kind} onChange={(e) => setMake({ ...make, kind: e.target.value as DocProposal['kind'] })}>
             <option value="release-notes">Release notes from the last finished sprint</option>
             <option value="decision-log">Decision log from the last meeting with decisions</option>
-          </select>
-          <select className="input" aria-label="Project" value={make.projectId} onChange={(e) => setMake({ ...make, projectId: e.target.value })}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          </Select>
+          <Select className="input" aria-label="Project" value={make.projectId} onChange={(e) => setMake({ ...make, projectId: e.target.value })}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
           <div className="dx-row"><button type="submit" className="dx-btn pri sm" disabled={busy === 'make'}>{busy === 'make' && <Spinner />}Write it</button><button type="button" className="dx-btn sm" onClick={() => setMake(null)}>Cancel</button></div>
         </form>
       )}

@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -103,8 +104,8 @@ export function DeskIntegrations() {
             <input type="range" min={0} max={100} step={5} aria-label="Confidence threshold" value={d.confidenceThreshold} disabled={!can} onChange={(e) => set('confidenceThreshold', Number(e.target.value))} /></Row>
           <Row title="Accept within (minutes)" hint="Then it moves to the next engineer."><input type="number" min={1} max={1440} aria-label="Accept within minutes" value={d.acceptMinutes} disabled={!can} onChange={(e) => set('acceptMinutes', Number(e.target.value))} /></Row>
           <Row title="Moves before the supervisor" hint="After this many moves the supervisor is asked."><input type="number" min={0} max={10} aria-label="Moves before the supervisor" value={d.maxReassignments} disabled={!can} onChange={(e) => set('maxReassignments', Number(e.target.value))} /></Row>
-          <Row title="Supervisor"><select aria-label="Supervisor" value={d.supervisorId ?? ''} disabled={!can} onChange={(e) => set('supervisorId', e.target.value || null)}>
-            <option value="">Operations escalation contact</option>{(members.data ?? []).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</select></Row>
+          <Row title="Supervisor"><Select aria-label="Supervisor" value={d.supervisorId ?? ''} disabled={!can} onChange={(e) => set('supervisorId', e.target.value || null)}>
+            <option value="">Operations escalation contact</option>{(members.data ?? []).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}</Select></Row>
           <Row title="Tell engineers on WhatsApp too" hint="For people who linked their number; in-app always."><Switch label="WhatsApp notifications" on={d.notifyOnWhatsApp} disabled={!can} onChange={(v) => set('notifyOnWhatsApp', v)} /></Row>
         </section>
 
@@ -133,8 +134,8 @@ export function DeskIntegrations() {
         <section className="dq-card dix-sec" aria-labelledby="dix-tel">
           <div className="dix-sec-h"><span className="dix-ic" style={{ background: '#34c759' }}>☎</span><div><h2 id="dix-tel">Telephony</h2><p>Outbound callbacks and inbound phone calls</p></div>
             <span className={`dix-badge${settings.telephonyReady ? ' on' : ' warn'}`}>{settings.telephonyReady ? 'Connected' : 'Not connected'}</span></div>
-          <Row title="Provider"><select aria-label="Telephony provider" value={d.telephonyProvider} disabled={!can} onChange={(e) => set('telephonyProvider', e.target.value)}>
-            <option value="none">None</option><option value="exotel">Exotel</option><option value="plivo">Plivo</option><option value="twilio">Twilio</option></select></Row>
+          <Row title="Provider"><Select aria-label="Telephony provider" value={d.telephonyProvider} disabled={!can} onChange={(e) => set('telephonyProvider', e.target.value)}>
+            <option value="none">None</option><option value="exotel">Exotel</option><option value="plivo">Plivo</option><option value="twilio">Twilio</option></Select></Row>
           <div className="dix-note">Calls are <b>not placed</b> until a provider adapter, a virtual number (with DLT registration for outbound in India) and media streaming are connected. Until then engineers use browser voice intake or call from their phone.</div>
         </section>
 
@@ -191,8 +192,8 @@ function Engineers({ canManage }: { canManage: boolean }) {
           {list.slice(0, 40).map((e) => (
             <tr key={e.userId}>
               <td><b>{e.name}</b></td>
-              <td><select aria-label={`${e.name} status`} value={e.status} disabled={!canManage} onChange={(x) => void save(e, { status: x.target.value as EngineerStatus })}>
-                {(['available', 'busy', 'away', 'offline'] as EngineerStatus[]).map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}</select></td>
+              <td><Select aria-label={`${e.name} status`} value={e.status} disabled={!canManage} onChange={(x) => void save(e, { status: x.target.value as EngineerStatus })}>
+                {(['available', 'busy', 'away', 'offline'] as EngineerStatus[]).map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}</Select></td>
               <td><input aria-label={`${e.name} skills`} defaultValue={e.skills.join(', ')} placeholder="login, payments" disabled={!canManage}
                 onBlur={(x) => { const v = x.target.value.split(',').map((s) => s.trim()).filter(Boolean); if (v.join(',') !== e.skills.join(',')) void save(e, { skills: v }); }} /></td>
               <td><input aria-label={`${e.name} department`} defaultValue={e.department} placeholder="IT" disabled={!canManage} onBlur={(x) => { if (x.target.value.trim() !== e.department) void save(e, { department: x.target.value.trim() }); }} /></td>

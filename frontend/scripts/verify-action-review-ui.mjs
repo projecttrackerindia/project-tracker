@@ -9,6 +9,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -51,6 +52,7 @@ const mine = { needsUpdate: [item({ id: 'm1', title: 'Retry & notification rules
 
 const errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+await shimSelect(browser);
 try {
   async function setup(theme, width, height = 1000) {
     const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', ...(width <= 430 ? { isMobile: true, hasTouch: true } : {}) });

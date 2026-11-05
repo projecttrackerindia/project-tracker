@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useMemo, useState, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -103,7 +104,7 @@ export function PortfolioTaskBoard() {
                   {saved === r.id && <span className="pfb-saved" role="status">✓ Saved</span>}</div>
                 {phone && r.canEdit && (
                   <label className="pfb-move"><span className="sr-only">Move {r.title} to</span>
-                    <select value={c.id} onChange={(e) => void move(r, e.target.value as Col)}>{COLS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>
+                    <Select value={c.id} onChange={(e) => void move(r, e.target.value as Col)}>{COLS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</Select>
                   </label>
                 )}
               </div>

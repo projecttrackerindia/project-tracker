@@ -224,15 +224,11 @@ try {
   checks.push('tree-vacant', 'tree-multi-team', 'tree-badges');
   // 1,200 people under Meena: still only rows in view are drawn.
   assert.ok(await tree.getByRole('treeitem').count() < 90);
-  // Teams view.
-  await page.getByRole('tab', { name: 'Teams' }).or(page.getByRole('button', { name: 'Teams', exact: true })).first().click();
-  const teamsTree = page.getByRole('tree', { name: 'Teams and departments' }); await teamsTree.waitFor();
-  assert.match(await teamsTree.innerText(), /Engineering[\s\S]*Payments|Engineering[\s\S]*Platform/);
-  await teamsTree.locator('[data-key="t:t-pay"]').waitFor();
-  assert.ok(page.url().includes('view=teams'));
-  await shot(page, 'org-teams-1440.png');
+  // No duplicate Teams view inside the org chart (Teams is its own People tab); Canvas stays.
+  assert.equal(await page.locator('.pr-org-head').getByRole('tab', { name: 'Teams' }).or(page.locator('.pr-org-head').getByRole('button', { name: 'Teams', exact: true })).count(), 0, 'no Teams tab in the org chart');
   assert.ok(await page.getByRole('tab', { name: 'Canvas' }).or(page.getByRole('button', { name: 'Canvas', exact: true })).first().isVisible());
-  checks.push('tree-teams-view', 'canvas-available');
+  await shot(page, '../calm-round4b/org-chart-1440.png');
+  checks.push('org-no-duplicate-teams', 'canvas-available');
 
   // Drag a person onto someone else: a confirmation, then the change.
   await page.goto(P('/people/org'));

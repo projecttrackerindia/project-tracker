@@ -101,3 +101,49 @@ html body .wrp-h1 em { display: block; font-style: normal; color: var(--calm-ink
 html body .wrp-eyebrow { display: none; }
 html body .wrp-card { background: var(--calm-card); border: 0; box-shadow: var(--calm-sh); border-radius: var(--calm-r-card); }
 html body .wrp-sec h4 { color: var(--calm-ink2) !important; } .wrp-sec.moved h4 i { background: var(--ds-success); } .wrp-sec.slipped h4 i { background: var(--ds-danger); } .wrp-sec.risks h4 i { background: var(--ds-warning); } .wrp-sec.next h4 i { background: var(--ds-accent); }
+
+/* Round 4: the report rebuilt on the calm kit — CalmSplit (report left, rail of calm cards right), the calm hero and Aura line,
+   pill segments, one ink "Approve & send"; the rail stacks under the report on a phone with the send card as a sheet. */
+.wrp-calm .calm-split-crumb { display: flex; align-items: center; gap: 12px; }
+.wrp-calm .wrp-head { margin: 4px 0 16px; }
+.wrp-calm .wrp-h1 { font-size: clamp(28px, 3vw, 40px); font-weight: 300; letter-spacing: -.03em; color: var(--calm-ink); }
+.wrp-calm .wrp-h1 em { font-style: normal; color: var(--calm-ink3-text); margin-left: 10px; }
+.wrp-calm .wrp-eyebrow { color: var(--calm-ink3-text); font-size: 13px; text-transform: none; letter-spacing: 0; }
+.wrp-calm .wrp-sourceline { margin-top: 10px; }
+.wrp-calm .wrp-doc { padding: 24px 28px; }
+.wrp-calm .wrp-card { margin-bottom: 0; }
+.wrp-calm .calm-rail { display: flex; flex-direction: column; gap: 14px; }
+.wrp-calm .wrp-seg { display: flex; gap: 4px; padding: 3px; border-radius: 99px; background: var(--calm-fill); margin: 10px 0; }
+.wrp-calm .wrp-seg button { flex: 1; min-height: 32px; border: 0; border-radius: 99px; background: none; color: var(--calm-ink2); font: inherit; font-size: 13px; cursor: pointer; }
+.wrp-calm .wrp-seg button.on { background: var(--calm-solid); color: var(--calm-accent-text); box-shadow: var(--calm-sh-sm); }
+.wrp-calm .wrp-approve { width: 100%; justify-content: center; }
+.wrp-calm .wrp-approve-top { width: auto; }
+.wrp-calm .wrp-ai p { display: flex; gap: 10px; margin: 0 0 10px; font-size: 14px; color: var(--calm-ink); }
+.wrp-ai-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.calm-chip-btn { min-height: 32px; padding: 0 12px; border: 0; border-radius: 99px; background: var(--calm-fill); color: var(--calm-ink); font: inherit; font-size: 13px; cursor: pointer; }
+.calm-chip-btn:hover:not(:disabled) { background: var(--calm-accent-soft); color: var(--calm-accent-text); }
+.calm-chip-btn:disabled { opacity: .5; }
+.wrp-add-li { list-style: none; }
+html body .cpk-trigger.wrp-add-pick { width: 100%; background: none; box-shadow: inset 0 0 0 1px var(--calm-fill-2); border-radius: 12px; }
+html body .cpk-trigger.wrp-add-pick .cpk-chev { display: none; }
+@media (max-width: 640px) {
+  .wrp-calm .wrp-doc { padding: 18px 16px; }
+  .wrp-calm .calm-rail > .wrp-send { border-radius: 22px; padding-top: 22px; position: relative; }
+  .wrp-calm .calm-rail > .wrp-send::before { content: ''; position: absolute; top: 8px; left: 50%; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: var(--calm-fill-2); }
+  .wrp-calm .wrp-approve-side { min-height: 48px; }
+}
+.wrp-calm .wrp-head { text-align: left; display: block; }
+.wrp-calm .wrp-approve-top { min-height: 36px; padding: 0 18px; font-size: 14px; }
+@media (max-width: 640px) { .wrp-calm .wrp-approve-top { display: none; } .wrp-calm { padding-bottom: calc(110px + env(safe-area-inset-bottom)); } }
+.wrp-calm .calm-rail { margin-top: 46px; padding-bottom: 88px; width: 320px; flex: none; }
+.wrp-calm .calm-split-crumb .wrp-sp { flex: 1; }
+.wrp-calm .wrp-h1 em { display: inline; }
+.wrp-calm .wrp-eyebrow { display: block; margin-bottom: 4px; }
+@media (max-width: 960px) { .wrp-calm .calm-rail { margin-top: 0; width: auto; } }
+html body .wrp-calm .calm-split-main > .calm-split-crumb { display: flex; align-items: center; gap: 12px; width: 100%; }
+html body .wrp-calm .calm-split-main > .calm-split-crumb .wrp-sp { flex: 1 1 auto; }
+.wrp-calm .calm-rail { align-items: stretch; }
+.wrp-calm .calm-rail > * { width: 100%; box-sizing: border-box; }
+.wrp-calm .wrp-sourceline { align-self: flex-start; }
+/* One primary action: Approve & send lives in the send card (the crumb keeps only the way back). */
+html body .wrp-calm .wrp-approve-top { display: none; }

@@ -142,8 +142,8 @@ export function PasteModal({ grid: initial, data, defaultProject, today, onClose
                 <tr>{m.map((f, j) => {
                   const c = caption(f);
                   return <td key={j} style={{ borderBottom: '1px solid var(--p-line)' }}>
-                    <select className="ps3-mapsel" aria-label={`Field for column ${String.fromCharCode(65 + j)}`} value={f} onChange={(e) => { const n = [...m]; const v = e.target.value as Field; const k = n.indexOf(v); if (k >= 0 && v !== 'ignore') n[k] = 'ignore'; n[j] = v; setMap(n); }}>
-                      {FIELDS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
+                    <Select className="ps3-mapsel" aria-label={`Field for column ${String.fromCharCode(65 + j)}`} value={f} onChange={(e) => { const n = [...m]; const v = e.target.value as Field; const k = n.indexOf(v); if (k >= 0 && v !== 'ignore') n[k] = 'ignore'; n[j] = v; setMap(n); }}>
+                      {FIELDS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</Select>
                     <div className={`ps3-mapok ${c.ok ? '' : 'no'}`}>{c.ok ? '✓' : '!'} {c.text}</div></td>;
                 })}</tr>
               </thead>

@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState, type ReactNode } from 'react';
 import { ApiError } from '../../api/client';
 import { workspaceApi } from '../../api/endpoints';
@@ -69,9 +70,9 @@ export function AdminView({ policy, onPolicy }: { policy: VaultPolicy; onPolicy:
           <label className="vlt-check-row"><input type="checkbox" checked={stepUpAlways} onChange={(e) => setStepUpAlways(e.target.checked)} /> <span><b>Two-step check for every reveal, copy and code</b><br /><span className="muted">Not only for confidential items. People without an authenticator app will be asked to set one up.</span></span></label>
           <label className="vlt-check-row"><input type="checkbox" checked={adminsOnly} onChange={(e) => setAdminsOnly(e.target.checked)} /> <span><b>Only vault admins make shared collections</b><br /><span className="muted">Everyone keeps their own vault.</span></span></label>
           <label className="field vlt-inline-field"><span>Clear the clipboard after</span>
-            <select className="input" value={clipboard} onChange={(e) => setClipboard(Number(e.target.value))} aria-label="Clipboard seconds">
+            <Select className="input" value={clipboard} onChange={(e) => setClipboard(Number(e.target.value))} aria-label="Clipboard seconds">
               {[10, 20, 30, 45, 60, 90, 120].map((s) => <option key={s} value={s}>{s} seconds</option>)}
-            </select></label>
+            </Select></label>
           <p className="vlt-small muted">Revealed values hide again after {policy.revealSeconds} seconds (Settings → Documents → Security sets that for the whole workspace).</p>
           <div><button className="btn btn-primary btn-sm" disabled={!dirty || saving} onClick={async () => {
             setSaving(true);
@@ -85,10 +86,10 @@ export function AdminView({ policy, onPolicy }: { policy: VaultPolicy; onPolicy:
         <div className="card-head"><div><h3>Access review</h3><p>Which shared collections a person can open, and what they used in the last 90 days. Personal vaults are never shown.</p></div></div>
         <div className="card-body">
           <label className="field vlt-inline-field"><span>Person</span>
-            <select className="input" value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Person to review">
+            <Select className="input" value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Person to review">
               <option value="">Choose someone…</option>
               {(members.data ?? []).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-            </select></label>
+            </Select></label>
           {person && (review.isLoading ? <Spinner /> : review.error ? <ErrorState error={review.error} retry={() => review.refetch()} /> : review.data && (
             <div className="vlt-review">
               <h4>Can open ({review.data.collections.length})</h4>
