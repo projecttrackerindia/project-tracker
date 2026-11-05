@@ -222,7 +222,10 @@ export interface AppNotification { id: string; type: NotificationType; title: st
   /** A meeting's start (UTC) and where to join it, for meeting reminders. */ startsAt?: string | null; joinLink?: string | null;
   /** Why a reminder came, in a few words ("Due today · no time set"). */ reason?: string | null;
   /** It was (or is about to be) e-mailed too. */ emailed?: boolean;
-  /** A Plan sheet change notice whose change still stands: Undo puts the task back. */ canUndo?: boolean }
+  /** A Plan sheet change notice whose change still stands: Undo puts the task back. */ canUndo?: boolean;
+  /** Urgent rings and pops up; normal only adds to the quiet badge (older servers send nothing: treated as before). */ priority?: 'urgent' | 'normal';
+  /** What it is about ("project:{id}", "chat:{id}", "item:{id}") and that thing's name, for grouping updates. */ groupKey?: string | null; groupLabel?: string | null;
+  /** About a project or thread the person muted: it stays in the centre but never rings. */ muted?: boolean }
 export type NotificationCategory = 'messages' | 'reminders' | 'meetings' | 'work';
 export type NotificationAction = 'done' | 'take' | 'reply' | 'approve' | 'reject' | 'snooze';
 /** Unread overall and in each lane of the inbox. */

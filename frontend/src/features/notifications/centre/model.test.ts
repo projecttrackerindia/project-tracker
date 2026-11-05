@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppNotification } from '../../../api/types';
-import { arrange, badgeCount, totalBadge, canJoin, categoryOf, cueOf, sourceOf } from './model';
+import { arrange, badgeCount, totalBadge, canJoin, categoryOf, cueOf, sourceOf, groupTitle, isNamedGroup } from './model';
 import { DEFAULT_PREFS, isMuted, muteUntil } from './prefs';
 
 const N = (id: string, type: string, link: string | null, minsAgo: number, extra: Partial<AppNotification> = {}): AppNotification =>
@@ -62,5 +62,16 @@ describe('notification centre model', () => {
     expect(new Date(muteUntil('tomorrow', now)).getHours()).toBe(8);
     expect(isMuted({ ...DEFAULT_PREFS, mutedUntil: -1 })).toBe(true);
     expect(isMuted({ ...DEFAULT_PREFS, mutedUntil: Date.now() - 1 })).toBe(false);
+  });
+
+  it('groups updates about one project by name, within the window', () => {
+    const p = '/projects/22222222-2222-2222-2222-222222222222';
+    const g = { groupKey: 'project:2222', groupLabel: 'CIBIL Integration' };
+    const secs = arrange([N('a', 'TaskUpdated', `${p}?task=1`, 1, g), N('b', 'TaskUpdated', `${p}?task=2`, 20, g), N('c', 'Comment', p, 50, g), N('d', 'TaskUpdated', p, 200, g)],
+      Date.now() - 24 * 3_600_000, 60);
+    const stacks = secs[0].stacks;
+    expect(stacks.map((s) => s.items.length)).toEqual([3, 1]);   // a lull of more than an hour starts a new group
+    expect(isNamedGroup(stacks[0])).toBe(true);
+    expect(groupTitle(stacks[0])).toBe('3 updates on CIBIL Integration');
   });
 });

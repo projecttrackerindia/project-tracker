@@ -11,7 +11,10 @@ import { playCue } from '../../../lib/attention';
 import { queryClient, useAuth } from '../../../stores/auth';
 import { confirmDialog, toast } from '../../../stores/ui';
 import { reminderApi } from '../../reminders/api';
-import { arrange, badgeText, canJoin, CATEGORY_META, categoryOf, changeLines, conversationOf, FILTERS, iconOf, shortTime, snoozePresets, type Stack } from './model';
+import { arrange, badgeText, canJoin, CATEGORY_META, categoryOf, changeLines, conversationOf, FILTERS, groupTitle, iconOf, isNamedGroup, shortTime, snoozePresets, type Stack } from './model';
+import { smartNotifyApi } from '../../../api/endpoints.notifySmart';
+import { useWsQuery } from '../../../lib/hooks';
+import { useFlag } from '../../../lib/flags';
 import { portfolioApi } from '../../projects/portfolioApi';
 import { maySound } from './prefs';
 import { applyTabDelta, clearTabs, destinationOf, tabKey } from './tabBadges';
@@ -76,6 +79,15 @@ function useActions() {
       unread: (n: AppNotification) => run([n.id], (x) => ({ ...x, isRead: false }), () => notificationApi.unreadOne(n.id)),
       remove: (n: AppNotification) => run([n.id], () => null, () => notificationApi.remove(n.id)),
       clearStack: (ns: AppNotification[]) => run(ns.map((n) => n.id), () => null, () => notificationApi.clear({ ids: ns.map((n) => n.id) })),
+      /** Mutes what a group is about (its project): its notifications stay here but never ring again. */
+      muteGroup: async (n: AppNotification) => {
+        try {
+          const m = await smartNotifyApi.muteFrom(n.id, n.groupKey?.startsWith('project:') ? 'project' : 'thread');
+          toast(`Muted ${m.label}. Unmute it in Settings › Notifications › Smart.`, 'success');
+          void queryClient.invalidateQueries({ queryKey: [wid, 'notify-smart'] });
+        } catch { toast('Could not mute it.', 'error'); }
+        settle(wid);
+      },
       snooze: (n: AppNotification, until: Date) => run([n.id], () => null, async () => {
         await notificationApi.snooze(n.id, until.toISOString());
         toast(`Snoozed until ${until.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}.`, 'success');
@@ -120,8 +132,12 @@ export function Centre({ onClose }: { onClose: () => void }) {
   // Unread only, by default (a snoozed one that has come back is unread again). What is read waits in a collapsed "Read" section at the end.
   const unreadItems = useMemo(() => items.filter((n) => !n.isRead), [items]);
   const readItems = useMemo(() => items.filter((n) => n.isRead), [items]);
-  const sections = useMemo(() => arrange(unreadItems), [unreadItems]);
-  const readStacks = useMemo(() => arrange(readItems).flatMap((s) => s.stacks), [readItems]);
+  // Smart grouping: updates about one project or thread within the person's window are one group (Settings › Notifications › Smart).
+  const grouping = useFlag('smart-grouping');
+  const smart = useWsQuery(['notify-smart'], smartNotifyApi.get, { staleTime: 60_000, retry: false });
+  const windowMin = grouping && smart.data?.grouping !== false ? smart.data?.groupWindowMinutes ?? 60 : undefined;
+  const sections = useMemo(() => arrange(unreadItems, undefined, windowMin), [unreadItems, windowMin]);
+  const readStacks = useMemo(() => arrange(readItems, undefined, windowMin).flatMap((s) => s.stacks), [readItems, windowMin]);
   const [showRead, setShowRead] = useState(false);
   const anyUnread = filter === 'all' ? (counts?.unread ?? 0) > 0 || items.some((n) => !n.isRead) : (counts?.[filter] ?? 0) > 0 || items.some((n) => !n.isRead);
 
@@ -220,12 +236,15 @@ type Acts = ReturnType<typeof useActions>;
 function StackView({ stack, go, acts, phone }: { stack: Stack; go: (n: AppNotification, to?: string | null) => void; acts: Acts; phone: boolean }) {
   const [open, setOpen] = useState(false);
   const many = stack.items.length > 1;
+  const named = isNamedGroup(stack);
   if (!many) return <div className="ncx-stack single"><Card n={stack.items[0]} go={go} acts={acts} phone={phone} /></div>;
   return (
-    <div className={`ncx-stack${open ? ' open' : ''}`}>
+    <div className={`ncx-stack${open ? ' open' : ''}${named ? ' named' : ''}`}>
+      {named && !open && <div className="ncx-group-title">{groupTitle(stack)}{stack.items[0].muted && <span className="ncx-muted"> · Muted</span>}</div>}
       {open && (
         <div className="ncx-stack-head">
-          <b>{stack.label}</b>
+          <b>{named ? groupTitle(stack) : stack.label}</b>
+          {named && !stack.items[0].muted && <button type="button" className="ncx-pill" onClick={() => void acts.muteGroup(stack.items[0])}>Mute</button>}
           <button type="button" className="ncx-pill" onClick={() => setOpen(false)}>Show less</button>
           <button type="button" className="ncx-pill x" aria-label={`Clear ${stack.label}`} title="Clear" onClick={() => void acts.clearStack(stack.items)}><Icon name="close" size={12} /></button>
         </div>

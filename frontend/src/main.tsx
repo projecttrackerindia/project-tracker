@@ -2,6 +2,7 @@ import './lib/trustedTypesInit';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { installStableTabs } from './lib/stableTabs';
+import { installCapture } from './features/feedback/capture';
 import { installKeyboardViewport } from './lib/keyboardViewport';
 import { QueryClientProvider } from '@tanstack/react-query';
 import '@fontsource-variable/inter';
@@ -79,6 +80,7 @@ window.addEventListener('unhandledrejection', (e) => {
 if (document.documentElement.classList.contains('app')) document.getElementById('site')?.remove();
 
 installStableTabs();
+installCapture();
 installKeyboardViewport();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
