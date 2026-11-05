@@ -42,8 +42,10 @@ public record ReportTotals(int Total, int Completed, int Pending, int InProgress
 public record ReportSummaryDto(int Days, ReportTotals Totals, IReadOnlyList<DayCount> CompletedPerDay, IReadOnlyList<StatusCount> StatusDistribution,
     IReadOnlyList<ProjectProgressItem> ProjectProgress, int CompletedThisWeek, int CompletedThisMonth, IReadOnlyList<WorkloadItem>? Workload, bool AdvancedAvailable);
 
-public class ActivityService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, PermissionService permissions, EntitlementService entitlements)
+public class ActivityService(IReadDb readDb, ICurrentContext ctx, AppClock clock, ProjectAccess access, PermissionService permissions, EntitlementService entitlements)
 {
+    /// <summary>Reads only: the read replica when one is configured (ConnectionStrings:ReadOnly), otherwise the primary.</summary>
+    private readonly IAppDbContext db = readDb.Db;
     public async Task<PagedResult<ActivityDto>> ListAsync(Guid? projectId, int page, int pageSize, CancellationToken ct = default, Guid? teamId = null)
     {
         ctx.RequireTenantId();
@@ -98,9 +100,11 @@ public class ActivityService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 }
 
-public class DashboardService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, ProjectService projects,
+public class DashboardService(IReadDb readDb, ICurrentContext ctx, AppClock clock, ProjectAccess access, ProjectService projects,
     TaskService tasks, ActivityService activity, PermissionService permissions, WorkItemService workItems)
 {
+    /// <summary>Reads only: the read replica when one is configured (ConnectionStrings:ReadOnly), otherwise the primary.</summary>
+    private readonly IAppDbContext db = readDb.Db;
     /// <summary>"My" figures are always about me; everything about delivery (projects, tasks, progress, charts, activity) follows <paramref name="teamId"/> when one team is picked.</summary>
     public async Task<DashboardDto> GetAsync(Guid? teamId = null, CancellationToken ct = default)
     {
@@ -311,8 +315,10 @@ public class CalendarService(IAppDbContext db, ICurrentContext ctx, AppClock clo
     }
 }
 
-public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess access, PermissionService permissions, WorkItemService workItems, ProjectManagement.Application.Features.Documents.DocumentRankedSearch documents)
+public class SearchService(IReadDb readDb, ICurrentContext ctx, ProjectAccess access, PermissionService permissions, WorkItemService workItems, ProjectManagement.Application.Features.Documents.DocumentRankedSearch documents)
 {
+    /// <summary>Reads only: the read replica when one is configured (ConnectionStrings:ReadOnly), otherwise the primary.</summary>
+    private readonly IAppDbContext db = readDb.Db;
     private const int PerType = 5;
 
     public async Task<SearchResultDto> SearchAsync(string query, CancellationToken ct = default)
@@ -383,9 +389,11 @@ public class SearchService(IAppDbContext db, ICurrentContext ctx, ProjectAccess 
     }
 }
 
-public class ReportService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, ProjectService projects,
+public class ReportService(IReadDb readDb, ICurrentContext ctx, AppClock clock, ProjectAccess access, ProjectService projects,
     PermissionService permissions, EntitlementService entitlements, WorkItemService workItems)
 {
+    /// <summary>Reads only: the read replica when one is configured (ConnectionStrings:ReadOnly), otherwise the primary.</summary>
+    private readonly IAppDbContext db = readDb.Db;
     /// <summary>
     /// Open, overdue and done work per person, across every kind the caller can see, for <paramref name="restrictTo"/> (or every member who
     /// can be given work). People with nothing assigned are left out, as before.

@@ -9,7 +9,7 @@ namespace ProjectManagement.Api.Controllers.Insights;
 [Route("api/v1"), RequireWorkspace]
 public class InsightsController(DashboardService dashboard, CalendarService calendar, SearchService search, ActivityService activity) : ApiControllerBase
 {
-    [HttpGet("dashboard")]
+    [HttpGet("dashboard"), HotRead]
     public async Task<IActionResult> Dashboard([FromQuery] Guid? teamId, CancellationToken ct) => Ok(await dashboard.GetAsync(teamId, ct));
 
     /// <summary>The teams this person may look at as a whole (empty for guests, and when the workspace has no teams).</summary>

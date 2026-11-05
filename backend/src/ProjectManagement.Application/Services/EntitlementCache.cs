@@ -9,6 +9,8 @@ public class CacheOptions
     public const string Section = "Cache";
     /// <summary>How long a workspace's plan and entitlements are remembered between requests (0 switches the cache off).</summary>
     public int EntitlementSeconds { get; set; } = 30;
+    /// <summary>How long a hot read (shell summary, portfolio, project health, dashboard, reports) is kept; every change forgets it at once (0 switches it off).</summary>
+    public int HotReadSeconds { get; set; } = 30;
 }
 
 /// <summary>
