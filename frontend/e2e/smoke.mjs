@@ -27,7 +27,7 @@ try {
   await project.locator('input').first().fill('Smoke form validation');
   assert.ok(await project.getByRole('button', { name: /Cancel/ }).isVisible(), 'The project form has a safe way back');
   await project.getByRole('button', { name: /Cancel/ }).click();
-  await s.page.getByRole('button', { name: /^Account:/ }).first().click() // the sidebar row and the header avatar both open it;
+  await s.page.getByRole('button', { name: /^Account:/ }).first().click(); // the sidebar row and the header avatar both open it
   await s.page.getByRole('menu', { name: 'Account', exact: true }).waitFor();
   await s.page.getByRole('menuitem', { name: /Settings/ }).waitFor();
   console.log('PASS Home/team selection, nine main places, layout, Create project and account navigation');
