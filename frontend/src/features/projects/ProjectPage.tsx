@@ -21,6 +21,7 @@ import { RiskModal, useAi, useAssistant } from '../ai/Assistant';
 import { useChatEnabled } from '../chat/ProjectChat';
 import { useProjectChat } from '../chat/projectChatStore';
 import { ImportModal } from '../import/ImportModal';
+import { templateApi } from '../recurring/api';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
 import { CalmProject } from './CalmProject';
@@ -154,6 +155,10 @@ export function ProjectPage() {
     try { await projectApi.remove(p.id); toast('Project deleted.', 'warning'); await invalidateWorkspace(wid); nav('/work/projects'); }
     catch (e) { toast(errText(e, 'Could not delete the project.'), 'error'); }
   };
+  const saveTemplate = async () => {
+    try { await templateApi.saveProject(p.id); toast('Saved as a template. Find it in + New › From template…'); await invalidateWorkspace(wid, 'templates'); }
+    catch (e) { toast(errText(e, 'Could not save the template.'), 'error'); }
+  };
   const group = p.projectGroupName ?? p.teamName;
   const grad = passGradient(p);
   const share = async () => {
@@ -174,6 +179,7 @@ export function ProjectPage() {
             { label: 'Set status…', icon: 'flag', hint: 'On track, at risk or late — with why', hidden: !canEdit || isFinished(p), onSelect: () => setHealthOpen(true) },
             { label: 'Edit details', icon: 'edit', hint: 'Every field: priority, status, group, type, delivery', hidden: !canEdit, onSelect: () => setEditing(true) },
             { label: 'Schedule studio', icon: 'calendar', hint: 'Stage lengths and the project end', hidden: !(p.deliveryMethod === 'Agile' && canEdit && !archived), onSelect: () => setScheduling(true) },
+            { label: 'Save as template', icon: 'copy', hint: 'Sections, tasks, checklists and owners, with dates relative to the start', hidden: !canEdit, onSelect: () => void saveTemplate() },
             { label: 'Import tasks from CSV', icon: 'upload', hidden: !addWork, onSelect: () => setImporting(true) },
             { label: 'Related operational work', icon: 'bolt', hint: 'Tickets that refer to this project', hidden: !seeWork, onSelect: () => nav(`/work?tab=tickets&project=${p.id}`) },
             pinItem(pins, p.id),

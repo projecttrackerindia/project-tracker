@@ -105,6 +105,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Quality/QualityService.cs", // next TC-n number: max over this workspace's own cases (tenant id named explicitly), including deleted ones so keys are never reused
         "ProjectManagement.Application/Features/Projects/ActionItemService.cs", // restoring an action item from the bin (deleted rows are filtered out otherwise), checked against its project and tenant
         "ProjectManagement.Application/Features/Reminders/PortfolioDigestService.cs",
+        "ProjectManagement.Application/Features/Recurring/RecurrenceService.cs", // the background job lists active series across workspaces, then works inside each one's scope; task numbers count deleted tasks, as TaskService does
+        "ProjectManagement.Application/Features/Recurring/ManagerDigestService.cs", // the Monday e-mail (no signed-in workspace): every query names the tenant and the owner explicitly
         "ProjectManagement.Application/Features/Reminders/ReminderEngine.cs",
         "ProjectManagement.Application/Features/Reminders/DueReminderRules.cs", // the reminder engine (no signed-in workspace): whether the reminded person touched one item, by its id and their id only (existence checks)
         "ProjectManagement.Application/Features/Reminders/ReminderService.cs", // the signed-in person's own organization zone, by the current tenant id only

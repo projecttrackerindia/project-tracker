@@ -250,6 +250,9 @@ public interface IAppDbContext
     DbSet<ChatPollVote> ChatPollVotes { get; }
     DbSet<ChatDeviceKey> ChatDeviceKeys { get; }
     DbSet<ChatKeyBackup> ChatKeyBackups { get; }
+    DbSet<TaskRecurrence> TaskRecurrences { get; }
+    DbSet<TaskOccurrence> TaskOccurrences { get; }
+    DbSet<WorkTemplate> WorkTemplates { get; }
     DbSet<ChatUserStatus> ChatUserStatuses { get; }
     DbSet<AiUserProfile> AiUserProfiles { get; }
     DbSet<ReminderSettings> ReminderSettings { get; }
