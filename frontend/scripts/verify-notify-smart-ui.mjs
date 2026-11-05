@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
+import { shimSelect } from './lib/select-shim.mjs';
 
 // Round 5 notify-smart: a burst about one project is one named group in the Notification Centre ("3 updates on …") with Mute; Settings ›
 // Notifications › Smart (grouping, window, daily summary, urgent / normal per kind, mutes) saves through its endpoints; Report a problem from
@@ -36,6 +37,7 @@ let flags = [
 ];
 const writes = [], errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+await shimSelect(browser);
 try {
   const make = async (theme = 'light', seen = '2026.11.2') => {
     const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
