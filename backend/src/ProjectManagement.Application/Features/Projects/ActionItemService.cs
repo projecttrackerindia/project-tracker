@@ -16,7 +16,7 @@ public record ActionItemCan(bool Edit, bool Delete, bool Complete);
 
 public record ActionItemDto(Guid Id, Guid ProjectId, string Title, string? Details, UserRefDto? Assignee, DateOnly? DueDate, Priority Priority, ActionItemStatus Status,
     bool IsOverdue, DateTime CreatedAt, UserRefDto? CreatedBy, DateTime? CompletedAt, UserRefDto? CompletedBy, ActionItemCan Can, string Key = "", int Number = 0,
-    TimeOnly? DueTime = null, DateTime? DueAt = null);
+    TimeOnly? DueTime = null, DateTime? DueAt = null, DateOnly? OriginalDate = null, int ExtensionCount = 0, int TotalSlipDays = 0);
 
 public record CreateActionItemRequest(string? Title, string? Details, Guid? AssigneeId, DateOnly? DueDate, Priority? Priority, TimeOnly? DueTime = null);
 /// <summary>All the editable fields at once: what is sent replaces what was there (an empty assignee or due date clears it).</summary>
@@ -141,6 +141,7 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
         var people = rows.SelectMany(r => new[] { r.AssigneeId, r.CreatedBy, r.CompletedBy }).Where(x => x != null).Select(x => x!.Value).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => people.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         UserRefDto? Ref(Guid? id) => id is { } u && names.TryGetValue(u, out var n) ? new UserRefDto(u, n) : null;
+        var slips = await DateSlips.ItemsAsync(db, rows.Select(r => r.Id).ToList(), ct);
 
         return rows.Select(r =>
         {
@@ -149,7 +150,8 @@ public class ActionItemService(IAppDbContext db, ICurrentContext ctx, AppClock c
             var can = new ActionItemCan(Edit: !archived && (manager || mine || assigned), Delete: !archived && (manager || (mine && canCreate)), Complete: (!archived || !done) && (manager || mine || assigned));   // archived: open ones can still be completed (not reopened)
             return new ActionItemDto(r.Id, project.Id, r.Title, r.Description, Ref(r.AssigneeId), r.DueDate, r.Priority, ToApi(r.Status),
                 !done && clock.IsPastDue(r.DueDate, r.DueTime), r.CreatedAt, Ref(r.CreatedBy), r.CompletedAt, Ref(r.CompletedBy), can,
-                WorkItemService.KeyOf(WorkTaskKind.ActionItem, r.Number), r.Number, r.DueTime, clock.DueAt(r.DueDate, r.DueTime));
+                WorkItemService.KeyOf(WorkTaskKind.ActionItem, r.Number), r.Number, r.DueTime, clock.DueAt(r.DueDate, r.DueTime),
+                slips.GetValueOrDefault(r.Id)?.OriginalDate, slips.GetValueOrDefault(r.Id)?.ExtensionCount ?? 0, slips.GetValueOrDefault(r.Id)?.TotalSlipDays ?? 0);
         }).ToList();
     }
 

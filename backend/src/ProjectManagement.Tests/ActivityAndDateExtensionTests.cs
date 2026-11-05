@@ -162,6 +162,10 @@ public class ActivityAndDateExtensionTests(ApiFactory factory)
         var refusedItem = await w.Lead.Put($"/api/v1/projects/{w.Project}/action-items/{item}", new { title = "Book the blasting crew", dueDate = Iso(8), priority = "Medium", status = "Open" });
         Assert.Equal("DATE_EXTENSION_REASON_REQUIRED", refusedItem.ErrorCode);
         Assert.True((await w.Lead.Put($"/api/v1/projects/{w.Project}/action-items/{item}", new { title = "Book the blasting crew", dueDate = Iso(8), priority = "Medium", status = "Open", extensionReason = "Crew on another site" })).Ok);
+        var slipped = (await w.Lead.Get($"/api/v1/projects/{w.Project}/action-items")).Data!.AsArray().Single(x => S(x!["id"]) == item.ToString())!;
+        Assert.Equal(Iso(5), S(slipped["originalDate"]));
+        Assert.Equal(1, slipped["extensionCount"]!.GetValue<int>());
+        Assert.Equal(3, slipped["totalSlipDays"]!.GetValue<int>());
         Assert.Contains(await Activity(w.Lead, "actionitem", item), i => S(i!["action"]) == "date_extended" && S(i["reason"]) == "Crew on another site");
 
         var milestone = Guid.Parse(S((await w.Lead.Post($"/api/v1/projects/{w.Project}/milestones", new { name = "Pit open", dueDate = Iso(20), status = "Pending" })).Data![0]!["id"]));
