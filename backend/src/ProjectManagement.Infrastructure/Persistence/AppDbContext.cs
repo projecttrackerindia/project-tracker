@@ -15,6 +15,10 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
 {
     public DbSet<PlannedLeave> PlannedLeaves => Set<PlannedLeave>();
     public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+    public DbSet<NotificationTuning> NotificationTunings => Set<NotificationTuning>();
+    public DbSet<NotificationMute> NotificationMutes => Set<NotificationMute>();
+    public DbSet<ProblemReport> ProblemReports => Set<ProblemReport>();
+    public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<ApprovalRequestStep> ApprovalRequestSteps => Set<ApprovalRequestStep>();
     public DbSet<ApprovalRequestEvent> ApprovalRequestEvents => Set<ApprovalRequestEvent>();
     public DbSet<ApprovalPolicy> ApprovalPolicies => Set<ApprovalPolicy>();
@@ -371,6 +375,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigurePlatformViews(b);
         ConfigureAttendance(b);
         ConfigureApprovalsAndNotes(b);
+        ConfigureNotifySmart(b);
         ApplyQueryFilters(b);
     }
 }

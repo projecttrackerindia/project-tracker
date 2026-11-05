@@ -352,6 +352,7 @@ public static class DependencyInjection
         services.AddScoped<AttachmentService>();
         services.AddScoped<AttachmentJanitor>();
         services.AddScoped<NotificationRouter>();
+        services.AddScoped<SmartNotificationService>();
         services.AddScoped<NotificationService>();
         services.AddScoped<NotificationActionService>();
         services.AddScoped<NotificationPreferenceService>();
