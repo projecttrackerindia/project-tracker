@@ -89,7 +89,10 @@ public partial class AppDbContext
             RealtimeEntityChanges.Collect(ChangeTracker, current.UserId));
         if (changes is { Count: > 0 }) changes = await ResolveCommentProjectsAsync(changes, cancellationToken);
         // New notifications (in the bell): their recipients' open tabs hear of them once committed, instead of at the next poll.
-        var created = notificationFeed is null ? null : ChangeTracker.Entries<Notification>().Where(e => e.State == EntityState.Added && e.Entity.InApp)
+        var created = notificationFeed is null ? null : ChangeTracker.Entries<Notification>().Where(e => e.Entity.InApp && (e.State == EntityState.Added
+                // A change folded into a recent unread notice (WorkChangeNotices, bursts within 2 min) is news too: the open bell re-reads it.
+                || (e.State == EntityState.Modified && e.Property(n => n.Title).IsModified && e.Entity.ArchivedAt == null && e.Entity.ReadAt == null
+                    && e.Entity.DedupeKey != null && e.Entity.DedupeKey.StartsWith("work-change:"))))
             .Select(e => new NotificationAnnouncement(e.Entity.TenantId, e.Entity.UserId, e.Entity.Id, e.Entity.Type, e.Entity.InApp)).ToList();
         var saved = await SaveChainedAsync(acceptAllChangesOnSuccess, cancellationToken);
         if (Database.CurrentTransaction is not null)
