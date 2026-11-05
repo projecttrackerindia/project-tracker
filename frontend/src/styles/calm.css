@@ -303,11 +303,11 @@ html body .calm-go:hover { opacity: 1; background: var(--ds-accent-hover); }
 
 /* ------------------------------------------------------------------------------------------------ the Siri-style Aura orb (SiriOrb) */
 /* One orb everywhere. Layers turn with transform only; states change speed. Page classes (xx-orb) keep their size, the look is shared. */
-span.siri-orb.siri-orb { position: relative; display: inline-block; flex: none; width: 16px; height: 16px; border-radius: 50%; overflow: hidden; isolation: isolate;
+span.siri-orb.siri-orb { position: relative; display: inline-block; flex: none; width: 16px; height: 16px; border-radius: 50%; isolation: isolate;
   background: radial-gradient(circle at 50% 50%, #7b5cff 0%, #3a3ae0 70%) !important; box-shadow: 0 0 10px rgba(130, 92, 255, .45), inset 0 0 0 .5px rgba(255,255,255,.35) !important;
   font-size: 0; color: transparent; vertical-align: middle; animation: siri-breathe 3.6s ease-in-out infinite; }
-span.siri-orb > i { position: absolute; inset: -30%; border-radius: 50%; pointer-events: none; will-change: transform; }
-span.siri-orb > i:first-child { background: conic-gradient(from 0deg, #ff5f9e, #a35cff, #3a8bff, #2fd0c2, #ffb340, #ff5f9e); opacity: .85; filter: blur(2px); animation: siri-spin 7s linear infinite; }
+span.siri-orb > i { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; will-change: transform; }
+span.siri-orb > i:first-child { background: conic-gradient(from 0deg, #ff5f9e, #a35cff, #3a8bff, #2fd0c2, #ffb340, #ff5f9e); opacity: .85; filter: blur(1px); animation: siri-spin 7s linear infinite; }
 span.siri-orb > i:last-child { inset: 8% 12% 30% 14%; background: radial-gradient(circle at 40% 35%, rgba(255,255,255,.85), rgba(255,255,255,0) 60%); opacity: .7; animation: siri-drift 5s ease-in-out infinite; }
 span.siri-orb[data-state="listening"] { animation-duration: 1.4s; }
 span.siri-orb[data-state="listening"] > i:first-child { animation-duration: 3s; }
