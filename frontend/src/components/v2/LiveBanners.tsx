@@ -12,7 +12,7 @@ import { Icon } from '../Icon';
 import { liveBannersOn } from './liveBannersPref';
 import { toast } from '../../stores/ui';
 import { playCue } from '../../lib/attention';
-import { announce } from '../../features/notifications/centre/announce';
+import { announce, isQuiet } from '../../features/notifications/centre/announce';
 import { CATEGORY_META, categoryOf, conversationOf, iconOf } from '../../features/notifications/centre/model';
 import { mayBanner, maySound } from '../../features/notifications/centre/prefs';
 import { isViewing } from '../../features/notifications/centre/readSync';
@@ -53,7 +53,7 @@ export function LiveBanners() {
         const arrived = all.filter((n) => !isViewing(n.link));
         // Each new one is announced once with its own sound (unless muted here); reminders keep their own alert card, so no banner for them.
         arrived.forEach((n) => { if (!SKIP.has(n.type)) announce(n); });
-        const fresh = arrived.filter((n) => !SKIP.has(n.type) && mayBanner(categoryOf(n)));
+        const fresh = arrived.filter((n) => !SKIP.has(n.type) && !isQuiet(n) && mayBanner(categoryOf(n)));
         if (fresh.length && liveBannersOn()) {
           setItems((cur) => [...fresh.reverse(), ...cur].slice(0, MAX));
           void qc.invalidateQueries({ queryKey: [wid, 'inbox'] });

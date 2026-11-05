@@ -10,11 +10,15 @@ import { flashAura } from '../../../components/aura/mood';
 import { isMuted, getAlertPrefs, maySound } from './prefs';
 import { isViewing } from './readSync';
 
-type Arrival = Pick<AppNotification, 'type' | 'link'> & { id?: string | null; category?: AppNotification['category'] };
+type Arrival = Pick<AppNotification, 'type' | 'link'> & { id?: string | null; category?: AppNotification['category']; priority?: AppNotification['priority']; muted?: boolean };
+
+/** Urgent rings and pops up; a normal one (or anything about a muted project or thread) only adds to the quiet badge. Older servers send no priority: as before. */
+export const isQuiet = (n: { priority?: AppNotification['priority']; muted?: boolean }) => n.priority === 'normal' || !!n.muted;
 
 /** Returns whether a sound was played (the service worker then keeps the system notification silent). */
 export function announce(n: Arrival, opts: { silent?: boolean } = {}): boolean {
   if (n.id && !firstTime(`n-${n.id}`, 120_000)) return false;
+  if (isQuiet(n)) return false;   // a quiet badge: no sound, no buzz, no flashing title
   if (/mention|approv/i.test(n.type)) flashAura('alert', 5000);   // Aura: heads up
   const p = getAlertPrefs();
   const cat = categoryOf({ type: n.type, link: n.link ?? null, category: n.category });
