@@ -21,7 +21,7 @@ export function CalmQualityFront({ onTab }: { onTab: (t: 'runs' | 'cases' | 'rel
   const nav = useNavigate();
   const me = useAuth((s) => s.ctx?.user.id ?? null);
   const [view, setView] = useState<View>('open');
-  const open = useWsQuery(['quality', 'bugs', 'open'], () => workItemsApi.list({ kind: ['issue'], status: 'open', limit: 200 }), { refetchInterval: 60_000 });
+  const open = useWsQuery(['quality', 'bugs', 'open'], () => workItemsApi.list({ kind: ['issue'], status: 'open', limit: 200 }), { refetchInterval: 300_000 });
   const closed = useWsQuery(['quality', 'bugs', 'closed'], () => workItemsApi.list({ kind: ['issue'], status: 'closed', limit: 50 }), { enabled: view === 'closed' });
   const releases = useWsQuery(['quality', 'releases'], () => releaseApi.list(), { staleTime: 60_000 });
   const release = (releases.data ?? []).filter((r) => r.status !== 'Shipped').sort((a, b) => (a.targetDate ?? '9').localeCompare(b.targetDate ?? '9'))[0] ?? null;

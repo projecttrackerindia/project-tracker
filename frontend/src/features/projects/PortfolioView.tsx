@@ -69,7 +69,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
     if (url.mode === 'sheet') return shared;
     return [
       { label: n ? `Filters · ${n}` : 'Filters', icon: 'search', hint: 'Lead, group, health and due dates', onSelect: () => setFiltersOpen((x) => !x) },
-      ...(url.mode === 'overview' || url.mode === 'timeline' ? [{ label: params.get('classic') === '1' ? 'Back to the calm view' : url.mode === 'overview' ? 'Board in detail · money and capacity' : 'Full Gantt', icon: 'list' as const,
+      ...((url.mode === 'overview' || url.mode === 'timeline') && params.get('classic') === '1' ? [{ label: params.get('classic') === '1' ? 'Back to the calm view' : url.mode === 'overview' ? 'Board in detail · money and capacity' : 'Full Gantt', icon: 'list' as const,
         onSelect: () => setParams((cur) => { const n = new URLSearchParams(cur); if (n.get('classic') === '1') n.delete('classic'); else n.set('classic', '1'); return n; }) }] : []),
       { label: 'Export to Excel', icon: 'download', onSelect: () => void exportAs(url.filter, 'xlsx') },
       { label: 'Export to PDF', icon: 'download', onSelect: () => void exportAs(url.filter, 'pdf') },
@@ -117,7 +117,7 @@ function ServerFilters({ url, open }: { url: PortfolioUrlState; open: boolean })
 function BoardTab({ ai }: { ai: boolean }) {
   const { url, passes } = usePortfolio();
   const { filter, mode, setMode } = url;
-  const q = useWsQuery(portfolioKeys.board(filter), () => portfolioApi.board(filter), { refetchInterval: 120_000, staleTime: 60_000, placeholderData: (prev) => prev });
+  const q = useWsQuery(portfolioKeys.board(filter), () => portfolioApi.board(filter), { refetchInterval: 300_000, staleTime: 60_000, placeholderData: (prev) => prev });
   const board = q.data;
   const b = board?.brief;
   const ranked = useMemo(() => (b?.ranked ?? []).filter((r) => passes({ id: r.projectId, name: r.name, key: r.key, owner: r.owner, health: r.health, due: r.dueDate })), [b, passes]);

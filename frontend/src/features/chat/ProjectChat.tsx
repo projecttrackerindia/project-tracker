@@ -25,7 +25,7 @@ export function useChatEnabled() {
 export function useProjectChatUnread(): Record<string, ProjectChatUnread> {
   const wid = useWorkspaceId();
   const on = useChatEnabled();
-  const q = useQuery({ queryKey: chatKeys.projectUnread(wid ?? ''), queryFn: () => chatApi.projectUnread(), enabled: !!wid && on, refetchInterval: 90_000, staleTime: 30_000 });
+  const q = useQuery({ queryKey: chatKeys.projectUnread(wid ?? ''), queryFn: () => chatApi.projectUnread(), enabled: !!wid && on, refetchInterval: 300_000, staleTime: 30_000 });
   const out: Record<string, ProjectChatUnread> = {};
   for (const u of q.data ?? []) out[u.projectId] = u;
   return out;

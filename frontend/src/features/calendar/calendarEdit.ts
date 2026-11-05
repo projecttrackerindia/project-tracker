@@ -87,15 +87,17 @@ export async function completeWork(e: Pick<CalendarEvent, 'type' | 'id' | 'proje
   }
 }
 export const canComplete = (e: Pick<CalendarEvent, 'type' | 'projectId'>) => (e.type === 'work') || ((e.type === 'task' || e.type === 'action') && !!e.projectId);
+/** The API refused a later date without a reason (422 DATE_EXTENSION_REASON_REQUIRED): ask for one. */
+export const needsReason = (err: unknown) => err instanceof ApiError && (err.code === 'DATE_EXTENSION_REASON_REQUIRED' || err.status === 422 && /reason/i.test(err.message));
 export const canMoveDue = (e: Pick<CalendarEvent, 'type'>) => e.type === 'task' || e.type === 'work';
 
 /** Move a due date. A task moved later carries its reason (the task form's rule; the server refuses it without one). */
 export async function moveDue(e: Pick<CalendarEvent, 'type' | 'id'>, date: string, reason: string, known?: Task | null) {
-  if (e.type === 'work') { await opsApi.bulk({ ids: [e.id], dueDate: date }); return; }
+  if (e.type === 'work') { await opsApi.bulk({ ids: [e.id], dueDate: date, ...(reason ? { extensionReason: reason } : {}) }); return; }
   const x = known ?? (await taskApi.get(e.id)).task;
   await taskApi.update(e.id, { title: x.title, description: x.description, priority: x.priority, assigneeId: x.assignee?.id ?? null, startDate: x.startDate, dueDate: date,
     estimatedHours: x.estimatedHours, labelIds: x.labels.map((l) => l.id), milestoneId: x.milestoneId, statusId: x.statusId, actualHours: x.actualHours, version: x.version,
-    dueDateReason: reason || null, dueDateDependency: null });
+    dueDateReason: reason || null, dueDateDependency: null, ...(reason ? { extensionReason: reason } : {}) });
 }
 
 /** Move a one-off reminder to a new time (the same save as the Reminders screen). A repeating one moves from Reminders. */

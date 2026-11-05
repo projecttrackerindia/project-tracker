@@ -60,6 +60,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ProjectManagement.Api.Realtime.ChatPresence>();
         services.AddSingleton<ProjectManagement.Application.Features.Chat.IChatPresence>(sp => sp.GetRequiredService<ProjectManagement.Api.Realtime.ChatPresence>());
         services.AddSingleton<ProjectManagement.Application.Features.Chat.IChatNotifier, ProjectManagement.Api.Realtime.SignalRChatNotifier>();
+        // Realtime sync: committed changes are numbered (Redis with several servers, memory with one) and sent to the groups allowed to hear of them.
+        if (!string.IsNullOrWhiteSpace(config["Redis:ConnectionString"]))
+            services.AddSingleton<ProjectManagement.Api.Realtime.IRealtimeLog>(sp => new ProjectManagement.Api.Realtime.RedisRealtimeLog(sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>()));
+        else services.AddSingleton<ProjectManagement.Api.Realtime.IRealtimeLog, ProjectManagement.Api.Realtime.InMemoryRealtimeLog>();
+        services.AddSingleton<ProjectManagement.Api.Realtime.RealtimeDispatcher>();
+        services.AddHostedService(sp => sp.GetRequiredService<ProjectManagement.Api.Realtime.RealtimeDispatcher>());
+        services.AddHostedService<ProjectManagement.Api.Realtime.SnoozeReturnWorker>();
         services.AddSingleton<ProjectManagement.Application.Abstractions.IChangeFeed, ProjectManagement.Api.Realtime.SignalRChangeFeed>();
         services.AddSingleton<ProjectManagement.Application.Abstractions.INotificationFeed, ProjectManagement.Api.Realtime.SignalRNotificationFeed>();
         services.AddSingleton<ProjectManagement.Application.Features.Auth.ISessionApprovalNotifier, ProjectManagement.Api.Realtime.SignalRSessionApprovalNotifier>();

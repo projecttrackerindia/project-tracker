@@ -19,7 +19,7 @@ export const openReminderComposer = (d?: ComposerDraft) => useReminderComposer.g
 
 /** How many reminders need attention now (the sidebar badge) - kept fresh by live events and a slow poll. */
 export function useReminderCounts(enabled = true) {
-  return useWsQuery(['reminders', 'counts'], reminderApi.counts, { refetchInterval: 30_000, staleTime: 15_000, enabled });
+  return useWsQuery(['reminders', 'counts'], reminderApi.counts, { refetchInterval: 300_000, staleTime: 15_000, enabled });
 }
 
 /** Reminders also feed the Today inbox (what went off), so both refresh together. */

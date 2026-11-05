@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Select } from '../../components/Select';
 import { createPortal } from 'react-dom';
 import { ApiError } from '../../api/client';
 import { toast } from '../../stores/ui';
@@ -123,7 +124,7 @@ export function PasteModal({ grid: initial, data, defaultProject, today, onClose
         <div className="ps3-modal-h">
           <div style={{ minWidth: 0 }}>
             <h2>{grid.length ? <>Paste {body.length} row{body.length === 1 ? '' : 's'} into{' '}
-              <select aria-label="Project to paste into" value={projectId} onChange={(e) => setProjectId(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select></> : 'Paste from Excel'}</h2>
+              <Select aria-label="Project to paste into" value={projectId} onChange={(e) => setProjectId(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</Select></> : 'Paste from Excel'}</h2>
             <div className="ps3-dim" style={{ marginTop: 3, fontSize: 12.5 }}>{grid.length ? 'We matched your columns. Check the preview, then add.' : 'Copy rows in Excel and paste them here. The first row may be headers.'}</div>
           </div>
           <span className="ps3-sp" />

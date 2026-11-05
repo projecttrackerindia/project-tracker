@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Select } from '../Select';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ApiError, uploadFile } from '../../api/client';
 import { attachmentApi, opsApi, projectApi, workApi, workspaceApi } from '../../api/endpoints';
@@ -306,15 +307,15 @@ function NewSheet({ onProject, onTemplate }: { onProject: () => void; onTemplate
           <select aria-label="Change priority" value={pr} onChange={(e) => setPriority(e.target.value as Priority)}>{PRIORITIES.map((p) => <option key={p} value={p}>{p}{slaOf(p) ? ` · ${spell(slaOf(p)!)}` : ''}</option>)}</select>
         </Chip>,
         <Chip key="who" label="Owner" value={owner?.name ?? 'Nobody yet'} avatar={owner ? initials(owner.name) : undefined}>
-          <select aria-label="Change owner" value={owner?.id ?? ''} onChange={(e) => setOwnerId(e.target.value)}><option value="">Nobody yet</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.id === me?.id ? ' (you)' : ''}</option>)}</select>
+          <Select aria-label="Change owner" value={owner?.id ?? ''} onChange={(e) => setOwnerId(e.target.value)}><option value="">Nobody yet</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.id === me?.id ? ' (you)' : ''}</option>)}</Select>
         </Chip>,
       );
       if (projectWork || (live.length > 0 && !!projectId)) chips.push(
         <Chip key="place" label="Project" value={projectWork ? project?.name ?? 'Choose…' : live.find((p) => p.id === projectId)?.name ?? 'None'} glyph="▤" color="#5856d6" warn={projectWork && !project}>
-          <select aria-label="Change project" value={projectWork ? project?.id ?? '' : projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)}>
+          <Select aria-label="Change project" value={projectWork ? project?.id ?? '' : projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)}>
             <option value="" disabled={projectWork}>{projectWork ? 'Choose a project' : 'None'}</option>
             {live.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
-          </select>
+          </Select>
         </Chip>,
       );
       else chips.push(<Chip key="place" label="Goes to" value={def!.place} glyph={def!.glyph} color="linear-gradient(180deg,#ff6961,#ff3b30)" />);

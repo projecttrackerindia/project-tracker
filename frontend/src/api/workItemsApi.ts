@@ -1,6 +1,6 @@
 // The one Work API (v2): every kind of work - project tasks, issues, action items and tickets - through /api/v1/work-items.
 // Each kind keeps its own rules on the server; `detail` on an item is the kind's own full record.
-import { create, del, get, patch, post } from './client';
+import { create, del, get, patch, post, workDeleted } from './client';
 import type { Priority, StatusCategory, UserRef } from './types';
 
 export type WorkKind = 'task' | 'issue' | 'action' | 'ticket';
@@ -176,7 +176,7 @@ export const workItemsApi = {
   update: (id: string, b: WorkItemPatch) => patch<WorkItemDetail>(`/work-items/${id}`, b),
   /** "log 2h …" also logs the time on tasks and tickets. */
   comment: (id: string, body: string, mentionUserIds?: string[]) => create<WorkCommentResult>(`/work-items/${id}/comments`, { body, mentionUserIds }),
-  remove: (id: string) => del(`/work-items/${id}`),
+  remove: (id: string) => del(`/work-items/${id}`).then(workDeleted),
 };
 
 /** A Desk saved reply: built in or a WhatsApp number's. Text may hold {name}, {key}, {title}, {status}, {eta}, {account}, {agent}. */

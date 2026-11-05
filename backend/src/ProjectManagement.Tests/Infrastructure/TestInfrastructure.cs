@@ -62,6 +62,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
         Environment.SetEnvironmentVariable("TimesheetNudges__WorkerEnabled", "false"); // tests run the timesheet reminders explicitly
         Environment.SetEnvironmentVariable("RecurringWork__WorkerEnabled", "false"); // tests run repeating tasks and the manager e-mail explicitly
+        Environment.SetEnvironmentVariable("MailWatch__WorkerEnabled", "false"); // tests run the mail watcher explicitly
         Environment.SetEnvironmentVariable("Attendance__WorkerEnabled", "false"); // tests run the attendance reminders explicitly
         Environment.SetEnvironmentVariable("GoogleMeetSync__WorkerEnabled", "false"); // tests run the RSVP sync engine explicitly
         Environment.SetEnvironmentVariable("Agent__WorkerEnabled", "false"); // tests run the project agent's tick explicitly

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Chat;
@@ -27,23 +28,6 @@ public class SignalRChatNotifier(IHubContext<ChatHub> hub) : IChatNotifier
     {
         var groups = userIds.Distinct().Select(u => ChatGroups.User(tenantId, u)).ToList();
         return groups.Count == 0 ? Task.CompletedTask : hub.Clients.Groups(groups).SendAsync(eventName, payload, ct);
-    }
-}
-
-/// <summary>
-/// Live updates: what changed in a workspace goes to everyone there who has the app open, so boards, lists and dashboards refresh by
-/// themselves. Only the kind of thing, its id and its project are sent - each screen reloads through the API with its own permissions.
-/// </summary>
-public class SignalRChangeFeed(IHubContext<ChatHub> hub, ILogger<SignalRChangeFeed> log) : IChangeFeed
-{
-    public void Publish(IReadOnlyList<ChangeEvent> changes)
-    {
-        foreach (var group in changes.GroupBy(c => c.TenantId))
-        {
-            var payload = group.Select(c => new { entityType = c.EntityType, entityId = c.EntityId, projectId = c.ProjectId, action = c.Action, actorId = c.ActorId }).ToList();
-            _ = hub.Clients.Group(ChatGroups.Workspace(group.Key)).SendAsync("changed", payload).ContinueWith(
-                t => log.LogDebug(t.Exception, "Could not send live changes"), TaskContinuationOptions.OnlyOnFaulted);
-        }
     }
 }
 
@@ -121,7 +105,7 @@ public class ChatPresence(IHubContext<ChatHub> hub, IPresenceStore store) : ICha
 [Authorize]
 public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvider clock, IServiceProvider services) : Hub
 {
-    private const string TenantKey = "tenant", UserKey = "user", NameKey = "name", WatchingKey = "watching";
+    private const string TenantKey = "tenant", UserKey = "user", NameKey = "name", WatchingKey = "watching", ChatterKey = "chatter", ProjectsKey = "projects";
 
     public override async Task OnConnectedAsync()
     {
@@ -135,27 +119,35 @@ public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvid
             return;
         }
         var now = clock.GetUtcNow().UtcDateTime;
-        var name = await (from s in db.UserSessions
-                          join u in db.Users on s.UserId equals u.Id
-                          join m in db.TenantMembers on u.Id equals m.UserId
-                          join t in db.Tenants on m.TenantId equals t.Id
-                          where s.Id == session && s.UserId == user && s.RevokedAt == null && s.ExpiresAt > now && u.IsActive
-                                && m.TenantId == tenant && m.Role != TenantRole.Guest && t.Status == TenantStatus.Active && t.Type == WorkspaceType.Organization
-                          select u.DisplayName).AsNoTracking().FirstOrDefaultAsync();
-        if (name is null)
+        // Realtime sync is for every workspace and role (personal workspaces and guests too); chat and presence stay with organization
+        // members, as before. What each connection may hear is decided by the groups it joins below (SyncGroups).
+        var who = await (from s in db.UserSessions
+                         join u in db.Users on s.UserId equals u.Id
+                         join m in db.TenantMembers on u.Id equals m.UserId
+                         join t in db.Tenants on m.TenantId equals t.Id
+                         where s.Id == session && s.UserId == user && s.RevokedAt == null && s.ExpiresAt > now && u.IsActive
+                               && m.TenantId == tenant && t.Status == TenantStatus.Active
+                         select new { u.DisplayName, m.Role, t.Type }).AsNoTracking().FirstOrDefaultAsync();
+        if (who is null)
         {
             Context.Abort();
             return;
         }
+        var chatter = who.Role != TenantRole.Guest && who.Type == WorkspaceType.Organization;
         Context.Items[TenantKey] = tenant;
         Context.Items[UserKey] = user;
-        Context.Items[NameKey] = name;
+        Context.Items[NameKey] = who.DisplayName;
+        Context.Items[ChatterKey] = chatter;
 
         await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.User(tenant, user));
-        await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.Workspace(tenant));
         await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.Account(user));
         await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.Session(session));
-        await presence.ConnectedAsync(Context.ConnectionId, tenant, user);
+        if (chatter)
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.Workspace(tenant));
+            await presence.ConnectedAsync(Context.ConnectionId, tenant, user);
+        }
+        await JoinSyncGroupsAsync(tenant, user, who.Role == TenantRole.Guest);
 
         // The access token is only checked when the connection is made, so close the connection when the token runs out: the browser
         // reconnects with a fresh one, and a session that was ended stops receiving within one token lifetime.
@@ -169,9 +161,47 @@ public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvid
         await base.OnConnectedAsync();
     }
 
+    /// <summary>
+    /// Realtime sync groups: workspace members hear of workspace-wide things; people who can read every project join one group for all of
+    /// them; people whose access is limited (teams, guests) join one group per project they can open, with the same reach an API request of
+    /// theirs has. Called again (<see cref="RefreshScope"/>) when the person was added to or removed from a project.
+    /// </summary>
+    private async Task JoinSyncGroupsAsync(Guid tenant, Guid user, bool guest)
+    {
+        if (!guest) await Groups.AddToGroupAsync(Context.ConnectionId, SyncGroups.Members(tenant));
+        Guid[] projects;
+        bool all;
+        try
+        {
+            await ProjectManagement.Application.Services.WorkspaceExecutionPrincipal.ConfigureAsync(services, user, tenant, null, Context.ConnectionAborted);
+            var cc = services.GetRequiredService<ProjectManagement.Application.Abstractions.CurrentContext>();
+            all = !cc.RestrictsProjects;
+            projects = all ? [] : cc.ProjectIds.Take(2000).ToArray();
+        }
+        catch (ProjectManagement.Application.Exceptions.AppException) { all = false; projects = []; }
+        var before = Context.Items[ProjectsKey] as HashSet<Guid> ?? [];
+        var now = projects.ToHashSet();
+        if (all) await Groups.AddToGroupAsync(Context.ConnectionId, SyncGroups.AllProjects(tenant));
+        else await Groups.RemoveFromGroupAsync(Context.ConnectionId, SyncGroups.AllProjects(tenant));
+        foreach (var p in before.Except(now)) await Groups.RemoveFromGroupAsync(Context.ConnectionId, SyncGroups.Project(tenant, p));
+        foreach (var p in now.Except(before)) await Groups.AddToGroupAsync(Context.ConnectionId, SyncGroups.Project(tenant, p));
+        Context.Items[ProjectsKey] = now;
+    }
+
+    /// <summary>The page heard that the person's project access changed (added to or removed from a project): join / leave project groups.</summary>
+    public async Task RefreshScope()
+    {
+        if (Context.Items[TenantKey] is not Guid tenant || Context.Items[UserKey] is not Guid user) return;
+        var guest = Context.Items[ChatterKey] is not true && await db.TenantMembers.AsNoTracking().AnyAsync(m => m.TenantId == tenant && m.UserId == user && m.Role == TenantRole.Guest);
+        await JoinSyncGroupsAsync(tenant, user, guest);
+    }
+
+    /// <summary>Heartbeat from the page (besides the transport's keep-alive): answers with the server time, so the page can tell a stalled link.</summary>
+    public DateTime Ping() => clock.GetUtcNow().UtcDateTime;
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        presence.Disconnected(Context.ConnectionId);
+        if (Context.Items[ChatterKey] is true) presence.Disconnected(Context.ConnectionId);
         // Leaving the app closes whatever the person was looking at.
         if (Context.Items[WatchingKey] is HashSet<string> watching && Context.Items[TenantKey] is Guid tenant && Context.Items[UserKey] is Guid user)
             foreach (var key in watching) await Clients.Group(ViewGroup(tenant, key)).SendAsync("viewing", new { key, userId = user, on = false });
@@ -180,7 +210,7 @@ public partial class ChatHub(ChatPresence presence, IAppDbContext db, TimeProvid
     }
 
     /// <summary>The page reports that this tab has had no keyboard, mouse or touch activity for a while (true) or that the person is back (false).</summary>
-    public Task SetIdle(bool idle) => presence.IdleChangedAsync(Context.ConnectionId, idle);
+    public Task SetIdle(bool idle) => Context.Items[ChatterKey] is true ? presence.IdleChangedAsync(Context.ConnectionId, idle) : Task.CompletedTask;
 
     // ---- who else is looking at the same task: each open task is a group; people announce themselves and answer newcomers.
 

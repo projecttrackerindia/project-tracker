@@ -101,6 +101,10 @@ public class RecurringTaskTests(ApiFactory factory)
 
     private static async Task Complete(TestClient c, Guid project, Guid task)
     {
+        // A task cannot be marked done with open checklist items: tick them first, like a person would.
+        foreach (var item in (await c.Get($"/api/v1/tasks/{task}/checklist")).Data!["items"]!.AsArray())
+            if (!item!["isDone"]!.GetValue<bool>())
+                Assert.True((await c.Put($"/api/v1/tasks/{task}/checklist/{item["id"]!.GetValue<string>()}", new { isDone = true })).Ok);
         var res = await c.Patch($"/api/v1/tasks/{task}/move", new { statusId = await DoneStatus(c, project) });
         Assert.True(res.Ok, res.ToString());
     }
@@ -382,6 +386,7 @@ public class ManagerDigestTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, "Nico NewYork");
         await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
         await Programme(owner, "Hudson Rollout");
         var member = await owner.AddMemberAsync(factory, ProjectManagement.Domain.Enums.TenantRole.Member, "Mona Member");
         Zone(owner.UserId, "America/New_York");
@@ -400,6 +405,7 @@ public class ManagerDigestTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, "Pia Preview");
         await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
         await Programme(owner, "Preview Programme");
         var preview = await owner.Get("/api/v1/digest/manager/preview");
         Assert.True(preview.Ok, preview.ToString());

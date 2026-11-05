@@ -498,7 +498,7 @@ try {
       await openCreate(page);
       await sheet.getByLabel('What to create').fill('Write the settlement runbook');
       await sheet.getByRole('radio', { name: 'Task' }).click();
-      await sheet.getByLabel('Change project').selectOption(pid);
+      await sheet.getByLabel('Change project').locator('xpath=..').locator('select.ss-native').selectOption(pid, { force: true });
       await sheet.getByLabel('Change type').selectOption('bug');   // a project issue is the Bug kind now
       await sheet.locator('.v2-understood-label', { hasText: /Understood as\s*a bug/ }).waitFor();
       await page.keyboard.press('Escape');

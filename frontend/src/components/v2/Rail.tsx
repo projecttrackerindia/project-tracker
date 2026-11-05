@@ -49,7 +49,7 @@ function useTalkUnread(): { n: number; dot: boolean } {
 /** Open inbox rows (the badge on Home): the same query Home's inbox uses, so the two agree. Red when any row is urgent. */
 function useInboxOpen() {
   const admin = useAuth((s) => !!s.ctx?.user.isPlatformAdmin);
-  const q = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { enabled: !admin, refetchInterval: 90_000, staleTime: 30_000 });
+  const q = useWsQuery(['inbox', 'rows', 'all'], () => inboxApi.list('all'), { enabled: !admin, refetchInterval: 300_000, staleTime: 30_000 });
   const rows = q.data?.rows ?? [];
   return { count: q.data?.counts?.all ?? rows.length, urgent: rows.some((r) => r.urgent), tickets: rows.filter((r) => r.kind === 'ticket').length,
     approvals: rows.filter((r) => r.kind === 'approval' || r.kind === 'access' || r.kind === 'decision' || r.kind === 'review').length };
@@ -135,7 +135,7 @@ function useSideGroups(): SideGroup[] {
   const red = (d: Destination, calm?: number): Partial<SideItem> => (tabs[d] > 0 ? { badge: tabs[d], calm: false } : calm ? { badge: calm, calm: true } : {});
   const remindersOpen = reminders.data?.open?.length ?? 0;
   // The same query as the Approvals page's useApprovalCounts (shared cache), without loading the page's chunk.
-  const approvals = useWsQuery(['approvals', 'counts'], approvalsApi.counts, { refetchInterval: 60_000, staleTime: 30_000, enabled: !admin }).data?.needsMe ?? 0;
+  const approvals = useWsQuery(['approvals', 'counts'], approvalsApi.counts, { refetchInterval: 300_000, staleTime: 30_000, enabled: !admin }).data?.needsMe ?? 0;
   return [
     clean({ title: null, items: [
       mk('/', 'home', 'Today', 'sun', home, red('today')),
