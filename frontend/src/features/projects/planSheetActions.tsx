@@ -192,7 +192,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
         })}
       </div>
       )}
-      <CalmWorkSheet id={opened?.id ?? null} title={opened?.title} onClose={() => setOpened(null)} />
+      <CalmWorkSheet id={opened?.id ?? null} title={opened?.title} onClose={() => setOpened(null)} kind="actionitem" />
       {snoozeAt && <SnoozePicker item={snoozeAt.item} anchor={snoozeAt.anchor} onClose={() => setSnoozeAt(null)}
         onPick={(day) => { const it = snoozeAt.item; setSnoozeAt(null); void decide(it, 'replan', { dueDate: day }, `Snoozed ${it.key} to ${dm(day)}`); }} />}
       {reassign && (
