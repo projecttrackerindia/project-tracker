@@ -20,6 +20,7 @@ import './settings-mac.css';
 import { leafHref, PLACE_LEAVES, PLACE_OF, useWorkspaceSections, type SettingsPlace, type WorkspaceSection } from './sections';
 import { NotificationCenterPage } from '../notifications/NotificationCenter';
 import { SmartNotificationsPane } from './SmartNotifications';
+import { FeatureFlagsSection, ProblemReportsSection } from './FeatureFlagsAdmin';
 import { AiSettings, type AiTab } from './AiControlCentre';
 import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -545,6 +546,8 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'notifications': case 'reminders': return <NotificationsTab sub={id} />;
     case 'holidays': return <HolidaysSection />;
     case 'attendance': return <AttendanceSettings />;
+    case 'features': return <FeatureFlagsSection />;
+    case 'problem-reports': return <ProblemReportsSection />;
     case 'data-location': return <DataLocationSection />;
     case 'status-page': return <StatusPageSection />;
     case 'data': return <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /><SectionHistory section="data" /></>;
