@@ -1,0 +1,36 @@
+/* Aura search sheet (calm-round4a): one field, Results and Ask Aura, filter chips. transform/opacity motion only. */
+.aura-s-root { position: fixed; inset: 0; z-index: 1200; display: flex; justify-content: center; align-items: flex-start; padding: 11vh 24px 24px; }
+.aura-s-scrim { position: absolute; inset: 0; background: rgba(10, 10, 20, .28); animation: aura-s-fade 180ms ease-out both; }
+.aura-s { position: relative; width: min(680px, 100%); max-height: min(72vh, 680px); display: flex; flex-direction: column; border-radius: 20px;
+  background: var(--ds-bg-elev, #fff); color: var(--ds-label, #111); box-shadow: 0 30px 80px rgba(0,0,0,.22), 0 0 0 .5px rgba(0,0,0,.08);
+  animation: aura-s-in 320ms var(--calm-spring, cubic-bezier(.2,.9,.3,1.1)) both; transform-origin: 50% 0; overflow: hidden; }
+.aura-s-field { display: flex; align-items: center; gap: 12px; margin: 12px; padding: 0 14px; min-height: 54px; border-radius: 14px; box-shadow: inset 0 0 0 1.5px var(--ds-accent, #2f6bff); background: var(--ds-bg, #fff); }
+.aura-s-field input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; font-size: 17px; }
+.aura-s-kbd, .aura-s-foot kbd { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 6px; border-radius: 6px; background: var(--ds-fill-2, rgba(120,120,128,.12)); color: var(--ds-label-2, #6b6b75); }
+.aura-s-cancel { border: 0; background: none; color: var(--ds-accent, #2f6bff); font: inherit; font-size: 16px; min-height: 44px; padding: 0 2px; cursor: pointer; }
+.aura-s-chips { display: flex; gap: 6px; padding: 0 12px 10px; overflow-x: auto; scrollbar-width: none; flex: none; }
+.aura-s-chips::-webkit-scrollbar { display: none; }
+.aura-s-chips button { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--ds-fill-2, rgba(120,120,128,.1)); color: var(--ds-label, inherit); font: inherit; font-size: 13px; cursor: pointer; }
+.aura-s-chips button.on { background: var(--ds-label, #111); color: var(--ds-bg, #fff); }
+.aura-s-chips small { font-size: 11px; opacity: .65; }
+.aura-s-body { overflow-y: auto; padding: 0 12px 12px; overscroll-behavior: contain; }
+.aura-s-body h4 { margin: 10px 4px 6px; font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ds-label-2, #6b6b75); }
+.aura-s-group { list-style: none; margin: 0; padding: 0; border-radius: 14px; background: var(--ds-bg-grouped, rgba(120,120,128,.06)); overflow: hidden; }
+.aura-s-group li + li { box-shadow: inset 0 .5px 0 var(--ds-separator, rgba(60,60,67,.14)); }
+.aura-s-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 14px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.aura-s-row[data-sel="true"] { background: var(--ds-fill-2, rgba(120,120,128,.12)); }
+.aura-s-mark { width: 30px; height: 30px; border-radius: 9px; flex: none; display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 650; }
+.aura-s-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.aura-s-t b { font-weight: 500; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aura-s-t small { font-size: 12.5px; color: var(--ds-label-2, #6b6b75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aura-s-empty { margin: 14px 6px; font-size: 14px; color: var(--ds-label-2, #6b6b75); }
+.aura-s-foot { display: flex; gap: 16px; padding: 10px 16px; font-size: 12px; color: var(--ds-label-3, #8e8e93); box-shadow: inset 0 .5px 0 var(--ds-separator, rgba(60,60,67,.14)); flex: none; }
+.aura-s-foot kbd { margin-right: 3px; }
+.aura-s-root.phone { padding: 0; align-items: stretch; }
+.aura-s-root.phone .aura-s { width: 100%; max-height: none; height: 100%; border-radius: 0; padding-top: env(safe-area-inset-top); animation-name: aura-s-up; }
+.aura-s-root.phone .aura-s-field { margin: 10px 16px; }
+.aura-s-root.phone .aura-s-chips, .aura-s-root.phone .aura-s-body { padding-left: 16px; padding-right: 16px; }
+@keyframes aura-s-in { from { opacity: 0; transform: translateY(-8px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes aura-s-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes aura-s-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .aura-s, .aura-s-scrim { animation: none; } }

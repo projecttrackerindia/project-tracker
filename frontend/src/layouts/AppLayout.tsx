@@ -42,6 +42,7 @@ import '../components/shell/shell.css';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
+import { AuraSearchHost } from '../components/aura/AuraSearch';
 import { OfflineSync } from '../features/offline/OfflineSync';
 import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
 
@@ -207,6 +208,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {/* The floating + (bottom right; above the tab bar on a phone) and ⌘K for the Aura panel (the header orb). No bottom Aura capsule. */}
       {!admin && !(phone && conversation) && <Fab />}
       {!admin && <AuraKeys />}
+      {!admin && <AuraSearchHost />}
       {!admin && <ApprovalRequestHost />}
       {!admin && CalmCreateHost && <Suspense fallback={null}><CalmCreateHost /></Suspense>}
       {!admin && <WhenFirstOpened open={newOpen}><NewSheetHost /></WhenFirstOpened>}
