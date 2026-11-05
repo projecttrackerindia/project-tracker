@@ -7,8 +7,9 @@ import { ApiError } from '../../api/client';
 import { adminApi } from '../../api/endpoints';
 import type { AdminPlan, AdminUser, SubscriptionStatus } from '../../api/types';
 import { Icon } from '../../components/Icon';
-import { CalmHero, CalmPage } from '../../components/calm';
-import { Badge, EmptyState, ErrorState, Field, Kpi, Modal, PageLoader, Pager, RoleBadge, SubmitButton } from '../../components/ui';
+import { AuraLine, CalmAvatar, CalmCard, CalmGo, CalmHero, CalmLink, CalmPage, CalmPills, CalmRow } from '../../components/calm';
+import './admin-calm.css';
+import { Badge, EmptyState, ErrorState, Field, Modal, PageLoader, Pager, RoleBadge, SubmitButton } from '../../components/ui';
 import { FEATURE_LABELS, currencySymbol, formatDate, formatMoney, limitLabel, timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useDebounced, useWsQuery } from '../../lib/hooks';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
@@ -63,20 +64,31 @@ function Overview() {
   if (q.isLoading) return <PageLoader />;
   if (q.isError || !q.data) return <ErrorState error={q.error} retry={() => q.refetch()} />;
   const s = q.data;
+  const attention = [s.suspendedTenants ? `${s.suspendedTenants} suspended` : null, s.deletedTenants ? `${s.deletedTenants} deleted, restorable` : null].filter(Boolean).join(' · ');
+  const go: { tab: Tab; meta: string }[] = [
+    { tab: 'tenants', meta: `${s.organizations} organizations · ${s.personalWorkspaces} personal` }, { tab: 'users', meta: `${s.users} accounts · ${s.activeUsers} active` },
+    { tab: 'billing', meta: 'Revenue, collections, trials' }, { tab: 'payments', meta: 'UPI QR payments to confirm' }, { tab: 'usage', meta: 'Near a limit, exceptions' },
+    { tab: 'ai', meta: 'Assistant use and cost' }, { tab: 'plans', meta: 'Prices, limits, features' }, { tab: 'health', meta: 'Database, workers, queues' },
+    { tab: 'settings', meta: 'Sign-ups, maintenance, banner' }, { tab: 'audit', meta: 'Security and business events' },
+  ];
   return (
     <>
       <GoLiveNotice />
-      {/* The platform at a glance: big numbers, coloured only where the colour means something. */}
-      <div className="ds-kpis mb-22">
-        <Kpi label="Users" value={s.users} caption={`${s.activeUsers} active`} />
-        <Kpi label="Organizations" value={s.organizations} caption={`${s.personalWorkspaces} personal workspaces`} />
-        <Kpi label="Active sessions" value={s.activeSessions} />
-        <Kpi label="Suspended workspaces" value={s.suspendedTenants} tone={s.suspendedTenants ? 'warning' : undefined} caption={s.suspendedTenants ? 'Members cannot sign in' : 'None suspended'} />
-        <Kpi label="Deleted organizations" value={s.deletedTenants} tone={s.deletedTenants ? 'danger' : undefined} caption="Retained and can be restored" />
+      <AuraLine text={attention ? `${attention}. Everything else is running.` : `All ${s.organizations} organizations are active. ${s.activeSessions} people are signed in right now.`} />
+      <div className="adm-tiles" data-testid="adm-tiles">
+        {[['Users', s.users, `${s.activeUsers} active`], ['Organizations', s.organizations, `${s.personalWorkspaces} personal workspaces`], ['Signed in now', s.activeSessions, 'Active sessions'],
+          ['Suspended', s.suspendedTenants, s.suspendedTenants ? 'Members cannot sign in' : 'None suspended'], ['Deleted', s.deletedTenants, 'Retained, can be restored']].map(([l, v, c]) => (
+          <div key={l as string} className="calm-card tile adm-tile"><span>{l}</span><b>{v}</b><small>{c}</small></div>
+        ))}
       </div>
-      <div className="card"><div className="card-head"><h3>Subscriptions by plan</h3></div><div className="card-body">
-        <div className="ds-kpis">{s.subscriptions.map((p) => <Kpi key={p.planCode} tile label={p.planCode} value={p.count} />)}</div>
-      </div></div>
+      <div className="adm-two">
+        <CalmCard variant="list" title="Subscriptions by plan">
+          {s.subscriptions.map((p) => <CalmRow key={p.planCode} title={p.planCode} right={<b className="adm-num">{p.count}</b>} />)}
+        </CalmCard>
+        <CalmCard variant="list" title="Manage">
+          {go.map((g) => <CalmRow key={g.tab} title={TITLES[g.tab].title} meta={g.meta} to={`/admin/${g.tab}`} chevron />)}
+        </CalmCard>
+      </div>
     </>
   );
 }
@@ -126,46 +138,36 @@ function Tenants() {
   };
 
   return (
-    <div className="card">
-      <div className="toolbar">
-        <div className="search-field"><Icon name="search" /><input className="input" placeholder="Search name or owner…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Search organizations" /></div>
-        <Select className="select filter-input" value={type} onChange={(e) => { setType(e.target.value); setPage(1); }} aria-label="Workspace type">
-          <option value="">All workspaces</option><option value="Organization">Organizations</option><option value="Personal">Personal workspaces</option>
-        </Select>
-        <Select className="select filter-input" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} aria-label="Status">
-          <option value="">Any status</option><option value="Active">Active</option><option value="Suspended">Suspended</option><option value="Deleted">Deleted</option>
-        </Select>
-        <div className="toolbar-spacer" />
-        <button className="btn btn-primary" onClick={() => setDialog({ kind: 'create' })}><Icon name="plus" /> New organization</button>
+    <div className="adm-list">
+      <div className="adm-bar">
+        <label className="adm-search"><Icon name="search" size={15} /><input placeholder="Search name or owner" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Search organizations" /></label>
+        <CalmPills label="Workspace type" value={(type || 'all') as 'all' | 'Organization' | 'Personal'} onChange={(v) => { setType(v === 'all' ? '' : v); setPage(1); }}
+          options={[{ value: 'all', label: 'All' }, { value: 'Organization', label: 'Organizations' }, { value: 'Personal', label: 'Personal' }]} />
+        <CalmPills label="Status" value={(status || 'any') as 'any' | 'Active' | 'Suspended' | 'Deleted'} onChange={(v) => { setStatus(v === 'any' ? '' : v); setPage(1); }}
+          options={[{ value: 'any', label: 'Any' }, { value: 'Active', label: 'Active' }, { value: 'Suspended', label: 'Suspended' }, { value: 'Deleted', label: 'Deleted' }]} />
+        <span className="adm-sp" />
+        <CalmGo onClick={() => setDialog({ kind: 'create' })}>New organization</CalmGo>
       </div>
 
       {list.isLoading ? <PageLoader /> : list.isError || !list.data ? <ErrorState error={list.error} retry={() => list.refetch()} />
         : list.data.items.length === 0 ? <div className="card-body"><EmptyState icon="building" title="No workspaces found" text="Try a different search or filter, or create an organization." /></div> : (
-        <div className="table-wrap"><table>
-          <thead><tr><th>Workspace</th><th>Type</th><th>Owner</th><th>Plan</th><th>Members</th><th>Status</th><th>Created</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
-          <tbody>{list.data.items.map((t) => (
-            <tr key={t.id} className={`clickable ${t.isDeleted ? 'row-deleted' : ''}`} onClick={() => setDialog({ kind: 'view', id: t.id })}>
-              <td><div className="td-title">{t.name}</div><div className="td-sub">{t.isDeleted ? `Deleted ${formatDate(t.deletedAt)}` : t.slug}</div></td>
-              <td className="cell-muted">{t.type}</td><td className="cell-muted">{t.ownerEmail ?? '—'}</td>
-              <td><Badge tone="purple">{t.planCode}</Badge> <span className="muted" style={{ fontSize: 11 }}>{t.subscriptionStatus}</span></td>
-              <td>{t.memberCount}</td>
-              <td>{t.isDeleted ? <Badge tone="danger">Deleted</Badge> : <Badge tone={t.status === 'Active' ? 'success' : 'warning'}>{t.status}</Badge>}</td>
-              <td className="cell-muted">{formatDate(t.createdAt)}</td>
-              <td onClick={(e) => e.stopPropagation()}>
-                <div className="td-actions">
-                  <button className="btn-icon" title="View details" aria-label={`View ${t.name}`} onClick={() => setDialog({ kind: 'view', id: t.id })}><Icon name="search" /></button>
-                  {t.isDeleted ? (
-                    <button className="btn btn-ghost btn-sm" onClick={() => restore(t)}><Icon name="refresh" /> Restore</button>
-                  ) : (<>
-                    <button className="btn-icon" title="Edit" aria-label={`Edit ${t.name}`} onClick={() => setDialog({ kind: 'edit', id: t.id })}><Icon name="edit" /></button>
-                    <button className="btn-icon" title={t.status === 'Active' ? 'Suspend' : 'Reactivate'} aria-label={t.status === 'Active' ? `Suspend ${t.name}` : `Reactivate ${t.name}`} onClick={() => toggle(t)}><Icon name={t.status === 'Active' ? 'lock' : 'refresh'} /></button>
-                    {t.type === 'Organization' && <button className="btn-icon danger" title="Delete (can be restored)" aria-label={`Delete ${t.name}`} onClick={() => remove(t)}><Icon name="trash" /></button>}
-                  </>)}
-                </div>
-              </td>
-            </tr>
-          ))}</tbody>
-        </table></div>
+        <CalmCard variant="list" className="adm-rows">{list.data.items.map((t) => (
+          <div key={t.id} className={`adm-row${t.isDeleted ? ' row-deleted' : ''}`} role="button" tabIndex={0} onClick={() => setDialog({ kind: 'view', id: t.id })} onKeyDown={(e) => { if (e.key === 'Enter') setDialog({ kind: 'view', id: t.id }); }}>
+            <span className={`adm-state ${t.isDeleted ? 'del' : t.status === 'Active' ? 'ok' : 'warn'}`} aria-label={t.isDeleted ? 'Deleted' : t.status} />
+            <span className="adm-main"><b>{t.name}</b><small>{[t.isDeleted ? `Deleted ${formatDate(t.deletedAt)}` : t.slug, t.type === 'Personal' ? 'Personal' : null, t.ownerEmail].filter(Boolean).join(' · ')}</small></span>
+            <span className="adm-meta">{t.planCode}<small>{t.isDeleted ? `${t.memberCount} members` : t.subscriptionStatus}</small></span>
+            <span className="adm-meta hide-s">{t.memberCount}<small>members</small></span>
+            <span className="adm-meta hide-s">{formatDate(t.createdAt)}<small>created</small></span>
+            <span className="adm-acts" onClick={(e) => e.stopPropagation()}>
+              {t.isDeleted ? <CalmLink onClick={() => restore(t)}>Restore</CalmLink> : (<>
+                <button className="btn-icon" title="Edit" aria-label={`Edit ${t.name}`} onClick={() => setDialog({ kind: 'edit', id: t.id })}><Icon name="edit" /></button>
+                <button className="btn-icon" title={t.status === 'Active' ? 'Suspend' : 'Reactivate'} aria-label={t.status === 'Active' ? `Suspend ${t.name}` : `Reactivate ${t.name}`} onClick={() => toggle(t)}><Icon name={t.status === 'Active' ? 'lock' : 'refresh'} /></button>
+                {t.type === 'Organization' && <button className="btn-icon danger" title="Delete (can be restored)" aria-label={`Delete ${t.name}`} onClick={() => remove(t)}><Icon name="trash" /></button>}
+              </>)}
+              <span className="adm-chev" aria-hidden="true">›</span>
+            </span>
+          </div>
+        ))}</CalmCard>
       )}
       {list.data && <Pager page={list.data.page} totalPages={list.data.totalPages} totalItems={list.data.totalItems} onPage={setPage} />}
 
@@ -345,22 +347,19 @@ function Users() {
   const list = useWsQuery(['admin', 'users', dq, page], () => adminApi.users(dq || undefined, page), { placeholderData: (p) => p });
 
   return (
-    <div className="card">
-      <div className="toolbar"><div className="search-field"><Icon name="search" /><input className="input" placeholder="Search name or email…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Search users" /></div></div>
+    <div className="adm-list">
+      <div className="adm-bar"><label className="adm-search"><Icon name="search" size={15} /><input placeholder="Search name or email" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} aria-label="Search users" /></label></div>
       {list.isLoading ? <PageLoader /> : list.isError || !list.data ? <ErrorState error={list.error} retry={() => list.refetch()} /> : (
-        <div className="table-wrap"><table>
-          <thead><tr><th>User</th><th>Workspaces</th><th>Status</th><th>Last sign-in</th><th>Joined</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
-          <tbody>{list.data.items.map((u) => (
-            <tr key={u.id} className="clickable" onClick={() => setOpen(u.id)}>
-              <td><div className="td-title">{u.displayName} {u.isPlatformAdmin && <Badge tone="purple">Platform admin</Badge>}</div><div className="td-sub">{u.email}{!u.emailVerified && ' · unverified'}</div></td>
-              <td><MembershipChips user={u} /></td>
-              <td><Badge tone={u.isActive ? 'success' : 'danger'}>{u.isActive ? 'Active' : 'Disabled'}</Badge></td>
-              <td className="cell-muted">{u.lastLoginAt ? timeAgo(u.lastLoginAt) : 'Never'}</td>
-              <td className="cell-muted">{formatDate(u.createdAt)}</td>
-              <td onClick={(e) => e.stopPropagation()}><div className="td-actions"><button className="btn btn-ghost btn-sm" onClick={() => setOpen(u.id)}>Details</button></div></td>
-            </tr>
-          ))}</tbody>
-        </table></div>
+        <CalmCard variant="list" className="adm-rows">{list.data.items.map((u) => (
+          <div key={u.id} className="adm-row" role="button" tabIndex={0} onClick={() => setOpen(u.id)} onKeyDown={(e) => { if (e.key === 'Enter') setOpen(u.id); }}>
+            <CalmAvatar userId={u.id} name={u.displayName} />
+            <span className="adm-main"><b>{u.displayName}{u.isPlatformAdmin && <span className="adm-tag">Platform admin</span>}</b><small>{u.email}{!u.emailVerified && ' · unverified'}</small></span>
+            <span className="adm-ws hide-s"><MembershipChips user={u} /></span>
+            <span className="adm-meta">{u.isActive ? 'Active' : <span className="adm-off">Disabled</span>}<small>{u.lastLoginAt ? timeAgo(u.lastLoginAt) : 'Never signed in'}</small></span>
+            <span className="adm-meta hide-s">{formatDate(u.createdAt)}<small>joined</small></span>
+            <span className="adm-acts"><span className="adm-chev" aria-hidden="true">›</span></span>
+          </div>
+        ))}</CalmCard>
       )}
       {list.data && <Pager page={list.data.page} totalPages={list.data.totalPages} totalItems={list.data.totalItems} onPage={setPage} />}
       {open && <UserDetailModal id={open} onClose={() => setOpen(null)} />}
