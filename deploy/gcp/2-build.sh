@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"; source ./config.sh
 cd ../..
-TAG=$(git rev-parse --short HEAD)
+TAG="${TAG:-$(git rev-parse --short HEAD)}"
 # The search-engine verification tags of the website, if Railway had them (railway variables --service FrontEnd --kv > ~/.pt-gcp/railway-web.env).
 get() { grep -m1 "^$1=" "$STATE/railway-web.env" 2>/dev/null | cut -d= -f2- || true; }
 # New projects often may not run large build machines in a region yet ("quota restrictions"), so this tries a fast machine first and

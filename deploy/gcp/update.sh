@@ -8,17 +8,15 @@ branch=$(git -C ../.. rev-parse --abbrev-ref HEAD)
 if [ "$branch" != "main" ] && [ "${ALLOW_BRANCH:-}" != "1" ]; then
   echo "This copy is on branch '$branch', not main. Run: git -C ~/project-tracker checkout main   (or ALLOW_BRANCH=1 ./update.sh)" >&2; exit 1
 fi
-git -C ../.. pull --ff-only
-./2-build.sh
-# The compose file and Caddyfile travel with each release, so changes to them take effect too.
-gcloud compute scp --zone="$ZONE" --quiet docker-compose.yml Caddyfile "$VM_NAME":/tmp/
-# Everything restarts at once except the meeting bot: a bot in a meeting must not be cut off by a release. If it is in a meeting,
-# a small job on the server waits until it is free (checking every minute, up to 4 hours) and only then moves it to the new version.
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command='set -e; cd /opt/pt && sudo mv /tmp/docker-compose.yml /tmp/Caddyfile /opt/pt/ \
-  && sudo docker compose pull -q && sudo docker compose run --rm --no-deps -T web nginx -t \
-  && sudo docker compose up -d $(sudo docker compose config --services | grep -v "^meetbot$") \
-  && busy() { sudo docker compose exec -T meetbot node -e "fetch(\"http://localhost:8080/health\").then(r=>r.json()).then(j=>console.log(j.bots||0)).catch(()=>console.log(0))" 2>/dev/null || echo 0; } \
-  && if [ "$(busy)" = "0" ]; then sudo docker compose up -d meetbot; echo "meeting bot updated"; \
-     else echo "meeting bot is in a meeting: it moves to the new version when the meeting ends"; \
-       sudo nohup sh -c "for i in \$(seq 240); do b=\$(docker compose exec -T meetbot node -e \"fetch(\\\"http://localhost:8080/health\\\").then(r=>r.json()).then(j=>console.log(j.bots||0)).catch(()=>console.log(0))\" 2>/dev/null || echo 0); [ \"\$b\" = 0 ] && break; sleep 60; done; docker compose up -d meetbot" >/tmp/meetbot-update.log 2>&1 & fi \
-  && sudo docker image prune -f >/dev/null && sudo docker compose ps'
+# SKIP_BUILD=1 TAG=<tag> only switches the server to images already in the registry (used by the Rollback workflow and rollback.sh).
+if [ "${SKIP_BUILD:-}" != "1" ]; then
+  git -C ../.. pull --ff-only
+  ./2-build.sh
+fi
+TAG="${TAG:-$(git -C ../.. rev-parse --short HEAD)}"
+# The compose file, Caddyfile and release script travel with each release, so changes to them take effect too.
+gcloud compute scp --zone="$ZONE" --quiet docker-compose.yml Caddyfile vm-release.sh "$VM_NAME":/tmp/
+# vm-release.sh pins TAG in /opt/pt/.env, restarts everything except a meeting bot that is in a meeting, waits for /health/ready
+# (the API applies migrations as it starts) and goes back to the previous tag by itself if the new one does not become healthy.
+gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command="set -e; cd /opt/pt && sudo mv /tmp/docker-compose.yml /tmp/Caddyfile /tmp/vm-release.sh /opt/pt/ \
+  && sudo bash /opt/pt/vm-release.sh '${TAG}'"
