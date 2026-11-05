@@ -10,7 +10,7 @@ async function api(path, body, token) {
   const r = await fetch(`${BASE}/api/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body) });
-  assert.ok(r.ok, `${path}: HTTP ${r.status}`);
+  assert.ok(r.ok, `${path}: HTTP ${r.status} ${r.ok ? '' : await r.clone().text()}`);
   return r.status === 204 ? undefined : (await r.json()).data;
 }
 async function emailLink(email, path) {

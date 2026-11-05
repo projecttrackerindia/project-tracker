@@ -19,6 +19,7 @@ try {
   await more.getByRole('button', { name: /Projects/ }).waitFor();
   await s.page.keyboard.press('Escape'); await more.waitFor({ state: 'hidden' });
   await go(s);
+  await s.page.locator('[data-aura-entry]:visible').first().click(); // Aura opens from its toolbar orb (⌘K)
   await s.page.locator('.aura-dock input').click();
   await s.page.locator('.aura-chip[data-chip="task"]').click();
   const create = s.page.getByRole('dialog'); await create.waitFor();

@@ -20,6 +20,7 @@ try {
   }
   // Create chips above Aura replace the retired per-page New project button.
   await go(s, '/work/projects');
+  await s.page.locator('[data-aura-entry]:visible').first().click(); // Aura opens from its toolbar orb (⌘K)
   await s.page.locator('.aura-dock input').click();
   await s.page.locator('.aura-chip[data-chip="more"]').click();
   await s.page.getByRole('radio', { name: 'Project', exact: true }).click();
