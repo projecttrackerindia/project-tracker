@@ -236,12 +236,18 @@ public class AuraBriefingTests(ApiFactory factory)
         await other.CreateOrgAsync();
         Assert.False((await other.Post("/api/v1/aura/friday/send", new { projects = new[] { new { projectId = project, text = "x" } } })).Ok);
 
-        // The notice: once, on Friday between 16:00 and 19:00 in the owner's own zone, whatever that zone is.
-        var start = new DateTime(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc);   // Thursday noon UTC → Saturday noon UTC covers every zone's Friday
-        for (var h = 0; h <= 48; h++)
+        // The notice: once, on Friday between 16:00 and 19:00 in the owner's own zone (here India: 16:00 IST is 10:30 UTC).
+        factory.WithDb(db =>
+        {
+            db.Users.IgnoreQueryFilters().First(u => u.Id == owner.UserId).TimeZone = "Asia/Kolkata";
+            db.Tenants.IgnoreQueryFilters().First(t => t.Id == owner.WorkspaceId).TimeZone = "Asia/Kolkata";
+            return db.SaveChanges();
+        });
+        var friday = new DateTime(2026, 11, 6, 0, 0, 0, DateTimeKind.Utc);
+        foreach (var utc in new[] { friday.AddHours(10), friday.AddHours(10.75), friday.AddHours(12), friday.AddHours(14) })   // 15:30, 16:15, 17:30, 19:30 IST
         {
             using var scope = factory.Services.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<AuraFridayJob>().RunAsync(start.AddHours(h).AddMinutes(30));
+            await scope.ServiceProvider.GetRequiredService<AuraFridayJob>().RunAsync(utc);
         }
         factory.WithDb(db =>
         {
