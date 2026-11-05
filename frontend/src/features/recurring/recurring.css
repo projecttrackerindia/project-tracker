@@ -63,3 +63,8 @@
 .ts-repeat .rp-field { position: static; }
 .ts-repeat .rp-value { margin: -2px 0 -2px -8px; max-width: calc(100% + 8px); }
 @media (min-width: 601px) { .ts-repeat .rp-pop { left: 0; right: 0; width: auto; max-width: none; top: calc(100% + 8px); } }
+.rp-pick.cpk-trigger { min-height: 34px; min-width: 0; flex: 1 1 auto; }
+.rp-scope { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 10px; background: var(--ds-surface-2, rgba(127,127,127,.12)); }
+.rp-scope button { min-height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--ds-text-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.rp-scope button.on { background: var(--ds-surface, #fff); color: var(--ds-text); box-shadow: 0 1px 2px rgba(0,0,0,.12); font-weight: 600; }
+@media (max-width: 640px) { .rp-pick.cpk-trigger, .rp-scope button { min-height: 44px; } }
