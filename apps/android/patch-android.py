@@ -95,4 +95,39 @@ if 'ScreenShieldPlugin' not in src:
     if 'ScreenShieldPlugin' not in src:
         sys.exit('Could not register the screen shield in MainActivity.java')
     main.write_text(src)
+# Quick actions, full-screen calls, the Today widget and live timers (native/quick). Opt-in until verified on devices: PT_QUICK_NATIVE=1.
+import os
+if os.environ.get('PT_QUICK_NATIVE') == '1':
+    for f in pathlib.Path('native/quick/java').glob('*.java'):
+        (main.parent / f.name).write_text(f.read_text().replace('package PKG;', f'package {pkg};'))
+    (main.parent / 'BuildConfigHost.java').write_text(f'package {pkg};\n\n/** The server the quick-action buttons talk to. */\nfinal class BuildConfigHost {{ static final String BASE = "https://{host}"; }}\n')
+    shutil.copytree('native/quick/res', res, dirs_exist_ok=True)
+    xml = manifest.read_text()
+    if 'xmlns:tools=' not in xml:
+        xml = xml.replace('<manifest ', '<manifest xmlns:tools="http://schemas.android.com/tools" ', 1)
+    for perm in ['USE_FULL_SCREEN_INTENT', 'FOREGROUND_SERVICE']:
+        line = f'<uses-permission android:name="android.permission.{perm}" />'
+        if line not in xml:
+            xml = xml.replace('</manifest>', f'    {line}\n</manifest>')
+    quick = '''
+        <service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService" tools:node="remove" />
+        <service android:name=".QuickActionsMessagingService" android:exported="false">
+            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+        </service>
+        <receiver android:name=".QuickActionReceiver" android:exported="false" />
+        <activity android:name=".IncomingCallActivity" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true" android:excludeFromRecents="true" android:launchMode="singleInstance" />
+        <receiver android:name=".TodayWidgetProvider" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today_info" />
+        </receiver>
+'''
+    if 'QuickActionsMessagingService' not in xml:
+        xml = xml.replace('    </application>', quick + '    </application>', 1)
+    manifest.write_text(xml)
+    src = main.read_text()
+    for plugin in ['WidgetBridgePlugin', 'LiveTimerPlugin']:
+        if plugin not in src:
+            src = src.replace('registerPlugin(ScreenShieldPlugin.class);', f'registerPlugin(ScreenShieldPlugin.class);\n        registerPlugin({plugin}.class);', 1)
+    main.write_text(src)
+    print('Quick actions, widget and live timer added')
 print('Android project patched')
