@@ -140,6 +140,7 @@ public class QuickActionTests(ApiFactory factory)
         // Mia also has a workspace of her own. A key naming that workspace with the first workspace's notice finds nothing.
         var elsewhere = await TestClient.RegisterAsync(factory, "Other Owner");
         await elsewhere.CreateOrgAsync();
+        await elsewhere.UpgradeAsync("BUSINESS");
         var other = await elsewhere.AddMemberAsync(factory, TenantRole.Member, "Mia elsewhere");
         var crossed = Mint(Guid.Parse(nid), other.UserId, other.WorkspaceId);
         Assert.Equal(HttpStatusCode.NotFound, (await Press(other, crossed, new { action = "done" })).Status);
