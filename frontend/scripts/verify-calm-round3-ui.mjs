@@ -228,7 +228,6 @@ try {
       checks.push(`${tag}: task sheet edits title, priority, start, due, checklist`);
     }
     if (phone) await fitsPhoneX(page, `task sheet ${tag}`);
-    if (theme === 'dark' && width === 1440) checks.push(`task sheet dark: ${await darkPopups(page, 'task sheet dark', assert)} popups, none white`);
     await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `task-sheet-${tag}.png`) });
     // Repeat: the isolated RepeatField in the task sheet opens a small editor (weekly on days, ends after N) that saves through PUT /recurrence.
     {
@@ -246,6 +245,8 @@ try {
       writes.length = 0;
       checks.push(`${tag}: Repeat field sets a weekly rule that ends after N`);
     }
+    // Dark sweep last: its Escape presses can close the task sheet.
+    if (theme === 'dark' && width === 1440) checks.push(`task sheet dark: ${await darkPopups(page, 'task sheet dark', assert)} popups, none white`);
     await ctx.close();
   }
 } finally { await browser.close(); }
