@@ -30,7 +30,7 @@ export default function MiniWindow() {
   const work = useQuery({ queryKey: ['mini', 'work', today], enabled: signedIn, queryFn: () => workItemApi.mine({ open: true, dueTo: today, limit: 6 }) });
   const att = useQuery({ queryKey: ['mini', 'attendance'], enabled: signedIn, queryFn: () => attendanceApi.today(), retry: false });
   const meet = useQuery({ queryKey: ['mini', 'meet', today], enabled: signedIn, queryFn: () => meetApi.feed({ from: new Date(Date.now() - 15 * 60000).toISOString(), to: new Date(Date.now() + 12 * 3600000).toISOString() }) });
-  const next: MeetItem | undefined = useMemo(() => meet.data?.items.filter((m) => Date.parse(m.end) > Date.now() && m.myRsvp !== 'Declined').sort((a, b) => a.start.localeCompare(b.start))[0], [meet.data]);
+  const next: MeetItem | undefined = useMemo(() => (meet.data?.items ?? []).filter((m) => Date.parse(m.end) > Date.now() && m.myRsvp !== 'Declined').sort((a, b) => a.start.localeCompare(b.start))[0], [meet.data]);
   const [text, setText] = useState('');
   const [saved, setSaved] = useState(false);
 
