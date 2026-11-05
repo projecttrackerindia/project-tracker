@@ -10,6 +10,7 @@ import { SGroup, SPaneHead, SPop, SRow, SSwitch, STile } from './Grouped';
 import '../../styles/notify-smart.css';
 import { openProblemReport, openWhatsNew } from '../feedback/capture';
 import { useFlag } from '../../lib/flags';
+import { GettingStartedRows } from '../onboarding/GettingStartedRows';
 
 const WINDOWS = [15, 30, 60, 120, 240].map((m) => ({ id: String(m), label: m < 60 ? `${m} minutes` : `${m / 60} hour${m === 60 ? '' : 's'}` }));
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
@@ -122,6 +123,7 @@ export function SmartNotificationsPane() {
 
       <SGroup label="Help">
         <SRow icon={<STile color="#5856d6">✦</STile>} title="What’s new" sub="The latest release in a few lines" onClick={openWhatsNew} />
+        <GettingStartedRows />
         {reportOn && <SRow icon={<STile color="#ff9500">!</STile>} title="Report a problem" sub="A screenshot and the recent errors come along" onClick={openProblemReport} />}
       </SGroup>
     </div>

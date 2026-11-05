@@ -32,6 +32,7 @@ import { PALETTES, avatarBg, meshOf, themeOf, type PersonThemeId } from '../../l
 import { useTabBadges } from '../../features/notifications/centre/NotificationCentre';
 import type { Destination } from '../../features/notifications/centre/tabBadges';
 import { openProblemReport, openWhatsNew } from '../../features/feedback/capture';
+import { openTour } from '../../features/onboarding/open';
 import { useFlag } from '../../lib/flags';
 import './v2.css';
 
@@ -364,6 +365,7 @@ export function AvatarMenu({ variant = 'icon' }: { variant?: 'row' | 'icon' }) {
           <div className="v2-menu-sep" />
           <a role="menuitem" className="v2-menu-item" href={supportMailto('Help with Project Tracker')} onClick={close}><Icon name="mail" size={16} /><span className="grow">Help</span></a>
           {!admin && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(); openWhatsNew(); }}><Icon name="sparkle" size={16} /><span className="grow">What’s new</span></button>}
+          {!admin && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(); window.setTimeout(openTour, 60); }}><Icon name="play" size={16} /><span className="grow">Welcome tour</span></button>}
           {!admin && reportOn && <button type="button" role="menuitem" className="v2-menu-item" onClick={() => { close(); window.setTimeout(openProblemReport, 60); }}><Icon name="alert" size={16} /><span className="grow">Report a problem</span></button>}
           <button type="button" role="menuitem" className="v2-menu-item danger" onClick={() => { close(); void logout(); }}><Icon name="logout" size={16} /><span className="grow">Sign out</span></button>
         </div>
