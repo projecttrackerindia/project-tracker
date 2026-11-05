@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Logo, BRAND } from './Logo';
+import { firstScreenPainted } from '../lib/splash';
 import './splash.css';
 
 /**
@@ -16,6 +17,8 @@ export function AppSplash({ message = 'Loading your workspace' }: { message?: st
     window.addEventListener('online', on); window.addEventListener('offline', off);
     return () => { clearTimeout(t); window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
+  // Something to say (slow, offline): the page's own splash with its message and Try again takes over from index.html's.
+  useEffect(() => { if (slow || !online) firstScreenPainted(); }, [slow, online]);
   return (
     <div className={`app-splash ${online ? '' : 'is-offline'}`} role="status" aria-live="polite">
       <div className="as-mark" aria-hidden="true"><Logo size={96} className="pt-logo as-logo" /></div>

@@ -33,6 +33,27 @@ function buildVersion(): Plugin {
 }
 
 /**
+ * The splash in index.html paints from the first bytes of the page: the app's stylesheets are moved from <head> to just after it in
+ * <body> (where the build leaves <!--pt:styles-->). A stylesheet in the body holds back only what comes after it, so the splash is on
+ * screen at once while the app (#root, and the scripts, which wait for the stylesheets before them) still never shows unstyled.
+ */
+function stylesAfterSplash(): Plugin {
+  return {
+    name: 'pm-styles-after-splash',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        if (!html.includes('<!--pt:styles-->')) return html;
+        const links: string[] = [];
+        const head = html.slice(0, html.indexOf('</head>')).replace(/[ \t]*<link rel="stylesheet"[^>]*>\n?/g, (m) => { links.push(m.trim()); return ''; });
+        return head + html.slice(html.indexOf('</head>')).replace('<!--pt:styles-->', links.join('\n    '));
+      },
+    },
+  };
+}
+
+/**
  * The libraries every page needs, each in a file of its own: they change far less often than the app, so a release does not make every
  * visitor download React, the router and the query cache again.
  */
@@ -44,7 +65,7 @@ const vendorGroups = [
 ];
 
 export default defineConfig({
-  plugins: [react(), publicSite(), buildVersion()],
+  plugins: [react(), publicSite(), stylesAfterSplash(), buildVersion()],
   server: {
     port: 5173,
     // Same-origin in development, so the HttpOnly refresh cookie works exactly as it does behind the production reverse proxy.

@@ -110,6 +110,9 @@ for (const [name, url] of pages) {
     page: name, rendered, scrollX,
     jsFiles: log.js.length, jsKB: +(log.js.reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     criticalJsFiles: critical.length, criticalJsKB: +(critical.reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    // Bytes that arrived before the page's largest paint (with the splash in index.html, first contentful paint is the splash itself).
+    lcpJsKB: +(log.js.filter((j) => j.at <= perf.lcp + 50).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    lcpCssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css') && c.at <= perf.lcp + 50).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     cssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css')).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     criticalCssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css') && c.at <= fcpAt + 50).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     fontKB: +((log.other ?? []).filter((c) => c.file.endsWith('.woff2')).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
