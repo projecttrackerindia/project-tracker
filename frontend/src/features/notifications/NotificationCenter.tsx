@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -817,9 +818,9 @@ function Schedule() {
             <div className="nc-chips">{[1, 3, 7, 14].map((v) => (
               <button key={v} type="button" aria-pressed={s.overdueSteps.includes(v)} className={`nc-chip ${s.overdueSteps.includes(v) ? 'on' : ''}`} onClick={() => toggle('overdueSteps', v)}>after {v} day{v === 1 ? '' : 's'}</button>))}</div>
             <div className="nc-fields"><label><span>At most a day</span>
-              <select className="input" value={String(s.dailyAutoLimit)} onChange={(e) => set('dailyAutoLimit', Number(e.target.value))}>
+              <Select className="input" value={String(s.dailyAutoLimit)} onChange={(e) => set('dailyAutoLimit', Number(e.target.value))}>
                 {[5, 8, 12, 20, 50].map((n) => <option key={n} value={n}>{n} (the rest go in the briefing)</option>)}
-              </select></label></div>
+              </Select></label></div>
           </>
         ) : <p className="nc-muted">Off - you only get reminders you set yourself or that others send.</p>}
         <label className="nc-check nc-check-top">

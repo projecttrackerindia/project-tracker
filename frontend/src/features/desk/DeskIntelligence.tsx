@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -34,9 +35,9 @@ export function AvailabilitySwitch({ meId }: { meId: string | null }) {
   return (
     <label className={`dai-avail s-${status}`} title="Your availability for new tickets">
       <i aria-hidden="true" />
-      <select aria-label="Your availability" value={status} onChange={(e) => void set(e.target.value as EngineerStatus)}>
+      <Select aria-label="Your availability" value={status} onChange={(e) => void set(e.target.value as EngineerStatus)}>
         {(Object.keys(STATUS_LABEL) as EngineerStatus[]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }

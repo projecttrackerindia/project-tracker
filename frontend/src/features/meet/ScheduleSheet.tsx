@@ -309,9 +309,9 @@ export function ScheduleSheet({ open, onClose }: { open: ScheduleOpen; onClose: 
                 <button key={m} type="button" role="radio" aria-checked={minutes === m} className={`ms-chip${minutes === m ? ' sel' : ''}`} onClick={() => setMinutes(m)}>{dur(m)}</button>
               ))}
               <label className="ms-more" title="Another length"><span className="sr-only">Other length</span>⋯
-                <select aria-label="Other length" value="" onChange={(e) => e.target.value && setMinutes(Number(e.target.value))}>
+                <Select aria-label="Other length" value="" onChange={(e) => e.target.value && setMinutes(Number(e.target.value))}>
                   <option value="">Other…</option>{[15, 20, 90, 120, 180].map((m) => <option key={m} value={m}>{dur(m)}</option>)}
-                </select></label>
+                </Select></label>
             </div>
             <span className={`ms-free${busyPeople.length ? ' busy' : ''}`} aria-live="polite" data-testid="free-busy">
               {fb.isLoading ? '…' : fb.data ? (busyPeople.length === 0 ? 'Everyone free' : busyPeople.length === 1 ? `${busyPeople[0].userId === me ? 'You are' : `${busyPeople[0].name.split(' ')[0]} is`} busy` : `${busyPeople.length} people busy`) : ''}
@@ -333,7 +333,7 @@ export function ScheduleSheet({ open, onClose }: { open: ScheduleOpen; onClose: 
               {repeat === 'Daily' && <label className="ms-check"><input type="checkbox" checked={weekdaysOnly} onChange={(e) => setWeekdaysOnly(e.target.checked)} /> Weekdays only</label>}
               {repeat === 'Custom' && (
                 <div className="ms-custom">
-                  <label>Every <select aria-label="Every how many weeks" value={interval} onChange={(e) => setInterval(Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n === 1 ? 'week' : `${n} weeks`}</option>)}</select> on</label>
+                  <label>Every <Select aria-label="Every how many weeks" value={interval} onChange={(e) => setInterval(Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n === 1 ? 'week' : `${n} weeks`}</option>)}</Select> on</label>
                   <div className="ms-days" role="group" aria-label="Days">
                     {WEEK.map(([code, letter, name]) => <button key={code} type="button" aria-pressed={days.includes(code)} aria-label={name} onClick={() => toggleDay(code)}>{letter}</button>)}
                   </div>

@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -55,10 +56,10 @@ export function ConnectPage() {
         <p className="muted cn-sub">It will act as <b>{ctx?.user.displayName}</b>, with your own role and permissions. It never sees your password, and you can disconnect it at any time.</p>
 
         <label className="cn-field"><span>Workspace</span>
-          <select className="select" value={ctx?.current?.id ?? ''} disabled={switching || busy} aria-label="Workspace"
+          <Select className="select" value={ctx?.current?.id ?? ''} disabled={switching || busy} aria-label="Workspace"
             onChange={async (e) => { setSwitching(true); try { await activate(e.target.value); } finally { setSwitching(false); } }}>
             {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
+          </Select>
         </label>
 
         <div className="cn-scopes" role="radiogroup" aria-label="What it may do">

@@ -234,10 +234,10 @@ function Detail({ c, run, result, onFiled }: { c: TestCase; run: TestRun | null;
       <div className="dq-row" style={{ gap: 8, marginTop: 2 }}>
         <button type="button" className="dq-btn pri qa-file" disabled={!canFile || busy} onClick={() => void file()}>{busy ? 'Filing…' : result?.linkedWorkItemId ? 'Open bug' : 'File bug'}</button>
         {picking ? (
-          <select className="qa-assign" autoFocus aria-label="Assign the bug to" defaultValue="" onChange={(e) => { if (e.target.value) void file(e.target.value); }} onBlur={() => setPicking(false)}>
+          <Select className="qa-assign" autoFocus aria-label="Assign the bug to" defaultValue="" onChange={(e) => { if (e.target.value) void file(e.target.value); }} onBlur={() => setPicking(false)}>
             <option value="" disabled>Assign to…</option>
             {(members.data ?? []).filter((x) => x.role !== 'Guest' && x.isActive !== false).map((x) => <option key={x.userId} value={x.userId}>{x.displayName}</option>)}
-          </select>
+          </Select>
         ) : <button type="button" className="dq-btn" disabled={!canFile || busy || !!result?.linkedWorkItemId} onClick={() => setPicking(true)}>Assign to…</button>}
       </div>
       <div className="dq-faint qa-note">{result?.linkedWorkItemId ? 'A bug is filed for this result.' : `Creates a work item${c.projectName ? ` in ${c.projectName}` : ''}, linked to this run${open ? ` and to release ${open.name}, where it blocks the go until fixed` : ''}.`}
@@ -303,7 +303,7 @@ function CaseDialog({ initial, onClose, onSaved }: { initial?: TestCase; onClose
       <Field label="Title" required><input className="input" autoFocus maxLength={300} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Loan dispatch API returns 200 for valid PAN" /></Field>
       <Field label="Steps" hint="One step per line."><textarea className="textarea" rows={4} maxLength={8000} value={f.steps} onChange={(e) => setF({ ...f, steps: e.target.value })} /></Field>
       <Field label="Expected"><input className="input" maxLength={2000} value={f.expected} onChange={(e) => setF({ ...f, expected: e.target.value })} placeholder="200 · dispatch_id present" /></Field>
-      <Field label="Priority"><select className="select" value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value as CasePriority })}>{['Low', 'Medium', 'High', 'Critical'].map((p) => <option key={p}>{p}</option>)}</select></Field>
+      <Field label="Priority"><Select className="select" value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value as CasePriority })}>{['Low', 'Medium', 'High', 'Critical'].map((p) => <option key={p}>{p}</option>)}</Select></Field>
       <Field label="Area / tags"><input className="input" maxLength={300} value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="Loan dispatch" /></Field>
       <Field label="Project"><Select className="select" value={f.projectId} onChange={(e) => setF({ ...f, projectId: e.target.value })}><option value="">No project</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
     </Dialog>

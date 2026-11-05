@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { takeVaultHandoff } from './vaultHandoff';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
@@ -308,9 +309,9 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
         )}
         <Field label="Name" required><input id="vi-title" className="input" value={title} maxLength={120} autoFocus onChange={(e) => setTitle(e.target.value)} placeholder="AWS root account" /></Field>
         <Field label="Kept in">
-          <select className="input" value={collectionId} disabled={!!sealedEdit} onChange={(e) => setCollectionId(e.target.value)} aria-label="Collection">
+          <Select className="input" value={collectionId} disabled={!!sealedEdit} onChange={(e) => setCollectionId(e.target.value)} aria-label="Collection">
             {(sealedEdit ? [sealedEdit.collection] : manageable).map((c) => <option key={c.id} value={c.id}>{`${c.kind === 'Personal' ? `${c.name} (only you)` : c.name}${c.sealed ? ' · sealed' : ''}`}</option>)}
-          </select>
+          </Select>
         </Field>
         {kind !== 'Card' && <Field label="Address" full><input className="input" value={url} maxLength={500} onChange={(e) => setUrl(e.target.value)} placeholder="https://console.aws.amazon.com" inputMode="url" /></Field>}
         {rows.map((r) => r.secret
@@ -329,9 +330,9 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
           {adding ? (
             <div className="vlt-add-field">
               <input className="input" value={adding.label} maxLength={60} autoFocus placeholder="Field name, e.g. Recovery email" aria-label="New field name" onChange={(e) => setAdding({ ...adding, label: e.target.value })} />
-              <select className="input" value={adding.type} aria-label="New field type" onChange={(e) => setAdding({ ...adding, type: e.target.value as FieldType })}>
+              <Select className="input" value={adding.type} aria-label="New field type" onChange={(e) => setAdding({ ...adding, type: e.target.value as FieldType })}>
                 <option value="text">Text (not secret)</option><option value="url">Link (another address)</option><option value="remark">Remark (not secret)</option><option value="password">Secret</option><option value="note">Secret note</option><option value="totp">One-time code</option>
-              </select>
+              </Select>
               <button type="button" className="btn btn-ghost btn-sm" disabled={!adding.label.trim()} onClick={() => {
                 let key = keyOf(adding.label); let n = 2;
                 while (rows.some((r) => r.key === key)) key = `${keyOf(adding.label).slice(0, 28)}${n++}`;
@@ -361,15 +362,15 @@ export function ItemEditor({ existing, sealedEdit, collections, defaultCollectio
         </div>
 
         <Field label="Owner" hint="Told before it expires and when it should be changed.">
-          <select className="input" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Owner">
+          <Select className="input" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Owner">
             <option value="">{existing ? 'Unchanged' : 'Me'}</option>
             {(members.data ?? []).filter((m) => m.role !== 'Guest').map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Change every" hint={target?.rotateEveryDays ? `The collection’s rule: every ${target.rotateEveryDays} days.` : undefined}>
-          <select className="input" value={rotate} onChange={(e) => setRotate(Number(e.target.value))} aria-label="Change every">
+          <Select className="input" value={rotate} onChange={(e) => setRotate(Number(e.target.value))} aria-label="Change every">
             {ROTATE.map((d) => <option key={d} value={d}>{d === 0 ? (target?.rotateEveryDays ? 'As the collection says' : 'No rule') : `${d} days`}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Change by (date)" hint="Overrides the rule above."><input className="input" type="date" value={expires} onChange={(e) => setExpires(e.target.value)} /></Field>
         <Field label="Tags"><input className="input" value={tags} maxLength={300} onChange={(e) => setTags(e.target.value)} placeholder="production, aws" /></Field>
@@ -438,10 +439,10 @@ export function CollectionEditor({ existing, canSeal, onClose, onSaved, onSeal }
             </div>
           </div>
         )}
-        {!existing && kind === 'Project' && <Field label="Project" required><select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Project"><option value="">Choose…</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>}
-        {!existing && kind === 'Team' && <Field label="Team" required><select className="input" value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Team"><option value="">Choose…</option>{(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>}
-        {!existing && kind !== 'Shared' && <Field label={kind === 'Project' ? 'Everyone in the project can' : 'Everyone in the team can'}><select className="input" value={share} onChange={(e) => setShare(e.target.value as VaultAccess)} aria-label="Member access">
-          <option value="None">Nothing yet (I add people)</option>{!sealedNew && <option value="UseOnly">Use only</option>}<option value="View">View</option><option value="Manage">Manage</option></select></Field>}
+        {!existing && kind === 'Project' && <Field label="Project" required><Select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Project"><option value="">Choose…</option>{(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>}
+        {!existing && kind === 'Team' && <Field label="Team" required><Select className="input" value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Team"><option value="">Choose…</option>{(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>}
+        {!existing && kind !== 'Shared' && <Field label={kind === 'Project' ? 'Everyone in the project can' : 'Everyone in the team can'}><Select className="input" value={share} onChange={(e) => setShare(e.target.value as VaultAccess)} aria-label="Member access">
+          <option value="None">Nothing yet (I add people)</option>{!sealedNew && <option value="UseOnly">Use only</option>}<option value="View">View</option><option value="Manage">Manage</option></Select></Field>}
         {!existing && (
           <div className="field full vlt-mode">
             <label>Protection</label>
@@ -465,7 +466,7 @@ export function CollectionEditor({ existing, canSeal, onClose, onSaved, onSeal }
           <label className="field full vlt-check-row"><input type="checkbox" checked={requestable} onChange={(e) => setRequestable(e.target.checked)} />
             <span><b>People may ask to join for a while</b><br /><span className="muted">Its name shows under Requests; a manager approves an hour, a day or a week, then the access ends by itself.</span></span></label>
         )}
-        <Field label="New items are changed every"><select className="input" value={rotate} onChange={(e) => setRotate(Number(e.target.value))} aria-label="Rotation rule">{ROTATE.map((d) => <option key={d} value={d}>{d === 0 ? 'No rule' : `${d} days`}</option>)}</select></Field>
+        <Field label="New items are changed every"><Select className="input" value={rotate} onChange={(e) => setRotate(Number(e.target.value))} aria-label="Rotation rule">{ROTATE.map((d) => <option key={d} value={d}>{d === 0 ? 'No rule' : `${d} days`}</option>)}</Select></Field>
         {error && <p className="form-error full" role="alert">{error}</p>}
       </div>
     </Modal>
@@ -512,22 +513,22 @@ export function ShareEditor({ collection, meId, onClose, onSaved, start }: {
           const known = r.principalId && !opts.some((o) => o.id === r.principalId) ? [{ id: r.principalId, name: names.get(r.principalId) ?? 'Current choice' }] : [];
           return (
             <div key={r.uid} className="vlt-share-row" data-share={r.principalType}>
-              <select className="input" aria-label="Who" value={r.principalType} onChange={(e) => set(r.uid, { principalType: e.target.value as VaultPrincipal, principalId: null, role: e.target.value === 'Role' ? 'Manager' : null })}>
+              <Select className="input" aria-label="Who" value={r.principalType} onChange={(e) => set(r.uid, { principalType: e.target.value as VaultPrincipal, principalId: null, role: e.target.value === 'Role' ? 'Manager' : null })}>
                 <option value="User">Person</option><option value="Team">Team</option><option value="Project">Project</option><option value="Role">Role and above</option>
-              </select>
+              </Select>
               {r.principalType === 'Role' ? (
-                <select className="input" aria-label="Role" value={r.role ?? 'Manager'} onChange={(e) => set(r.uid, { role: e.target.value })}>
+                <Select className="input" aria-label="Role" value={r.role ?? 'Manager'} onChange={(e) => set(r.uid, { role: e.target.value })}>
                   <option value="Member">Every member</option><option value="Manager">Managers and above</option><option value="Admin">Admins and the owner</option>
-                </select>
+                </Select>
               ) : (
-                <select className="input" aria-label="Name" value={r.principalId ?? ''} onChange={(e) => set(r.uid, { principalId: e.target.value || null })}>
+                <Select className="input" aria-label="Name" value={r.principalId ?? ''} onChange={(e) => set(r.uid, { principalId: e.target.value || null })}>
                   <option value="">Choose…</option>
                   {[...known, ...opts].map((o) => <option key={o.id} value={o.id}>{o.id === meId ? `${o.name} (you)` : o.name}</option>)}
-                </select>
+                </Select>
               )}
-              <select className="input" aria-label="Access" value={r.access} title={ACCESS_HINT[r.access]} onChange={(e) => set(r.uid, { access: e.target.value as VaultAccess })}>
+              <Select className="input" aria-label="Access" value={r.access} title={ACCESS_HINT[r.access]} onChange={(e) => set(r.uid, { access: e.target.value as VaultAccess })}>
                 {(collection.sealed ? ['View', 'Manage'] as const : ['UseOnly', 'View', 'Manage'] as const).map((a) => <option key={a} value={a}>{ACCESS_LABEL[a]}</option>)}
-              </select>
+              </Select>
               <input className="input" type="date" aria-label="Ends on" value={r.expiresAt ? r.expiresAt.slice(0, 10) : ''} min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}
                 onChange={(e) => set(r.uid, { expiresAt: e.target.value ? `${e.target.value}T23:59:00Z` : null })} />
               <button type="button" className="btn-icon danger" aria-label="Remove" onClick={() => setRows(rows.filter((x) => x.uid !== r.uid))}><Icon name="close" size={14} /></button>
@@ -600,7 +601,7 @@ export function ImportModal({ collections, defaultCollection, onClose, onDone }:
       }}
       footer={<><button type="button" className="btn btn-ghost" onClick={() => { setParsed(null); onClose(); }}>Cancel</button><button className="btn btn-primary" disabled={busy || !parsed || !collectionId}>{busy && <span className="spinner" />}{parsed ? `Import ${parsed.rows.length}` : 'Import'}</button></>}>
       <div className="form-grid">
-        <Field label="Into" full><select className="input" value={collectionId} onChange={(e) => setCollectionId(e.target.value)} aria-label="Collection">{manageable.map((c) => <option key={c.id} value={c.id}>{`${c.kind === 'Personal' ? `${c.name} (only you)` : c.name}${c.sealed ? ' · sealed' : ''}`}</option>)}</select></Field>
+        <Field label="Into" full><Select className="input" value={collectionId} onChange={(e) => setCollectionId(e.target.value)} aria-label="Collection">{manageable.map((c) => <option key={c.id} value={c.id}>{`${c.kind === 'Personal' ? `${c.name} (only you)` : c.name}${c.sealed ? ' · sealed' : ''}`}</option>)}</Select></Field>
         <div className="field full">
           <input ref={file} type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void read(f); }} />
           <button type="button" className="vlt-drop" onClick={() => file.current?.click()}

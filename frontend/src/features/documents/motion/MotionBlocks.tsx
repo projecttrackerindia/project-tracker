@@ -1,3 +1,4 @@
+import { Select } from '../../../components/Select';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Extension, mergeAttributes, Node, type Editor } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
@@ -73,8 +74,8 @@ export function MotionMenu({ editor, onClose }: { editor: Editor; onClose: () =>
       <div className="mo-menu-row" role="radiogroup" aria-label="Motion">
         {MOTIONS.map((x) => <button key={x.id} type="button" role="radio" aria-checked={m.motion === x.id} className={m.motion === x.id ? 'on' : ''} onClick={() => set({ motion: x.id })}>{x.label}</button>)}
       </div>
-      <label>Delay <select value={m.motionDelay} onChange={(e) => set({ motionDelay: Number(e.target.value) })}>{DELAYS.map((d) => <option key={d} value={d}>{d === 0 ? 'None' : `${d} ms`}</option>)}</select></label>
-      <label>Duration <select value={m.motionDuration} onChange={(e) => set({ motionDuration: Number(e.target.value) })}>{DURATIONS.map((d) => <option key={d} value={d}>{d === 200 ? 'Quick' : d === 400 ? 'Normal' : 'Slow'} · {d} ms</option>)}</select></label>
+      <label>Delay <Select value={m.motionDelay} onChange={(e) => set({ motionDelay: Number(e.target.value) })}>{DELAYS.map((d) => <option key={d} value={d}>{d === 0 ? 'None' : `${d} ms`}</option>)}</Select></label>
+      <label>Duration <Select value={m.motionDuration} onChange={(e) => set({ motionDuration: Number(e.target.value) })}>{DURATIONS.map((d) => <option key={d} value={d}>{d === 200 ? 'Quick' : d === 400 ? 'Normal' : 'Slow'} · {d} ms</option>)}</Select></label>
       <button type="button" className="mo-menu-done" onClick={onClose}>Done</button>
     </div>
   );

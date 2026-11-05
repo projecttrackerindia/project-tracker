@@ -1,3 +1,4 @@
+import { Select } from '../../../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -278,9 +279,9 @@ function Studio({ title: initialTitle, data, onDone, onClose, context, onDraft, 
         <div className="arch-levels" role="tablist" aria-label="C4 level">{LEVELS.map((l) => <button key={l.key} type="button" role="tab" aria-selected={level === l.key} className={level === l.key ? 'on' : ''} onClick={() => { setLevel(l.key); setSel({}); }}>{l.label}</button>)}</div>
         <input className="arch-title" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Diagram title" maxLength={120} />
         <div className="arch-top-actions">
-          <select className="arch-select" aria-label="Start from a template" value="" onChange={(e) => void applyTemplate(e.target.value)}>
+          <Select className="arch-select" aria-label="Start from a template" value="" onChange={(e) => void applyTemplate(e.target.value)}>
             <option value="">Templates…</option>{TEMPLATES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-          </select>
+          </Select>
           <button type="button" className="arch-ibtn" onClick={undo} disabled={past.current.length < 2} title="Undo (Ctrl+Z)" aria-label="Undo"><Icon name="undo" size={15} /></button>
           <button type="button" className="arch-ibtn" onClick={redo} disabled={future.current.length === 0} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Icon name="undo" size={15} style={{ transform: 'scaleX(-1)' }} /></button>
           <button type="button" className="arch-btn" onClick={tidy} title="Tidy up: arrange the boxes left to right" aria-label="Tidy up"><Icon name="grid" size={14} /> <span className="arch-wide">Tidy up</span></button>
@@ -411,14 +412,14 @@ function NodeInspector({ n, all, edges, sim, onFix, onChange, onDelete, onDuplic
       </div>
       <label>Name<textarea rows={2} value={n.data.label} onChange={(e) => onChange({ label: e.target.value })} autoFocus /></label>
       {kind !== 'text' && (
-        <label>Type<select className="arch-select" value={n.data.ctype ?? ''} onChange={(e) => onChange({ ctype: e.target.value || undefined })}>
+        <label>Type<Select className="arch-select" value={n.data.ctype ?? ''} onChange={(e) => onChange({ ctype: e.target.value || undefined })}>
           <option value="">Plain {kind === 'frame' ? 'group' : 'box'}</option>
           {Object.entries(CTYPES).filter(([, c]) => (kind === 'frame') === (c.group === 'Boundary')).map(([k, c]) => <option key={k} value={k}>{c.name}</option>)}
-        </select></label>
+        </Select></label>
       )}
-      <label>Level<select className="arch-select" value={n.data.level ?? ''} onChange={(e) => onChange({ level: (e.target.value || undefined) as ArchLevel | undefined })}>
+      <label>Level<Select className="arch-select" value={n.data.level ?? ''} onChange={(e) => onChange({ level: (e.target.value || undefined) as ArchLevel | undefined })}>
         <option value="">Every level</option>{LEVELS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
-      </select></label>
+      </Select></label>
       {boxy && (
         <>
           <div className="arch-k">Details</div>
@@ -446,9 +447,9 @@ function NodeInspector({ n, all, edges, sim, onFix, onChange, onDelete, onDuplic
         </>
       )}
       {kind === 'shape' && (
-        <label>Shape<select className="arch-select" value={n.data.shape ?? 'rounded'} onChange={(e) => onChange({ shape: e.target.value })}>
+        <label>Shape<Select className="arch-select" value={n.data.shape ?? 'rounded'} onChange={(e) => onChange({ shape: e.target.value })}>
           <option value="rounded">Rounded box</option><option value="rect">Box</option><option value="ellipse">Ellipse</option><option value="diamond">Decision</option><option value="cylinder">Store</option>
-        </select></label>
+        </Select></label>
       )}
       <div className="arch-field">Colour
         <div className="arch-swatches">{SWATCHES.map((c) => <button key={c} type="button" className={current === c ? 'on' : ''} style={{ background: c }} aria-label={`Colour ${c}`} onClick={() => onChange({ color: c })} />)}</div>

@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
+import { darkPopups } from './lib/popups.mjs';
 
 // The calm build of Today, My work and Projects (demo shots 01-03, 05, 08-10, 33-36, 40, 42): Today in its morning, afternoon and evening
 // states with Start → timer, the insight sheet and Reminders · N today ticked in place; My work's grouped list and right panel; Projects
@@ -174,6 +175,7 @@ try {
       assert.equal(await page.getByRole('button', { name: /More on Today/ }).count(), 0, 'no ⋯ bubble on Today');
       assert.equal(await page.locator('a[href*="classic=1"]').count(), 0, `${p}: no link to a classic view`);
       if (phone) await fitsPhoneX(page, `${p} ${tag}`);
+      if (theme === 'dark' && width === 1440) checks.push(`${p} dark: ${await darkPopups(page, `${p} dark`, assert)} popups, none white`);
       await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `${p === '/' ? 'today' : 'mywork'}-${tag}.png`) });
     }
     checks.push(`${tag}: Today and My work rails, no ⋯ bubble, no classic links`);
@@ -214,7 +216,7 @@ try {
     if (theme === 'light') {
       await ts.getByLabel('Title').fill('Refund webhook retries v2'); await ts.getByLabel('Title').press('Enter'); await ts.getByLabel('Title').blur();
       await page.waitForTimeout(400);
-      await ts.getByLabel('Priority').selectOption('Low', { force: true });
+      await ts.getByRole('combobox', { name: 'Priority' }).click(); await page.getByRole('option', { name: 'Low', exact: true }).click();
       await ts.getByLabel('Start date').fill(day(-2));
       await ts.getByLabel('Due date').fill(day(-1));
       await page.waitForTimeout(500);
@@ -226,6 +228,7 @@ try {
       checks.push(`${tag}: task sheet edits title, priority, start, due, checklist`);
     }
     if (phone) await fitsPhoneX(page, `task sheet ${tag}`);
+    if (theme === 'dark' && width === 1440) checks.push(`task sheet dark: ${await darkPopups(page, 'task sheet dark', assert)} popups, none white`);
     await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `task-sheet-${tag}.png`) });
     await ctx.close();
   }

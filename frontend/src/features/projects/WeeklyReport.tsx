@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -189,11 +190,11 @@ export function WeeklyReportPage() {
               ))}
               <li>
                 {adding ? (
-                  <select autoFocus className="wrp-add-select" aria-label="Add person or channel" value="" onBlur={() => setAdding(false)}
+                  <Select autoFocus className="wrp-add-select" aria-label="Add person or channel" value="" onBlur={() => setAdding(false)}
                     onChange={(e) => { const v = e.target.value; if (v) { setTo([...to, v]); if (v !== CHAT && !channels.includes('mail')) setChannels([...channels, 'mail']); } setAdding(false); }}>
                     <option value="">Choose…</option>
                     {addable.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  </Select>
                 ) : <button type="button" className="wrp-add" disabled={addable.length === 0} onClick={() => setAdding(true)}>＋ Add person or channel</button>}
               </li>
             </ul>

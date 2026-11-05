@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { get, post, put } from '../../api/client';
@@ -29,7 +30,7 @@ export function SupportResolution({ taskId, onChanged }: { taskId: string; onCha
     {resolution.documentId && <p><Link to={`/documents/${resolution.documentId}`}>Linked knowledge document</Link> · approved version {resolution.documentVersion}</p>}
     {resolution.canPropose && <div style={{ display: 'grid', gap: 10 }}>
       <label>Verified fix<textarea className="textarea" value={note} onChange={e => setNote(e.target.value)} maxLength={8000} placeholder="What changed, how it was verified, and how to avoid recurrence" /></label>
-      <label>Published knowledge document (optional)<select className="select" value={documentId} onChange={e => setDocumentId(e.target.value)}><option value="">No linked document</option>{documents.data?.items.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}</select></label>
+      <label>Published knowledge document (optional)<Select className="select" value={documentId} onChange={e => setDocumentId(e.target.value)}><option value="">No linked document</option>{documents.data?.items.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}</Select></label>
       <button type="button" className="btn" disabled={busy || note.trim().length < 10} onClick={() => void run(() => put(`/work-tasks/${taskId}/resolution`, { workVersion: resolution.workVersion, note, documentId: documentId.trim() || null }))}>Propose verified resolution</button>
     </div>}
     {resolution.canAccept && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run(() => post(`/work-tasks/${taskId}/resolution/accept`, { workVersion: resolution.workVersion }))}>I verified this resolution</button>}

@@ -289,20 +289,20 @@ function NewSheet({ onProject }: { onProject: () => void }) {
   if (understood) {
     chips.push(
       <Chip key="kind" label="Type" value={type === 'task' ? pkLabel : label} glyph={def?.glyph} color={color}>
-        <select aria-label="Change type" value={type === 'ticket' ? `ticket:${chosenType?.id ?? ''}` : type === 'task' ? `task:${pkind}` : type}
+        <Select aria-label="Change type" value={type === 'ticket' ? `ticket:${chosenType?.id ?? ''}` : type === 'task' ? `task:${pkind}` : type}
           onChange={(e) => { const [t, sub] = e.target.value.split(':'); setPicked(t as NewType); if (t === 'ticket' && sub) setWorkTypeId(sub); if (t === 'task' && sub) setKind(sub as ProjectKind); }}>
           {TYPES.filter((t) => allowed(t.id)).flatMap((t) => t.id === 'ticket' && activeTypes.length
             ? activeTypes.map((w) => <option key={`ticket:${w.id}`} value={`ticket:${w.id}`}>Ticket · {w.name}</option>)
             : t.id === 'task' ? PROJECT_KINDS.filter((k) => k.id !== 'issue' && kindAllowed(k.id)).map((k) => <option key={`task:${k.id}`} value={`task:${k.id}`}>{k.label}</option>)
             : [<option key={t.id} value={t.id}>{t.label}</option>])}
           {type === 'ticket' && !activeTypes.length && <option value="ticket:">Ticket</option>}
-        </select>
+        </Select>
       </Chip>,
     );
     if (work) {
       chips.push(
         <Chip key="pr" label="Priority" value={pr} glyph="!" color={PRIORITY_COLOR[pr]} tone={pr === 'Critical' ? 'critical' : undefined}>
-          <select aria-label="Change priority" value={pr} onChange={(e) => setPriority(e.target.value as Priority)}>{PRIORITIES.map((p) => <option key={p} value={p}>{p}{slaOf(p) ? ` · ${spell(slaOf(p)!)}` : ''}</option>)}</select>
+          <Select aria-label="Change priority" value={pr} onChange={(e) => setPriority(e.target.value as Priority)}>{PRIORITIES.map((p) => <option key={p} value={p}>{p}{slaOf(p) ? ` · ${spell(slaOf(p)!)}` : ''}</option>)}</Select>
         </Chip>,
         <Chip key="who" label="Owner" value={owner?.name ?? 'Nobody yet'} avatar={owner ? initials(owner.name) : undefined}>
           <Select aria-label="Change owner" value={owner?.id ?? ''} onChange={(e) => setOwnerId(e.target.value)}><option value="">Nobody yet</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.id === me?.id ? ' (you)' : ''}</option>)}</Select>

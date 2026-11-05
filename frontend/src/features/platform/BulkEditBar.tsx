@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { ApiError } from '../../api/client';
 import { labelApi, projectApi, workspaceApi } from '../../api/endpoints';
@@ -59,31 +60,31 @@ export function BulkEditBar({ rows, onClear, onDone }: { rows: WorkRow[]; onClea
       </div>
       <div className="pv-bulk-acts">
         <label className="pv-bulk-pick"><span>Status</span>
-          <select aria-label="Set status" value="" disabled={busy} onChange={(e) => e.target.value && void run({ status: e.target.value as BulkWorkInput['status'] }, 'Status')}>
+          <Select aria-label="Set status" value="" disabled={busy} onChange={(e) => e.target.value && void run({ status: e.target.value as BulkWorkInput['status'] }, 'Status')}>
             <option value="">Status…</option>{STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select></label>
+          </Select></label>
         <label className="pv-bulk-pick"><span>Owner</span>
-          <select aria-label="Set owner" value="" disabled={busy} onChange={(e) => e.target.value && void run(e.target.value === '-' ? { unassign: true } : { assigneeId: e.target.value }, 'Owner')}>
+          <Select aria-label="Set owner" value="" disabled={busy} onChange={(e) => e.target.value && void run(e.target.value === '-' ? { unassign: true } : { assigneeId: e.target.value }, 'Owner')}>
             <option value="">Owner…</option><option value="-">Nobody</option>
             {members.data?.filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-          </select></label>
+          </Select></label>
         <label className="pv-bulk-pick"><span>Priority</span>
-          <select aria-label="Set priority" value="" disabled={busy} onChange={(e) => e.target.value && void run({ priority: e.target.value as Priority }, 'Priority')}>
+          <Select aria-label="Set priority" value="" disabled={busy} onChange={(e) => e.target.value && void run({ priority: e.target.value as Priority }, 'Priority')}>
             <option value="">Priority…</option>{(['Critical', 'High', 'Medium', 'Low'] as Priority[]).map((p) => <option key={p} value={p}>{p}</option>)}
-          </select></label>
+          </Select></label>
         <label className="pv-bulk-pick date"><span>Due</span>
           <input type="date" aria-label="Set due date" disabled={busy} onChange={(e) => e.target.value && void run({ dueDate: e.target.value }, 'Due date')} /></label>
         {hasTasks && (labels.data?.length ?? 0) > 0 && (
           <label className="pv-bulk-pick"><span>Label</span>
-            <select aria-label="Add label" value="" disabled={busy} onChange={(e) => e.target.value && void run({ labelIds: [e.target.value] }, 'Label')}>
+            <Select aria-label="Add label" value="" disabled={busy} onChange={(e) => e.target.value && void run({ labelIds: [e.target.value] }, 'Label')}>
               <option value="">Add label…</option>{labels.data!.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select></label>
+            </Select></label>
         )}
         {hasTickets && (projects.data?.items.length ?? 0) > 0 && (
           <label className="pv-bulk-pick"><span>Project</span>
-            <select aria-label="Move to project" value="" disabled={busy} onChange={(e) => e.target.value && void run({ projectId: e.target.value }, 'Move')}>
+            <Select aria-label="Move to project" value="" disabled={busy} onChange={(e) => e.target.value && void run({ projectId: e.target.value }, 'Move')}>
               <option value="">Move to…</option>{projects.data!.items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select></label>
+            </Select></label>
         )}
         <button type="button" className="pv-bulk-del" disabled={busy} onClick={() => void remove()}><Icon name="trash" size={14} />Delete</button>
         {busy && <span className="spinner" aria-label="Saving" />}

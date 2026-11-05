@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
@@ -88,10 +89,10 @@ export function TimeEntryEditor({ entry, day: day0, start: start0, end: end0, ap
     <form className="ed-pick ed-time" data-testid="ed-time-form" onSubmit={(ev) => { ev.preventDefault(); void save(); }}>
       {approximated && entry && <p className="ed-note wide">Typed in as {fmtMins(entry.minutes)} without a time of day. Saving places it at the time below.</p>}
       <label className="wide"><span>Work</span>
-        <select className="ed-sel" aria-label="Work item" value={work} onChange={(ev) => setWork(ev.target.value)}>
+        <Select className="ed-sel" aria-label="Work item" value={work} onChange={(ev) => setWork(ev.target.value)}>
           {!work && <option value="">Choose work…</option>}
           {all.map((c) => <option key={choiceId(c)} value={choiceId(c)}>{choiceLabel(c)}</option>)}
-        </select>
+        </Select>
       </label>
       <label><span>Day</span><input className="ed-sel" type="date" aria-label="Day" value={day} max={today} onChange={(ev) => setDay(ev.target.value)} /></label>
       <label><span>Duration</span><output className="ed-sel ed-dur" aria-label="Duration">{mins > 0 ? fmtMins(mins) : '–'}</output></label>

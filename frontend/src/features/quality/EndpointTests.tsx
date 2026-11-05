@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -132,7 +133,7 @@ function CaseSheet({ draft, tests, onClose, onSave, busy }: { draft: CaseDraft; 
         <label className="field-label" htmlFor="et-exp">Expected</label>
         <input id="et-exp" className="input" value={d.expected} onChange={(e) => setD({ ...d, expected: e.target.value })} />
         <label className="field-label" htmlFor="et-pri">Priority</label>
-        <select id="et-pri" className="select" value={d.priority} onChange={(e) => setD({ ...d, priority: e.target.value as CasePriority })}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</select>
+        <Select id="et-pri" className="select" value={d.priority} onChange={(e) => setD({ ...d, priority: e.target.value as CasePriority })}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</Select>
       </div>
     </Modal>
   );

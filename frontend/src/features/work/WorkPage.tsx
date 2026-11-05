@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { ToolbarSeg as ToolbarSlot } from '../../components/v2/ToolbarSeg';
 import { Suspense, lazy, useCallback, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -163,9 +164,9 @@ export function WorkPage() {
     );
     const teamPick = tab === 'team' && !person && (teams.data?.length ?? 0) > 0 ? (
       <label className="wk-pick team"><span>Team: <b>{team === 'mine' ? 'my teams' : teams.data!.find((t) => t.id === team)?.name ?? 'my teams'}</b></span>
-        <select aria-label="Team" value={team ?? 'mine'} onChange={(e) => go({ team: e.target.value === 'mine' ? null : e.target.value })}>
+        <Select aria-label="Team" value={team ?? 'mine'} onChange={(e) => go({ team: e.target.value === 'mine' ? null : e.target.value })}>
           <option value="mine">My teams</option>{teams.data!.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select></label>
+        </Select></label>
     ) : null;
   if (tab === 'mine' && params.get('view') === 'actions') return <div className="wk wk-mine">{seg}<MyActionItems />{panel}</div>;
   if (tab === 'mine' && !overdue && !classic) return <div className="wk wk-mine wk-calm"><CalmMyWork onOpen={open} more={[...dots.filter((d) => d.label !== 'New task'), ...tabs.filter((t) => t.id !== 'mine').map((t): DotsItem => ({ label: t.label, icon: t.id === 'team' ? 'users' : 'bolt', onSelect: () => setTab(t.id) }))]} />{panel}</div>;

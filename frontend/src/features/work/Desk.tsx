@@ -121,11 +121,11 @@ export function TriageChips({ w, save }: { w: WorkItemDetail; save: Save }) {
           <span className="dk-chip-l">{c.label}</span><b>{c.value}</b>
           {changing === c.id ? (
             c.id === 'type' ? (
-              <select autoFocus aria-label="Category" defaultValue="" onChange={(e) => { if (e.target.value) void save({ workTypeId: e.target.value }).then(() => finish(c.id)); setChanging(null); }}>
+              <Select autoFocus aria-label="Category" defaultValue="" onChange={(e) => { if (e.target.value) void save({ workTypeId: e.target.value }).then(() => finish(c.id)); setChanging(null); }}>
                 <option value="" disabled>Choose…</option>{(types.data ?? []).filter((t) => t.isActive).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              </Select>
             ) : c.id === 'priority' ? (
-              <select autoFocus aria-label="Priority" defaultValue={w.priority} onChange={(e) => { void save({ priority: e.target.value as Priority }).then(() => finish(c.id)); setChanging(null); }}><PriorityOptions /></select>
+              <Select autoFocus aria-label="Priority" defaultValue={w.priority} onChange={(e) => { void save({ priority: e.target.value as Priority }).then(() => finish(c.id)); setChanging(null); }}><PriorityOptions /></Select>
             ) : (
               <Select autoFocus aria-label="Owner" defaultValue="" onChange={(e) => { if (e.target.value) void save({ assigneeId: e.target.value }).then(() => finish(c.id)); setChanging(null); }}>
                 <option value="" disabled>Choose…</option>{(members.data ?? []).filter((m) => m.role !== 'Guest' && m.isActive !== false).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}

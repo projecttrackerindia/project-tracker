@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
@@ -303,14 +304,14 @@ export function MakeFromMessage({ m, conversation, kind, onClose, onMade }: { m:
           <label className="field"><span>{kind === 'page' ? 'Text' : 'Details'}</span><textarea className="input" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
           {kind === 'task' && !conversation.projectId && (
             <label className="field"><span>Project</span>
-              <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <Select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                 <option value="">Choose a project</option>
                 {(projects.data?.items ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select></label>
+              </Select></label>
           )}
           {kind === 'ticket' && (
             <label className="field"><span>Kind of work</span>
-              <select className="input" value={workTypeId} onChange={(e) => setWorkTypeId(e.target.value)}>{(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+              <Select className="input" value={workTypeId} onChange={(e) => setWorkTypeId(e.target.value)}>{(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></label>
           )}
           {kind !== 'page' && (
             <div className="make-row">
@@ -318,16 +319,16 @@ export function MakeFromMessage({ m, conversation, kind, onClose, onMade }: { m:
               {kind === 'reminder' && <label className="field"><span>At</span><input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} /></label>}
               {kind !== 'reminder' && (
                 <label className="field"><span>Priority</span>
-                  <select className="input" value={priority} onChange={(e) => setPriority(e.target.value)}>{['Low', 'Medium', 'High', 'Urgent'].map((p) => <option key={p}>{p}</option>)}</select></label>
+                  <Select className="input" value={priority} onChange={(e) => setPriority(e.target.value)}>{['Low', 'Medium', 'High', 'Urgent'].map((p) => <option key={p}>{p}</option>)}</Select></label>
               )}
             </div>
           )}
           {(kind === 'task' || kind === 'ticket') && (
             <label className="field"><span>Assignee</span>
-              <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+              <Select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
                 <option value="">Nobody yet</option>
                 {people.map((p) => <option key={p.userId} value={p.userId}>{p.name}</option>)}
-              </select></label>
+              </Select></label>
           )}
         </div>
       )}
