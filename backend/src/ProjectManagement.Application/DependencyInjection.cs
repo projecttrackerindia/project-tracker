@@ -225,6 +225,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Platform.HistoryService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.SavedViewService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.HolidayService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.ProblemReportService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.FeatureFlagService>();
         services.AddScoped<ProjectManagement.Application.Features.Attendance.AttendanceService>();
         services.AddScoped<ProjectManagement.Application.Features.Attendance.AttendanceMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.StatusPageService>();
