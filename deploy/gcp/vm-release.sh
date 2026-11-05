@@ -63,7 +63,8 @@ fi
 [ -n "$PREV" ] && [ "$PREV" != "$TAG_NEW" ] && echo "$PREV" > .release.prev
 echo "$TAG_NEW" > .release
 
-if [ "$(meetbot_busy)" = 0 ]; then docker compose up -d meetbot; echo "meeting bot updated"
+if ! docker compose config --services | grep -qx meetbot; then :   # not run here (staging)
+elif [ "$(meetbot_busy)" = 0 ]; then docker compose up -d meetbot; echo "meeting bot updated"
 else
   echo "meeting bot is in a meeting: it moves to the new version when the meeting ends"
   nohup sh -c 'for i in $(seq 240); do b=$(docker compose exec -T meetbot node -e "fetch(\"http://localhost:8080/health\").then(r=>r.json()).then(j=>console.log(j.bots||0)).catch(()=>console.log(0))" 2>/dev/null || echo 0); [ "$b" = 0 ] && break; sleep 60; done; docker compose up -d meetbot' >/tmp/meetbot-update.log 2>&1 &

@@ -8,7 +8,7 @@ TAG="${TAG:-$(git rev-parse --short HEAD)}"
 get() { grep -m1 "^$1=" "$STATE/railway-web.env" 2>/dev/null | cut -d= -f2- || true; }
 # New projects often may not run large build machines in a region yet ("quota restrictions"), so this tries a fast machine first and
 # falls back to the standard one. The images always go to the Mumbai registry; only where the build itself runs changes.
-SUBS="_IMAGES=${IMAGES},_TAG=${TAG},_SITE_URL=https://${DOMAIN},_GOOGLE=$(get GOOGLE_SITE_VERIFICATION),_BING=$(get BING_SITE_VERIFICATION),_INDEXNOW=$(get INDEXNOW_KEY)"
+SUBS="_IMAGES=${IMAGES},_TAG=${TAG},_ALIAS=${ALIAS:-latest},_SITE_URL=https://${DOMAIN},_GOOGLE=$(get GOOGLE_SITE_VERIFICATION),_BING=$(get BING_SITE_VERIFICATION),_INDEXNOW=$(get INDEXNOW_KEY)"
 build() { gcloud builds submit --config=deploy/gcp/cloudbuild.yaml --substitutions="$SUBS" "$@" .; }
 build --region="${BUILD_REGION:-$REGION}" --machine-type="${BUILD_MACHINE:-e2-highcpu-8}" \
   || build --region=global --machine-type="${BUILD_MACHINE:-e2-highcpu-8}" \

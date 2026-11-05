@@ -59,3 +59,31 @@ Then in GitHub › Settings › Secrets and variables › Actions › **Variable
 (`projects/<number>/locations/global/workloadIdentityPools/github/providers/github-oidc`), `GCP_DEPLOY_SA`
 (`pt-deploy@<project>.iam.gserviceaccount.com`). Create a GitHub **environment** `production` (optionally with required reviewers).
 Until `GCP_WIF_PROVIDER` is set, Deploy and Rollback do nothing.
+
+## 2. Staging (staging.projecttracker.in)
+
+A separate small VM (`pt-staging`) running the same images through `deploy/gcp/docker-compose.staging.yml`:
+
+- its own PostgreSQL container (named `cloudsql` so the API's connection string is unchanged) seeded with the **fictional** demo
+  organisation (`Seed__Demo=true`, sign in as `demo@example.com`); no Cloud SQL, no bucket, no KMS, no production secrets;
+- email `Log`, payments `Mock`, no meeting bot;
+- `Caddyfile.staging` sends `X-Robots-Tag: noindex, nofollow, noarchive` on every response and a `Disallow: /` robots.txt;
+- images are tagged `s-<commit>` and `staging`; `latest` (production) is never moved by a staging build.
+
+**What deploys there** (`.github/workflows/staging.yml`): every push to `release-*` (e.g. `release-nov`), pull requests from this
+repository that carry the label **staging**, and manual runs. The workflow checks `/health/ready`, the noindex header and robots.txt.
+From Cloud Shell: `TARGET=staging ./deploy/gcp/update.sh`.
+
+**One-time setup (owner)**
+
+```bash
+export PROJECT_ID=central-weft-511003-c1
+./deploy/gcp/staging-setup.sh                 # VM pt-staging + address pt-staging-ip + pt-staging SA (pull images, write logs only)
+STAGING=1 ./deploy/gcp/github-deploy-setup.sh # separate WIF pool "github-staging" + pt-staging-deploy SA (SSH to pt-staging only)
+```
+
+DNS: an `A` record `staging` → the printed address. GitHub variables: `GCP_STAGING_WIF_PROVIDER`, `GCP_STAGING_DEPLOY_SA`
+(and `STAGING_VM` if renamed). Create the GitHub environment `staging` and the PR label `staging`.
+
+The staging pool is separate on purpose: a token from a pull request can never act as the production deploy account.
+Caveat: a same-repository PR labelled `staging` runs its own `cloudbuild.yaml` with the Cloud Build account, so only label PRs you trust.

@@ -2,24 +2,25 @@
 steps:
   - name: gcr.io/cloud-builders/docker
     id: api
-    args: ["build", "-t", "${_IMAGES}/api:${_TAG}", "-t", "${_IMAGES}/api:latest", "backend"]
+    args: ["build", "-t", "${_IMAGES}/api:${_TAG}", "-t", "${_IMAGES}/api:${_ALIAS}", "backend"]
   - name: gcr.io/cloud-builders/docker
     id: web
     waitFor: ["-"]
-    args: ["build", "-t", "${_IMAGES}/web:${_TAG}", "-t", "${_IMAGES}/web:latest", "--build-arg", "SITE_URL=${_SITE_URL}",
+    args: ["build", "-t", "${_IMAGES}/web:${_TAG}", "-t", "${_IMAGES}/web:${_ALIAS}", "--build-arg", "SITE_URL=${_SITE_URL}",
            "--build-arg", "GOOGLE_SITE_VERIFICATION=${_GOOGLE}", "--build-arg", "BING_SITE_VERIFICATION=${_BING}", "--build-arg", "INDEXNOW_KEY=${_INDEXNOW}", "frontend"]
   - name: gcr.io/cloud-builders/docker
     id: meetbot
     waitFor: ["-"]
-    args: ["build", "-t", "${_IMAGES}/meetbot:${_TAG}", "-t", "${_IMAGES}/meetbot:latest", "apps/meetbot"]
+    args: ["build", "-t", "${_IMAGES}/meetbot:${_TAG}", "-t", "${_IMAGES}/meetbot:${_ALIAS}", "apps/meetbot"]
 images:
   - ${_IMAGES}/api:${_TAG}
-  - ${_IMAGES}/api:latest
+  - ${_IMAGES}/api:${_ALIAS}
   - ${_IMAGES}/web:${_TAG}
-  - ${_IMAGES}/web:latest
+  - ${_IMAGES}/web:${_ALIAS}
   - ${_IMAGES}/meetbot:${_TAG}
-  - ${_IMAGES}/meetbot:latest
+  - ${_IMAGES}/meetbot:${_ALIAS}
 substitutions:
+  _ALIAS: latest   # staging builds use "staging" so production's "latest" never points at unreleased code
   _GOOGLE: ""
   _BING: ""
   _INDEXNOW: ""
