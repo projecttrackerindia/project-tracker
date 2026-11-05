@@ -53,6 +53,17 @@
           var go = function () { return fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }).catch(function () { return null; }); };
           var locks = navigator.locks;
           window.__ptRefresh = locks && locks.request ? locks.request('pt-refresh', go) : go();
+          // ... and, the moment that answer is in, the two reads every signed-in page starts with (who you are and the frame's numbers),
+          // so they are not waiting for the scripts either. Each answer is used once, by the same request from the app (api/client.ts).
+          window.__ptEarly = window.__ptRefresh.then(function (r) {
+            if (!r || !r.ok) return null;
+            return r.clone().json().then(function (j) {
+              var t = j && j.data && j.data.accessToken;
+              if (!t) return null;
+              var get = function (p) { return fetch('/api/v1' + p, { credentials: 'include', headers: { Authorization: 'Bearer ' + t } }).catch(function () { return null; }); };
+              return { token: t, '/me': get('/me'), '/shell/summary': get('/shell/summary') };
+            });
+          }).catch(function () { return null; });
         }
       } catch (e) {}
       // Only the public screens are for search engines. Every other address (an organization's pages, a reset link, a mistyped path) is

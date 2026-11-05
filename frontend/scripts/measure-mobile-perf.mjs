@@ -38,7 +38,7 @@ for (const [name, url] of pages) {
     localStorage.setItem('pm_alerts_prompt', '1');
     if (hint) localStorage.setItem('pm_hint', '1');
     window.__perf = { lcp: 0, fcp: 0, long: [] };
-    new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__perf.lcp = e.startTime; }).observe({ type: 'largest-contentful-paint', buffered: true });
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) { window.__perf.lcp = e.startTime; window.__perf.lcpEl = e.element ? `${e.element.tagName.toLowerCase()}.${[...e.element.classList].join('.')} "${(e.element.textContent ?? '').trim().slice(0, 40)}"` : ''; } }).observe({ type: 'largest-contentful-paint', buffered: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') window.__perf.fcp = e.startTime; }).observe({ type: 'paint', buffered: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__perf.long.push([e.startTime, e.duration]); }).observe({ type: 'longtask', buffered: true });
   }, process.env.HINT !== '0');
@@ -113,7 +113,7 @@ for (const [name, url] of pages) {
     cssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css')).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     criticalCssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css') && c.at <= fcpAt + 50).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     fontKB: +((log.other ?? []).filter((c) => c.file.endsWith('.woff2')).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
-    fcpMs: Math.round(perf.fcp), lcpMs: Math.round(perf.lcp), ttiMs: Math.round(quietFrom),
+    fcpMs: Math.round(perf.fcp), lcpMs: Math.round(perf.lcp), lcpElement: perf.lcpEl, ttiMs: Math.round(quietFrom),
     longTasks: perf.long.length, longTaskMs: Math.round(perf.long.reduce((a, [, d]) => a + d, 0)),
     apiCalls: log.api.length, apiWaterfall: log.api.map((a) => `${String(a.start).padStart(5)}→${String(a.end).padStart(5)} ${a.call}`),
     ...(process.env.ASSETS ? { js: log.js.sort((a, b) => b.gz - a.gz).slice(0, 20).map((j) => `${(j.gz / 1024).toFixed(1).padStart(6)} @${j.at} ${j.file}`), other: (log.other ?? []).map((j) => `${(j.gz / 1024).toFixed(1).padStart(6)} @${j.at} ${j.file}`) } : {}),
