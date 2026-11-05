@@ -104,12 +104,13 @@ function AuraSearchSheet() {
 
   const go = (r: AuraResult) => { hide(); nav(r.link); };
   const ask = (prompt: string) => { hide(); openGroot(prompt, about ? null : context && context !== 'Home' ? context : null, about); };
+  const chat = () => { hide(); openGroot(null, about ? null : context && context !== 'Home' ? context : null, about); };
   const activate = (i: number) => { if (i < results.length) go(results[i]); else if (asks[i - results.length]) ask(asks[i - results.length].prompt); else if (ai && q.trim()) ask(q.trim()); };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') { e.preventDefault(); hide(); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(total - 1, s + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
-    else if (e.key === 'Enter') { e.preventDefault(); activate(sel); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (ai && !q.trim()) chat(); else activate(sel); }
     else if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
       const i = SEARCH_FILTERS.findIndex((f) => f.id === kind);
@@ -122,7 +123,8 @@ function AuraSearchSheet() {
       <div className="aura-s-scrim" onClick={hide} />
       <div className="aura-s" role="dialog" aria-modal="true" aria-label="Search and ask Aura" onKeyDown={onKey}>
         <div className="aura-s-field">
-          <SiriOrb size={26} state={thinking ? 'thinking' : q ? 'listening' : 'idle'} />
+          {ai ? <button type="button" className="aura-s-open" onClick={chat} aria-label="Open the Aura chat" title="Open the Aura chat"><SiriOrb size={26} state={thinking ? 'thinking' : q ? 'listening' : 'idle'} /></button>
+            : <SiriOrb size={26} state={thinking ? 'thinking' : q ? 'listening' : 'idle'} />}
           <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={ai ? 'Search or ask Aura' : 'Search everything'} aria-label="Search or ask Aura"
             role="combobox" aria-expanded={total > 0} aria-controls="aura-s-list" aria-activedescendant={total ? optId(sel) : undefined} autoComplete="off" enterKeyHint="search" data-testid="aura-search-input" />
           {phone ? <button type="button" className="aura-s-cancel" onClick={hide}>Cancel</button> : <kbd className="aura-s-kbd">esc</kbd>}

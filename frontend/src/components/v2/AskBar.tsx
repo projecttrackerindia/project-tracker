@@ -100,6 +100,9 @@ export function AuraKeys() {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k' || e.altKey) return;
       if (e.shiftKey) { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); return; }
       e.preventDefault(); e.stopImmediatePropagation();
+      // The Aura panel open: ⌘K puts it away; otherwise it toggles Aura search.
+      const g = useGroot.getState();
+      if (g.open && !g.card) { g.close(); return; }
       toggleAuraSearch(where.current);
     };
     window.addEventListener('keydown', onKey, true);
