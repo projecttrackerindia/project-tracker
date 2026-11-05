@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 using ProjectManagement.Application.Features.Notifications;
 using ProjectManagement.Domain.Enums;
 using ProjectManagement.Tests.Infrastructure;
@@ -48,6 +49,7 @@ public class SmartNotificationsTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, "Gita Grouper");
         await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
         var member = await owner.AddMemberAsync(factory, TenantRole.Member, "Mona Member");
         var project = await owner.CreateProjectAsync("Fictional Ledger Revamp");
         await owner.Post($"/api/v1/projects/{project}/members", new { userId = member.UserId });
@@ -58,8 +60,22 @@ public class SmartNotificationsTests(ApiFactory factory)
         var rows = factory.WithDb(db => db.Notifications.Where(n => n.UserId == member.UserId && n.Type == NotificationType.TaskAssigned).OrderBy(n => n.CreatedAt)
             .Select(n => new { n.Browser, n.PushPending, n.EmailPending, n.Link }).ToList());
         Assert.Equal(3, rows.Count);
-        Assert.True(rows[0].Browser);                        // the first of the burst pings
-        Assert.All(rows.Skip(1), r => Assert.False(r.Browser || r.PushPending));   // the rest join its group quietly
+        Assert.All(rows, r => Assert.True(r.Browser));   // assignments ask something of the person: each one still pings
+
+        // A normal update about the same project inside the window joins the unread group quietly.
+        factory.WithDb(db =>
+        {
+            db.Notifications.Add(new ProjectManagement.Domain.Entities.Notification { TenantId = owner.WorkspaceId, UserId = member.UserId, Type = NotificationType.TaskUpdated,
+                Title = "Fictional earlier update", Link = $"/projects/{project}?task={Guid.NewGuid()}", InApp = true, CreatedAt = DateTime.UtcNow.AddMinutes(-5) });
+            db.SaveChanges(); return 0;
+        });
+        using (var scope = factory.Services.CreateScope())
+        {
+            var router = scope.ServiceProvider.GetRequiredService<NotificationRouter>();
+            var follow = new ProjectManagement.Domain.Entities.Notification { TenantId = owner.WorkspaceId, UserId = member.UserId, Type = NotificationType.TaskUpdated,
+                Title = "Fictional follow-up", Link = $"/projects/{project}?task={Guid.NewGuid()}", CreatedAt = DateTime.UtcNow };
+            if (await router.ApplyAsync(follow) && (follow.Browser || follow.PushPending)) Assert.Fail("A follow-up inside the window should be quiet.");
+        }
 
         var list = (await member.Get("/api/v1/notifications?pageSize=10")).Data!["items"]!.AsArray();
         var assigned = list.Where(n => n!["type"]!.GetValue<string>() == "TaskAssigned").ToList();

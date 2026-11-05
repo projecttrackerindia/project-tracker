@@ -21,6 +21,7 @@ public class FeedbackAndFlagsTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, "Rhea Reporter");
         await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
         var member = await owner.AddMemberAsync(factory, TenantRole.Member, "Milo Member");
         var sent = await member.Post("/api/v1/problem-reports", new
         {
@@ -68,7 +69,7 @@ public class FeedbackAndFlagsTests(ApiFactory factory)
         Assert.True(Mine(await member.Get("/api/v1/feature-flags/mine"), "shake-to-report"));
 
         var team = await owner.Post("/api/v1/teams", new { name = "Fictional pilot team" }); Assert.True(team.Ok, team.ToString());
-        var teamId = team.Data!["id"]!.GetValue<string>();
+        var teamId = (team.Data!["team"]?["id"] ?? team.Data!["id"])!.GetValue<string>();
         Assert.True((await owner.Post($"/api/v1/teams/{teamId}/members", new { userId = member.UserId, isLead = false })).Ok);
         Assert.True((await owner.Put("/api/v1/feature-flags/shake-to-report", new { scope = "team", targetId = teamId, enabled = false })).Ok);
         Assert.False(Mine(await member.Get("/api/v1/feature-flags/mine"), "shake-to-report"));

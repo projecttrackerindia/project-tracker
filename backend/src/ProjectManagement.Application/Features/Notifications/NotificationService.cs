@@ -268,7 +268,8 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
     /// <summary>
     /// Smart notifications, on top of the channels: a muted project or thread still lands in the Notification Centre but never rings, pops up,
     /// pushes or e-mails; and a normal (not urgent) update about something that already has an unread update from the last window joins that
-    /// group quietly (only the first of a burst pings). Urgent kinds, calls and security alerts are never held back.
+    /// group quietly (only the first of a burst pings). Urgent kinds, what asks something of the person (assignments, messages ...), calls and
+    /// security alerts are never held back.
     /// </summary>
     private async Task ShapeAsync(Notification n, CancellationToken ct)
     {
@@ -279,7 +280,7 @@ public class NotificationRouter(IAppDbContext db, AppClock clock, IOptions<AppOp
             n.Browser = false; n.PushPending = false; n.EmailPending = false; n.SlackPending = false;
             return;
         }
-        if (NotificationPriority.Of(n.Type, priorities) == NotificationPriority.Urgent || !(tuning?.Grouping ?? true) || !(n.Browser || n.PushPending)) return;
+        if (NotificationPriority.Of(n.Type, priorities) == NotificationPriority.Urgent || NotificationLanes.IsNeedsYou(n.Type) || !(tuning?.Grouping ?? true) || !(n.Browser || n.PushPending)) return;
         if (NotificationGroups.LinkPrefix(n.Link) is not { } prefix) return;
         var since = clock.Now.AddMinutes(-(tuning?.GroupWindowMinutes ?? 60));
         var earlier = await db.Notifications.IgnoreQueryFilters().AsNoTracking().AnyAsync(x => x.TenantId == n.TenantId && x.UserId == n.UserId && x.InApp && x.ReadAt == null
