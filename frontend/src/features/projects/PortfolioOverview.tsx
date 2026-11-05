@@ -49,6 +49,11 @@ export function PortfolioOverview({ ai, more }: { ai: boolean; more: ReactNode }
   const milestones = useMemo(() => tlProjects.flatMap((p) => (p.milestones ?? []).filter((m) => m.due && dn(m.due) >= dn(today) && dn(m.due) <= dn(today) + 14 && m.status !== 'Done')
     .map((m) => ({ ...m, project: p }))).sort((a, b2) => (a.due ?? '').localeCompare(b2.due ?? '')).slice(0, 5), [tlProjects, today]);
   const slips = (b?.recentSlips ?? []).slice(0, 2);
+  // Date extensions this month: how many dates moved later and by how many days in all ("5 dates extended this month, +23 days").
+  const month = today.slice(0, 7);
+  const extThisMonth = (b?.recentSlips ?? []).filter((x) => x.at.slice(0, 7) === month && (x.daysShifted ?? 0) > 0);
+  const extDays = extThisMonth.reduce((a, x) => a + (x.daysShifted ?? 0), 0);
+  const showExtended = () => { url.setToks([{ kind: 'due', value: 'extended', label: 'Dates extended' }]); url.setMode('sheet'); };
   const avg = ranked.length ? Math.round(ranked.reduce((a, r) => a + r.progress, 0) / ranked.length) : 0;
   const decisionsOpen = (review.data?.items ?? []).filter((i) => i.state !== 'done' && i.state !== 'cancelled' && !i.decision).length;
   const goPlan = (pid: string) => { url.setMode('sheet'); window.setTimeout(() => url.setTab(pid), 0); };
@@ -79,6 +84,9 @@ export function PortfolioOverview({ ai, more }: { ai: boolean; more: ReactNode }
 
           <div className="pfo-then" aria-label="Then">
             <span className="pfo-then-l">Then</span>
+            <button type="button" className="pfo-then-i pfo-ext" data-testid="extension-summary" onClick={showExtended}>
+              <span className="xd-badge">{extThisMonth.length ? `${extThisMonth.length} date${extThisMonth.length === 1 ? '' : 's'} extended this month, +${extDays} days` : 'No dates extended this month'}</span>
+            </button>
             {slips.length === 0 ? <span className="pfo-then-i">No date changes this month</span>
               : slips.map((s) => <span key={`${s.projectId}${s.at}`} className="pfo-then-i">{s.project} {s.revised ? <>moved to {short(s.revised)}</> : 'moved'}{s.daysShifted ? <small> {s.daysShifted > 0 ? '+' : ''}{s.daysShifted} days</small> : null}</span>)}
             <span className="ps3-sp" />

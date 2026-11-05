@@ -157,3 +157,5 @@ html[data-theme='dark'] .ptl, html[data-theme='dark'] .ptl-pop, html[data-theme=
 .ptl-mbar[class*='pc-'] { background: color-mix(in srgb, var(--pc) 13%, var(--tl-surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 70%, transparent); --c: var(--pc); }
 .ptl-mbar[class*='pc-'].risk { box-shadow: none; outline: 1.5px dashed var(--pc); outline-offset: -1.5px; }
 .ptl-mbar[class*='pc-'].done { opacity: .55; }
+/* the original plan of an extended project: a thin dashed ghost under the bar (calm-round4a) */
+.ptl-orig { position: absolute; height: 4px; border-radius: 2px; pointer-events: auto; background: repeating-linear-gradient(90deg, var(--ds-label-3, #8e8e93) 0 6px, transparent 6px 10px); opacity: .55; }

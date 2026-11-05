@@ -361,3 +361,4 @@ html .pfa-grid { grid-template-columns: 1fr; align-content: start; }
   html .ps4-ai .ai-row .t { grid-column: 2 / -1; }
   html .ps4-ai .ai-row .pfa-c { min-height: 44px; }
 }
+.pfo-ext { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }

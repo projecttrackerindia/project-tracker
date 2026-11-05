@@ -27,6 +27,7 @@ import { PortfolioSkeleton, ShellPresence, ShellTools, usePortfolio, useShellMen
 import { patchPortfolio, refreshPortfolio } from './portfolioShared';
 import './planSheet.css';
 import './planSheetTabs.css';
+import { ExtendedBadge, WasDate } from '../dates/ExtendedDate';
 
 type Layout = 'sheet' | 'split' | 'timeline';
 type ColId = 'task' | 'owner' | 'dates' | 'due' | 'status' | 'progress' | 'notes' | 'gantt';
@@ -568,9 +569,9 @@ function SheetGrid({ data, display, rows, work, today, layout, inspectId, setIns
       case 'owner': return <Owner id={r.ownerId} name={r.owner} />;
       case 'dates': {
         const s = slipDays(r, today);
-        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{r.due ? <CalendarDate r={r} calendar={calendar} late={k === 'late'} /> : <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}{tick(r.id, 'date')}</span>;
+        return <span className="ps3-num">{r.start && <span className="ps3-dim">{dm(r.start)} → </span>}<span style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{r.due && <WasDate r={r} />}{r.due ? <CalendarDate r={r} calendar={calendar} late={k === 'late'} /> : <span className="ps3-dim">No date</span>}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}<ExtendedBadge r={r} />{tick(r.id, 'date')}</span>;
       }
-      case 'due': { const s = slipDays(r, today); return <><span className="ps3-num" style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || '—'}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}{tick(r.id, 'date')}</>; }
+      case 'due': { const s = slipDays(r, today); return <><WasDate r={r} /><span className="ps3-num" style={k === 'late' ? { color: 'var(--p-red)' } : undefined}>{dm(r.due) || '—'}</span>{s > 0 && <span className={`ps3-slip ${k === 'late' ? 'late' : 'risk'}`}>+{s}d</span>}<ExtendedBadge r={r} />{tick(r.id, 'date')}</>; }
       case 'status': return <Status r={r} />;
       case 'progress': {
         const pv = smart && smart.targets.some((t) => t.id === r.id) ? smartValue(r) : fill?.col === 'progress' && fill.to.includes(r.id) ? rows.find((x) => x.id === fill.src)?.progress ?? r.progress : r.progress;

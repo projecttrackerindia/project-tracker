@@ -321,6 +321,8 @@ function Bar({ p, colour, y, X, W, px, today, todayX, labels, drag, dragging, dr
         {clipL && <span className="ptl-clip l" aria-hidden="true">‹</span>}
         <span className="ptl-handle" role="slider" aria-label={`Due date of ${p.name}`} aria-valuetext={dmy(due)} aria-valuenow={dn(due)} onPointerDown={onDragStart} onClick={(e) => e.stopPropagation()} />
       </div>
+      {/* The original plan as a ghost bar under the current one, when the due date was extended. */}
+      {p.originalDue && p.due && p.originalDue < p.due && <i className="ptl-orig" data-testid="timeline-ghost" title={`Original plan: due ${dmy(p.originalDue)}`} style={{ top: by + 24, left: Math.max(0, x0), width: Math.max(4, Math.min(W, X(p.originalDue) + px) - Math.max(0, x0)) }} aria-hidden="true" />}
       {slip > 0 && <i className="ptl-slip" style={{ top: by, left: x1, width: Math.max(4, Math.min(W, fx) - x1) }} aria-hidden="true" />}
       {clipR && <span className="ptl-clip r" style={{ top: by }} aria-hidden="true">›</span>}
       {drag && <i className="ptl-ghost" style={{ top: by - 1, left: X(p.due) + px, width: Math.max(0, x1 - X(p.due) - px) }} aria-hidden="true" />}

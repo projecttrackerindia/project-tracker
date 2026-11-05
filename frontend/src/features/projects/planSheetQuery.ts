@@ -12,8 +12,8 @@ export interface Tok { kind: TokKind; value: string; label: string }
 export type StatusKey = 'late' | 'risk' | 'prog' | 'todo' | 'done';
 export const STATUS_KEYS: StatusKey[] = ['late', 'risk', 'prog', 'todo', 'done'];
 export const STATUS_LABEL: Record<StatusKey, string> = { late: 'Late', risk: 'At risk', prog: 'In progress', todo: 'Not started', done: 'Done' };
-export type DueKey = 'overdue' | 'this-week' | 'next-week' | 'next-2-weeks' | 'slipped' | 'next-30';
-export const DUE_LABEL: Record<DueKey, string> = { overdue: 'Overdue', 'this-week': 'This week', 'next-week': 'Next week', 'next-2-weeks': 'Next 2 weeks', slipped: 'Slipped ≥ 2d', 'next-30': 'Next 30 days' };
+export type DueKey = 'overdue' | 'this-week' | 'next-week' | 'next-2-weeks' | 'slipped' | 'next-30' | 'extended';
+export const DUE_LABEL: Record<DueKey, string> = { overdue: 'Overdue', 'this-week': 'This week', 'next-week': 'Next week', 'next-2-weeks': 'Next 2 weeks', slipped: 'Slipped ≥ 2d', 'next-30': 'Next 30 days', extended: 'Dates extended' };
 const STATUS_VALUES: Record<string, string> = { late: 'Late', risk: 'At risk', lateorrisk: 'Late or at risk', prog: 'In progress', todo: 'Not started', done: 'Done', open: 'Not done' };
 
 export const isWork = (r: SheetRow) => r.kind === 'task' || r.kind === 'subtask';
@@ -46,6 +46,7 @@ export function tokenMatch(r: SheetRow, t: Tok, c: QueryCtx): boolean {
       return t.value === 'lateorrisk' ? k === 'late' || k === 'risk' : t.value === 'open' ? k !== 'done' : k === t.value;
     }
     case 'due': {
+      if (t.value === 'extended') return (r.extensionCount ?? 0) > 0;
       if (!r.due) return false;
       const d = dayNum(r.due), today = dayNum(c.today), mon = dayNum(weekStart(c.today));
       switch (t.value as DueKey) {
@@ -122,7 +123,7 @@ export function interpret(text: string, people: { id: string; name: string }[], 
     }
   }
   const dueRe: [RegExp, DueKey][] = [[/\s(this week|this wk)\s/, 'this-week'], [/\snext 2 weeks|\snext two weeks|\snext fortnight/, 'next-2-weeks'], [/\snext week\s/, 'next-week'],
-    [/\s(next 30 days|this month)\s/, 'next-30'], [/\s(slipped|slipping)\s/, 'slipped'], [/\soverdue\s/, 'overdue']];
+    [/\s(next 30 days|this month)\s/, 'next-30'], [/\s(slipped|slipping)\s/, 'slipped'], [/\s(dates extended|extended)\s/, 'extended'], [/\soverdue\s/, 'overdue']];
   for (const [re, k] of dueRe) if (take(re)) out.push({ kind: 'due', value: k, label: DUE_LABEL[k] });
   const hasDue = out.some((x) => x.kind === 'due');
   const statusRe: [RegExp, string][] = [[/\slate or at risk\s|\sat risk or late\s|\sslipping or late\s/, 'lateorrisk'], [/\sat risk\s|\srisky\s/, 'risk'], [/\slate\s|\sbehind\s/, hasDue ? 'lateorrisk' : 'late'],
@@ -165,6 +166,7 @@ function dueWord(v: string): DueKey | null {
   if (/^(next 2 weeks|2 weeks|fortnight)$/.test(w)) return 'next-2-weeks';
   if (/^(overdue|late|past)$/.test(w)) return 'overdue';
   if (/^(slipped|slip)$/.test(w)) return 'slipped';
+  if (/^(extended|extensions?|dates extended)$/.test(w)) return 'extended';
   if (/^(30|next 30|month|this month)$/.test(w)) return 'next-30';
   return null;
 }
