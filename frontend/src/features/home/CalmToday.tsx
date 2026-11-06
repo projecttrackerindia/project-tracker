@@ -12,7 +12,7 @@ import { Icon } from '../../components/Icon';
 import { projectColor, ribbonColors } from '../../lib/calm';
 import { todayISO } from '../../lib/format';
 import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hooks';
-import { useReducedMotion, motion } from 'framer-motion';
+import { useReducedMotion, m as motion } from 'framer-motion';
 import { gentleSpring } from '../../lib/motion';
 import { hourIn, shiftIsoDate, zonedParts } from '../../lib/zone';
 import { useAuth, useWorkspaceId } from '../../stores/auth';

@@ -38,7 +38,7 @@ for (const [name, url] of pages) {
     localStorage.setItem('pm_alerts_prompt', '1');
     if (hint) localStorage.setItem('pm_hint', '1');
     window.__perf = { lcp: 0, fcp: 0, long: [] };
-    new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__perf.lcp = e.startTime; }).observe({ type: 'largest-contentful-paint', buffered: true });
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) { window.__perf.lcp = e.startTime; window.__perf.lcpEl = e.element ? `${e.element.tagName.toLowerCase()}.${[...e.element.classList].join('.')} "${(e.element.textContent ?? '').trim().slice(0, 40)}"` : ''; } }).observe({ type: 'largest-contentful-paint', buffered: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') window.__perf.fcp = e.startTime; }).observe({ type: 'paint', buffered: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__perf.long.push([e.startTime, e.duration]); }).observe({ type: 'longtask', buffered: true });
   }, process.env.HINT !== '0');
@@ -60,9 +60,12 @@ for (const [name, url] of pages) {
       const file = path.resolve(dist, ep.startsWith('/assets/') ? ep.slice(1) : 'index.html');
       let body; try { body = await fs.readFile(file); } catch { return route.fulfill({ status: 404, body: '' }); }
       const hit = ep.startsWith('/assets/') && cached.has(ep);
-      if (!hit) await wire(ep.startsWith('/assets/') ? zlib.gzipSync(body).length : body.length);
+      // What nginx sends: the build's pre-compressed copy (gzip_static) when there is one, else gzip on the fly (Caddy).
+      const gzLen = (await fs.stat(`${file}.gz`).then((st) => st.size).catch(() => 0)) || zlib.gzipSync(body).length;
+      if (!hit) await wire(ep.startsWith('/assets/') ? gzLen : body.length);
       if (ep.startsWith('/assets/')) cached.add(ep);
-      if (ep.endsWith('.js')) log.js.push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : zlib.gzipSync(body).length, at: Date.now() - t0 });
+      if (ep.endsWith('.css') || ep.endsWith('.woff2')) (log.other ??= []).push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : (ep.endsWith('.css') ? gzLen : body.length), at: Date.now() - t0 });
+      if (ep.endsWith('.js')) log.js.push({ file: ep.replace('/assets/', ''), gz: hit ? 0 : gzLen, at: Date.now() - t0 });
       return await route.fulfill({ contentType: { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' }[path.extname(file)] || 'application/octet-stream', body, headers: ep.startsWith('/assets/') ? {} : { 'content-security-policy': csp } });
       } finally { log.inflight--; log.lastActivity = Date.now(); }
     }
@@ -109,10 +112,16 @@ for (const [name, url] of pages) {
     page: name, rendered, scrollX,
     jsFiles: log.js.length, jsKB: +(log.js.reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
     criticalJsFiles: critical.length, criticalJsKB: +(critical.reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
-    fcpMs: Math.round(perf.fcp), lcpMs: Math.round(perf.lcp), ttiMs: Math.round(quietFrom),
+    // Bytes that arrived before the page's largest paint (with the splash in index.html, first contentful paint is the splash itself).
+    lcpJsKB: +(log.js.filter((j) => j.at <= perf.lcp + 50).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    lcpCssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css') && c.at <= perf.lcp + 50).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    cssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css')).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    criticalCssKB: +((log.other ?? []).filter((c) => c.file.endsWith('.css') && c.at <= fcpAt + 50).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    fontKB: +((log.other ?? []).filter((c) => c.file.endsWith('.woff2')).reduce((a, b) => a + b.gz, 0) / 1024).toFixed(1),
+    fcpMs: Math.round(perf.fcp), lcpMs: Math.round(perf.lcp), lcpElement: perf.lcpEl, ttiMs: Math.round(quietFrom),
     longTasks: perf.long.length, longTaskMs: Math.round(perf.long.reduce((a, [, d]) => a + d, 0)),
     apiCalls: log.api.length, apiWaterfall: log.api.map((a) => `${String(a.start).padStart(5)}→${String(a.end).padStart(5)} ${a.call}`),
-    ...(process.env.ASSETS ? { js: log.js.sort((a, b) => b.gz - a.gz).slice(0, 20).map((j) => `${(j.gz / 1024).toFixed(1).padStart(6)} @${j.at} ${j.file}`) } : {}),
+    ...(process.env.ASSETS ? { js: log.js.sort((a, b) => b.gz - a.gz).slice(0, 20).map((j) => `${(j.gz / 1024).toFixed(1).padStart(6)} @${j.at} ${j.file}`), other: (log.other ?? []).map((j) => `${(j.gz / 1024).toFixed(1).padStart(6)} @${j.at} ${j.file}`) } : {}),
   });
   await ctx.close();
 }

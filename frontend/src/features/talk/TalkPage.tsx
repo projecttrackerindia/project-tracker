@@ -1,6 +1,6 @@
 import { Face } from '../../components/Face';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, LayoutGroup, m as motion, useReducedMotion } from 'framer-motion';
 import { sharedLayout, t } from '../../lib/motion';
 import { queryClient } from '../../stores/auth';
 import { toast } from '../../stores/ui';

@@ -38,7 +38,7 @@ export async function start(email = 'demo@example.com', options = {}) {
   await page.locator('button[type=submit]').click();
   await page.locator('.v2-shell').waitFor({ timeout: 30000 });
   await dismissStartup(page);
-  return { ...auth, browser, ctx, page, errors, async finish() { try { if (process.env.SHOTS) { await fs.mkdir(process.env.SHOTS, { recursive: true }); await page.screenshot({ path: path.join(process.env.SHOTS, path.basename(process.argv[1], '.mjs') + '.png') }).catch(() => undefined); } assert.deepEqual(errors, [], 'No browser script errors'); } finally { await browser.close(); } } };
+  return { ...auth, browser, ctx, page, errors, async finish() { try { if (process.exitCode || process.env.DUMP !== '0') { const text = await page.locator('body').innerText({ timeout: 2000 }).catch(() => ''); console.log(`PAGE ${page.url()}\n${text.replace(/\n{2,}/g, '\n').slice(0, 1500)}\nERRORS ${JSON.stringify(errors)}`); } if (process.env.SHOTS) { await fs.mkdir(process.env.SHOTS, { recursive: true }); await page.screenshot({ path: path.join(process.env.SHOTS, path.basename(process.argv[1], '.mjs') + '.png') }).catch(() => undefined); } assert.deepEqual(errors, [], 'No browser script errors'); } finally { await browser.close(); } } };
 }
 
 export async function dismissStartup(page) {
@@ -47,8 +47,9 @@ export async function dismissStartup(page) {
   if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Not now', exact: true }).click();
 }
 export async function go(session, path = '') {
-  await session.page.goto(`${BASE}/${session.slug}${path}`);
-  await session.page.locator('.v2-shell').waitFor();
+  // The shell is the readiness signal; the window load event can wait on slow lazy chunks and media that the journeys never use.
+  await session.page.goto(`${BASE}/${session.slug}${path}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await session.page.locator('.v2-shell').waitFor({ timeout: 60000 });
   await dismissStartup(session.page);
 }
 export async function business(session) {

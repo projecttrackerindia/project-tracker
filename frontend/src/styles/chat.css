@@ -1,8 +1,6 @@
 /* Chat: conversation list, thread, details panel. Colours come from the shared tokens, so light and dark themes both work. */
 
 /* ---- small shared pieces used by chat (and safe elsewhere: none of these names existed before) */
-.link-btn { color: var(--primary); font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; }
-.link-btn:hover { text-decoration: underline; }
 .btn-danger-ghost { color: var(--danger); background: transparent; border: 1px solid rgba(225, 29, 72, .28); border-radius: var(--radius-sm); padding: 9px 14px; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
 .btn-danger-ghost:hover { background: var(--danger-soft); }
 .search-box { display: flex; align-items: center; gap: 8px; padding: 0 11px; height: 38px; border-radius: 11px; background: var(--field-bg); border: 1px solid var(--field-border); color: var(--text-3); }
@@ -203,25 +201,6 @@
 
 
 /* ---- Project team chat: a panel that slides in from the right, and @mentions ---- */
-.pchat-root { position: fixed; inset: 0; z-index: 150; pointer-events: none; }
-.pchat-backdrop { position: absolute; inset: 0; background: rgba(20, 14, 40, .36); opacity: 0; transition: opacity var(--motion-emphasised) ease; }
-.pchat-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); display: flex; flex-direction: column; min-height: 0;
-  background: var(--panel-solid); border-left: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
-  transform: translateX(100%); transition: transform var(--motion-emphasised) var(--ease-standard); }
-.pchat-root.open { pointer-events: auto; }
-.pchat-root.open .pchat-backdrop { opacity: 1; }
-.pchat-root.open .pchat-panel { transform: translateX(0); }
-.pchat-panel .chat-thread { height: 100%; }
-.pchat-panel .chat-head { min-height: 60px; }
-.pchat-state { flex: 1; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 28px; text-align: center; color: var(--text-2); }
-.pchat-state h3 { font-size: 16px; font-weight: 700; color: var(--text); }
-.pchat-state p { font-size: 13px; line-height: 1.55; max-width: 320px; }
-.pchat-btn { position: relative; }
-.pchat-btn.btn { gap: 7px; }
-.pchat-btn.mentioned { color: var(--danger); }
-.pchat-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--primary-fill); color: #fff;
-  font-size: 10.5px; font-weight: 750; line-height: 1; display: grid; place-items: center; border: 2px solid var(--panel-solid); }
-.pchat-badge.mention { background: var(--danger); }
 .mention { color: var(--primary); background: var(--tint-strong); border-radius: 6px; padding: 0 4px; font-weight: 650; }
 .mention.me { background: rgba(245, 158, 11, .24); color: var(--warning); }
 .msg.mine .mention { background: rgba(255, 255, 255, .22); color: #fff; }
@@ -233,8 +212,6 @@
   background: var(--panel-solid); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow-lg); }
 .mention-list li { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 9px; font-size: 13px; cursor: pointer; }
 .mention-list li.active { background: var(--tint-strong); color: var(--primary); }
-@media (max-width: 520px) { .pchat-panel { width: 100vw; } }
-@media (prefers-reduced-motion: reduce) { .pchat-panel, .pchat-backdrop { transition: none; } }
 
 
 

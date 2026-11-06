@@ -39,4 +39,4 @@ export async function cspFor(dist = path.resolve('dist')) {
 }
 
 /** The app's policy (most checks serve only the app's index.html). */
-export async function appCsp() { return (await cspFor())('index.html'); }
+export async function appCsp() { return (await cspFor(process.env.DIST ? path.resolve(process.env.DIST) : undefined))('index.html'); }

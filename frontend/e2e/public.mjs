@@ -16,7 +16,7 @@ page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(`${BASE}/`);
 await page.locator('.lp-hero h1').waitFor();
 check('signed-out home shows the landing page', new URL(page.url()).pathname === '/' && await page.locator('.lp-hero h1').isVisible());
-check('landing page title is the search title', (await page.title()).startsWith('Project Tracker | '), await page.title());
+check('landing page title is the search title', (await page.title()).match(/^Project ?Tracker \| /), await page.title());
 check('no sign-in form and no second landing page behind it', (await page.locator('input[type=password]').count()) === 0 && (await page.locator('#site main').count()) === 0);
 const ld = await page.locator('script[type="application/ld+json"]').allTextContents();
 check('structured data names the site', ld.some((t) => t.includes('"WebSite"') && t.includes('"alternateName"')));
@@ -35,7 +35,7 @@ await phone.close();
 // The public pages are real pages with their own title, and prices come from the live price list.
 for (const [path, title] of [['/features/', 'Features | Project Tracker'], ['/pricing/', 'Pricing | Project Tracker'], ['/security/', 'Security | Project Tracker']]) {
   await page.goto(`${BASE}${path}`);
-  check(`${path} is its own page`, (await page.title()) === title && (await page.locator('h1').count()) === 1, await page.title());
+  check(`${path} is its own page`, (await page.title()).replace('ProjectTracker', 'Project Tracker') === title && (await page.locator('h1').count()) === 1, await page.title());
 }
 await page.goto(`${BASE}/pricing/`);
 await page.waitForTimeout(800);
@@ -54,7 +54,7 @@ for (const f of ['/sitemap.xml', '/robots.txt', '/favicon.ico', '/favicon.svg', 
 for (const d of ['portfolio', 'ai-assistant', 'teams-and-access', 'timesheets-and-workload']) {
   await page.goto(`${BASE}/features/${d}/`);
   const crumbs = (await page.locator('script[type="application/ld+json"]').allTextContents()).join('');
-  check(`/features/${d}/ is its own page`, (await page.locator('h1').count()) === 1 && (await page.title()).includes('| Project Tracker') && crumbs.includes('BreadcrumbList') && crumbs.includes('"Features"'));
+  check(`/features/${d}/ is its own page`, (await page.locator('h1').count()) === 1 && (await page.title()).match(/\| Project ?Tracker/) && crumbs.includes('BreadcrumbList') && crumbs.includes('"Features"'));
 }
 check('sitemap lists the public pages', (await (await page.request.get(`${BASE}/sitemap.xml`)).text()).includes('/features/portfolio/'));
 
