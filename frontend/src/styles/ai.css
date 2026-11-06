@@ -227,7 +227,7 @@
 .ai-hero { max-width: 880px; margin: 0 auto; padding: min(9vh, 80px) 22px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .ai-hero h1 { margin: 22px 0 8px; font-size: clamp(26px, 3.4vw, 36px); font-weight: 780; letter-spacing: -.03em; color: var(--text); }
 .ai-hero > p { max-width: 560px; margin: 0; font-size: 15px; line-height: 1.6; color: var(--text-2); }
-.ai-suggest { display: grid; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); gap: 12px; width: 100%; margin-top: 30px; text-align: left; }
+.ai-suggest { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(238px, 100%), 1fr)); gap: 12px; width: 100%; margin-top: 30px; text-align: left; }
 .ai-suggest-card { position: relative; display: grid; gap: 4px; padding: 15px 16px; border-radius: 16px; background: var(--surface-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-sm); text-align: left; transition: transform var(--motion-micro), border-color var(--motion-micro), box-shadow var(--motion-micro); }
 .ai-suggest-card:hover { transform: translateY(-2px); border-color: var(--ai-a); box-shadow: 0 12px 30px rgba(var(--accent-rgb), .2); }
 .ai-suggest-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

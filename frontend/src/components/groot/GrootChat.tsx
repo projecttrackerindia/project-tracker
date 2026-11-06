@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SiriOrb } from '../aura/SiriOrb';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { instant, presets, staggerDelay, t, t as mt } from '../../lib/motion';
 import { ApiError } from '../../api/client';
 import { opsApi } from '../../api/endpoints';

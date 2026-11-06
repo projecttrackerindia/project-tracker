@@ -2,7 +2,7 @@ import { useQueries } from '@tanstack/react-query';
 import { SiriOrb } from '../../components/aura/SiriOrb';
 import { CalmJourney, calmStepPos, type CalmStep } from '../../components/calm';
 import { openSchedule } from '../meet/scheduleStore';
-import { motion, useReducedMotion } from 'framer-motion';
+import { m as motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SiriOrb } from '../../components/aura/SiriOrb';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { ApiError, get, put } from '../../api/client';
 import { timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';

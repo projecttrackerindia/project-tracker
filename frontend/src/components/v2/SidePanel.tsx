@@ -1,6 +1,6 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, useDragControls, useReducedMotion } from 'framer-motion';
+import { m as motion, useDragControls, useReducedMotion } from 'framer-motion';
 import { Icon } from '../Icon';
 import { instant, presets, t } from '../../lib/motion';
 import type { SaveState } from './state';

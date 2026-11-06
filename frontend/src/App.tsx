@@ -1,3 +1,4 @@
+import { loadLateStyles } from './lib/lateStyles';
 import { createContext, lazy, Suspense, useContext, useEffect, useReducer, useRef, useState, type ComponentType } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { orgFromPath, firstSegment } from './lib/orgPath';
@@ -44,7 +45,9 @@ function Moved({ to, prefix, rename, keep }: { to: string; prefix?: string; /** 
 function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
   // Signed-in destinations may warm on navigation intent; sign-in pages are excluded.
   if (load !== loadAuthPages) registerPage(load, ({ WorkPage: ['/work'], ProjectsHome: ['/work/projects'], TalkPage: ['/messages'], LibraryPage: ['/library'], InsightsPage: ['/insights'], PeoplePage: ['/people'], SettingsPage: ['/settings'], DeskPage: ['/desk'], QualityPage: ['/quality'], ApprovalsPage: ['/approvals'], DeskIntegrations: ['/desk/integrations'], MailPage: ['/mail'], MeetingsPage: ['/meetings'], NotesPage: ['/notes'], TimePage: ['/time'], RemindersPlace: ['/reminders'], ActivityPage: ['/activity'] } as Record<string, string[]>)[name] ?? []);
-  return lazy(() => load().then((m) => ({ default: m[name] })));
+  // Every page but Today also waits for the late global styles (lib/lateStyles.ts); Today is the first screen and does not use them.
+  const styles = load === loadHome ? () => Promise.resolve() : loadLateStyles;
+  return lazy(() => Promise.all([load(), styles()]).then(([m]) => ({ default: m[name] })));
 }
 // The sign-in pages (and the form and validation libraries only they use) are not needed by someone already signed in. They are fetched
 // straight away when the address is one of them, alongside the session check rather than after it.

@@ -6,7 +6,7 @@ import { ApiError, uploadFile } from '../../api/client';
 import { attachmentApi, opsApi, projectApi, workApi, workspaceApi } from '../../api/endpoints';
 import type { Priority } from '../../api/types';
 import { workItemsApi, type WorkKind } from '../../api/workItemsApi';
-import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
+import { m as motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 import { duration, ease, instant, staggerDelay, t } from '../../lib/motion';
 import { conciseTitle, needsShortTitle, TITLE_MAX } from '../../lib/conciseTitle';
 import { aiWorkspaceApi } from '../../features/ai/aiApi';
