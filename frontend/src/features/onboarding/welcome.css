@@ -1,0 +1,83 @@
+/* The welcome tour: one calm card, centred on a computer, a bottom sheet on a phone. Values from styles/calm.css (--calm-*). */
+@media (min-width: 769px) {
+  .calm-sheet.bottom:has(> .calm-sheet-body > .wt) { top: 50%; translate: -50% -50%; max-height: min(720px, calc(100vh - 48px)); }
+}
+.calm-sheet:has(> .calm-sheet-body > .wt) .calm-sheet-head { padding-bottom: 0; position: absolute; right: 0; top: 0; z-index: 1; }
+.calm-sheet-body:has(> .wt) { padding: 0; display: flex; }
+
+.wt { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 560px; padding: 44px 64px 28px; color: var(--calm-ink); }
+.wt-page { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.wt-logo { margin: 8px 0 22px; filter: drop-shadow(0 10px 24px rgba(120, 90, 240, .28)); }
+.wt-title { margin: 0 0 30px; font-size: 34px; line-height: 1.12; font-weight: 700; letter-spacing: -.025em; }
+.wt-title.sm { font-size: 28px; margin-bottom: 26px; }
+.wt-title em { display: block; font-style: normal; font-weight: 600; color: var(--calm-ink3-text); font-size: .62em; letter-spacing: -.01em; margin-top: 8px; }
+
+/* page 1: the three feature rows, Apple's "Welcome to …" list */
+.wt-feats { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; text-align: left; width: min(480px, 100%); }
+.wt-feats li { display: grid; grid-template-columns: 44px 1fr; gap: 16px; align-items: start; }
+.wt-ico { width: 44px; height: 44px; display: grid; place-items: center; }
+.wt-feats b, .wt-places b { display: block; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.wt-feats span:not(.wt-ico), .wt-places span:not(.wt-tile) { display: block; font-size: 14.5px; line-height: 1.45; color: var(--calm-ink2); margin-top: 2px; }
+
+/* page 2: the person's own places, two columns on a computer */
+.wt-places { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; text-align: left; width: 100%; }
+.wt-places li { display: grid; grid-template-columns: 36px 1fr; gap: 14px; align-items: start; min-width: 0; }
+.wt-tile { width: 36px; height: 36px; border-radius: 10px; color: #fff; display: grid; place-items: center; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.wt-tile.plus { background: var(--calm-go-bg); color: var(--calm-go-fg); border-radius: 50%; }
+
+/* page 3: an abstract board that fills in, never sample names */
+.wt-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: min(520px, 100%); padding: 14px; border-radius: 18px; background: var(--calm-fill); }
+.wt-col { display: grid; gap: 8px; align-content: start; min-height: 132px; }
+.wt-col p { margin: 0 0 2px; text-align: left; font-size: 11.5px; font-weight: 600; color: var(--calm-ink3-text); letter-spacing: .02em; }
+.wt-col i { display: grid; gap: 6px; padding: 10px; border-radius: 10px; background: var(--calm-solid); box-shadow: var(--calm-sh-sm); }
+.wt-col i b { height: 7px; width: 82%; border-radius: 4px; background: var(--calm-fill-2); }
+.wt-col i s { height: 6px; width: 46%; border-radius: 4px; background: var(--calm-fill); }
+.wt-col:nth-child(1) i b { background: color-mix(in srgb, var(--calm-p1) 45%, transparent); }
+.wt-col:nth-child(2) i b { background: color-mix(in srgb, var(--calm-orange) 55%, transparent); }
+.wt-col:nth-child(3) i b { background: color-mix(in srgb, var(--calm-green) 55%, transparent); }
+.wt-board.added { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--calm-green) 55%, transparent); transition: box-shadow var(--motion-standard, .2s) var(--ease-standard, ease); }
+.wt-facts { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; text-align: left; font-size: 14px; color: var(--calm-ink2); }
+.wt-facts li { display: flex; align-items: center; gap: 10px; }
+.wt-facts svg { color: var(--calm-accent); flex: none; }
+.wt-sample-acts { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px 20px; margin-top: 24px; }
+.wt-added { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--calm-green); }
+.wt-note { margin: 18px 0 0; font-size: 13px; color: var(--calm-ink3-text); max-width: 460px; line-height: 1.45; }
+
+/* page 4: done */
+.wt-check { margin: 18px 0 22px; }
+.wt-tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; width: min(380px, 100%); text-align: left; }
+.wt-tips li { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 14px; font-size: 15px; }
+.wt-tips kbd { justify-self: start; min-width: 40px; height: 30px; padding: 0 10px; border-radius: 8px; background: var(--calm-fill); color: var(--calm-ink); font: 600 14px var(--calm-font, inherit);
+  display: inline-grid; place-items: center; box-shadow: inset 0 -1px 0 var(--calm-fill-2); }
+
+/* footer: dots on the left, actions on the right */
+.wt-foot { display: flex; align-items: center; gap: 16px; margin-top: 28px; }
+.wt-dots { display: flex; gap: 4px; }
+.wt-dots button { width: 22px; height: 44px; border: 0; padding: 0; background: none; cursor: pointer; display: grid; place-items: center; }
+.wt-dots button::after { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--calm-fill-2); transition: transform var(--motion-micro, .12s) var(--ease-standard, ease), background-color var(--motion-micro, .12s); }
+.wt-dots button.on::after { background: var(--calm-ink); transform: scale(1.15); }
+.wt-dots button:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: -8px; border-radius: 8px; }
+.wt-acts { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.wt-go { min-height: 44px; padding: 0 28px; border: 0; border-radius: var(--calm-r-pill); background: var(--calm-go-bg); color: var(--calm-go-fg); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: transform var(--motion-micro, .12s) var(--ease-standard, ease), opacity var(--motion-micro, .12s); }
+.wt-go:hover { opacity: .9; }
+.wt-go:active { transform: scale(.98); }
+.wt-go:disabled { opacity: .5; cursor: default; }
+.wt-back, .wt-link { min-height: 44px; padding: 0 14px; border: 0; background: none; color: var(--calm-ink2); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; border-radius: 12px; }
+.wt-link { color: var(--calm-accent-text, var(--calm-accent)); }
+.wt-back:hover, .wt-link:hover { color: var(--calm-ink); }
+.wt-go:focus-visible, .wt-back:focus-visible, .wt-link:focus-visible { outline: 2px solid var(--calm-accent); outline-offset: 2px; }
+
+@media (max-width: 768px) {
+  .wt { min-height: 0; padding: 22px 20px 12px; }
+  .wt-logo { margin: 4px 0 16px; }
+  .wt-logo svg { width: 56px; height: 56px; }
+  .wt-title { font-size: 28px; margin-bottom: 22px; }
+  .wt-title.sm { font-size: 24px; margin-bottom: 20px; }
+  .wt-feats { gap: 18px; }
+  .wt-places { grid-template-columns: 1fr; gap: 14px; }
+  .wt-board { gap: 8px; padding: 10px; }
+  .wt-col { min-height: 108px; }
+  .wt-foot { margin-top: 20px; position: sticky; bottom: 0; background: var(--calm-solid); padding-top: 8px; }
+  .wt-go { padding: 0 22px; }
+}

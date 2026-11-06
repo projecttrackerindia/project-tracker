@@ -48,6 +48,7 @@ import { AuraWatcher } from '../components/aura/AuraWatcher';
 import { AuraSearchHost } from '../components/aura/AuraSearch';
 import { ExtensionReasonHost } from '../features/dates/ExtensionReason';
 import { OfflineSync } from '../features/offline/OfflineSync';
+import { TourGate } from '../features/onboarding/TourGate';
 
 // The calm create sheets (New task / New project from the + menu), mounted once for every page. Loaded through a glob so the shell
 // builds before that feature lands and wires it up by itself once features/calm/createSheets.tsx exists.
@@ -237,6 +238,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <AttendanceHost />}
       {!admin && <AuraWatcher />}
       {!admin && <AfterFirstPaint><ChangeUndoPrompt /></AfterFirstPaint>}
+      {!admin && <AfterFirstPaint><TourGate /></AfterFirstPaint>}
       {liveOn && <AfterFirstPaint><ChatRealtime chat={chatOn} /></AfterFirstPaint>}
       {chatOn && <AfterFirstPaint><ProjectChatHost /></AfterFirstPaint>}
       {!admin && <LiveBanners />}

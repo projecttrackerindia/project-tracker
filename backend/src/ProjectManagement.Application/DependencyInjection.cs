@@ -345,6 +345,7 @@ public static class DependencyInjection
         services.AddScoped<ApiKeyAuthenticator>();
         services.AddScoped<CustomFieldService>();
         services.AddScoped<TaskImportService>();
+        services.AddScoped<SampleProjectService>();
         services.AddScoped<ChecklistService>();
         services.AddScoped<PriorityService>();
         services.AddScoped<ReportExportService>();
