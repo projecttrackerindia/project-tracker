@@ -372,6 +372,11 @@ public static class DependencyInjection
         services.AddScoped<CalendarService>();
         services.AddScoped<TimelineService>();
         services.AddScoped<TodaySignalsService>();
+        services.AddScoped<AuraBriefingService>();
+        services.AddScoped<AuraWhyService>();
+        services.AddScoped<AuraMeetingReviewService>();
+        services.AddScoped<AuraFridayService>();
+        services.AddScoped<AuraFridayJob>();
         services.AddScoped<ProjectManagement.Application.Features.Time.TimesheetReviewService>();
         services.AddScoped<ProjectManagement.Application.Features.Quality.QualityLinksService>();
         services.AddScoped<SearchService>();

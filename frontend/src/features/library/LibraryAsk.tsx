@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { SiriOrb } from '../../components/aura/SiriOrb';
 import { instant, presets, staggerDelay, t } from '../../lib/motion';
 import { useEffect, useState, type ReactNode } from 'react';

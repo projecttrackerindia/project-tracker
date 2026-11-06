@@ -117,3 +117,26 @@
 .offline-due { font-size: 12px; color: var(--text-2); white-space: nowrap; }
 .offline-list li.late .offline-due { color: var(--danger-text); font-weight: 600; }
 .offline-empty, .offline-foot { color: var(--text-3); font-size: 13px; text-align: center; margin: 20px 0; }
+
+/* The project chat panel (from chat.css, which now loads after the first screen; advanced.css came right before it): the shell mounts it at start. */
+.pchat-root { position: fixed; inset: 0; z-index: 150; pointer-events: none; }
+.pchat-backdrop { position: absolute; inset: 0; background: rgba(20, 14, 40, .36); opacity: 0; transition: opacity var(--motion-emphasised) ease; }
+.pchat-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); display: flex; flex-direction: column; min-height: 0;
+  background: var(--panel-solid); border-left: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
+  transform: translateX(100%); transition: transform var(--motion-emphasised) var(--ease-standard); }
+.pchat-root.open { pointer-events: auto; }
+.pchat-root.open .pchat-backdrop { opacity: 1; }
+.pchat-root.open .pchat-panel { transform: translateX(0); }
+.pchat-panel .chat-thread { height: 100%; }
+.pchat-panel .chat-head { min-height: 60px; }
+.pchat-state { flex: 1; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 28px; text-align: center; color: var(--text-2); }
+.pchat-state h3 { font-size: 16px; font-weight: 700; color: var(--text); }
+.pchat-state p { font-size: 13px; line-height: 1.55; max-width: 320px; }
+.pchat-btn { position: relative; }
+.pchat-btn.btn { gap: 7px; }
+.pchat-btn.mentioned { color: var(--danger); }
+.pchat-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--primary-fill); color: #fff;
+  font-size: 10.5px; font-weight: 750; line-height: 1; display: grid; place-items: center; border: 2px solid var(--panel-solid); }
+.pchat-badge.mention { background: var(--danger); }
+@media (max-width: 520px) { .pchat-panel { width: 100vw; } }
+@media (prefers-reduced-motion: reduce) { .pchat-panel, .pchat-backdrop { transition: none; } }

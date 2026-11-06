@@ -125,6 +125,21 @@ function takeEarlyRefresh(): Promise<Response | null> | null {
   return p;
 }
 
+type EarlyReads = { token: string } & Record<string, Promise<Response | null> | string>;
+/**
+ * A read index.html started as soon as its early refresh answered (/me and /shell/summary, see index.html), handed out once to the same
+ * request from the app, and only while the access token is still the one it was made with.
+ */
+async function takeEarlyRead(path: string): Promise<Response | null> {
+  const w = typeof window !== 'undefined' ? (window as Window & { __ptEarly?: Promise<EarlyReads | null> }) : null;
+  if (!w?.__ptEarly) return null;
+  const early = await w.__ptEarly.catch(() => null);
+  const res = early && early.token === accessToken && typeof early[path] === 'object' ? early[path] as Promise<Response | null> : null;
+  if (early && res) delete early[path];
+  if (!early || (!early['/me'] && !early['/shell/summary'])) delete w.__ptEarly;
+  return res ? res.catch(() => null) : null;
+}
+
 // One in-flight refresh shared by every caller (page bootstrap, parallel 401s, React StrictMode double-invoke).
 let refreshing: Promise<AuthResponse | null> | null = null;
 export function refreshSession(): Promise<AuthResponse | null> {
@@ -214,7 +229,8 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
 
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api/v1${path}`, {
+    const early = method === 'GET' && auth && !BASE && (path === '/me' || path === '/shell/summary') ? await takeEarlyRead(path) : null;
+    res = early ?? await fetch(`${BASE}/api/v1${path}`, {
       method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch (e) {

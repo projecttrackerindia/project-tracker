@@ -53,6 +53,17 @@
           var go = function () { return fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }).catch(function () { return null; }); };
           var locks = navigator.locks;
           window.__ptRefresh = locks && locks.request ? locks.request('pt-refresh', go) : go();
+          // ... and, the moment that answer is in, the two reads every signed-in page starts with (who you are and the frame's numbers),
+          // so they are not waiting for the scripts either. Each answer is used once, by the same request from the app (api/client.ts).
+          window.__ptEarly = window.__ptRefresh.then(function (r) {
+            if (!r || !r.ok) return null;
+            return r.clone().json().then(function (j) {
+              var t = j && j.data && j.data.accessToken;
+              if (!t) return null;
+              var get = function (p) { return fetch('/api/v1' + p, { credentials: 'include', headers: { Authorization: 'Bearer ' + t } }).catch(function () { return null; }); };
+              return { token: t, '/me': get('/me'), '/shell/summary': get('/shell/summary') };
+            });
+          }).catch(function () { return null; });
         }
       } catch (e) {}
       // Only the public screens are for search engines. Every other address (an organization's pages, a reset link, a mistyped path) is
@@ -64,9 +75,42 @@
         } else document.querySelector('meta[name="robots"]').setAttribute('content', 'noindex, nofollow');
       } catch (e) {}
     </script>
-    <style>html.installed,html.installed body{touch-action:pan-x pan-y;overscroll-behavior:none;-webkit-user-select:none;user-select:none}html.installed input,html.installed textarea,html.installed [contenteditable]{-webkit-user-select:text;user-select:text}html.installed body{overflow-x:hidden}#root:empty{position:fixed;inset:0;background:radial-gradient(60% 45% at 50% 40%,#f3edff,#fff 70%)}html[data-theme=dark] #root:empty{background:radial-gradient(60% 45% at 50% 40%,#1d1736,#0b0f1a 70%)}#root:empty::before{content:'';position:absolute;left:50%;top:calc(50% - 46px);width:64px;height:64px;margin-left:-32px;border-radius:18px;background:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'><path d='M5.5 12.5l4 4L14 10' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/><path d='M14 10l3.2-3.6' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/><circle cx='18.3' cy='5.7' r='2.1' fill='%23fff'/></svg>") center/34px no-repeat,linear-gradient(135deg,#7c3aed,#a855f7 55%,#6366f1);box-shadow:0 14px 34px -12px rgba(124,58,237,.65),0 0 0 0 rgba(124,58,237,.35);animation:pt-breathe 2.2s ease-in-out infinite}#root:empty::after{content:'';position:absolute;left:50%;top:calc(50% + 34px);width:132px;height:3px;margin-left:-66px;border-radius:99px;background:linear-gradient(90deg,transparent,#7c3aed 40%,#6366f1 60%,transparent) 0 0/50% 100% no-repeat,rgba(124,58,237,.14);animation:pt-sweep 1.3s cubic-bezier(.4,0,.2,1) infinite}@keyframes pt-breathe{0%,100%{transform:scale(1);box-shadow:0 14px 34px -12px rgba(124,58,237,.65),0 0 0 0 rgba(124,58,237,.3)}50%{transform:scale(1.06);box-shadow:0 14px 34px -12px rgba(124,58,237,.65),0 0 0 14px rgba(124,58,237,0)}}@keyframes pt-sweep{from{background-position:-100% 0,0 0}to{background-position:250% 0,0 0}}@media (prefers-reduced-motion:reduce){#root:empty::before,#root:empty::after{animation:none}}html.app #site{display:none}html.landing,html.landing body{background:#000}html.landing #root:empty{background:#000}html.landing #root:empty::before,html.landing #root:empty::after{display:none}</style>
+    <style>html.installed,html.installed body{touch-action:pan-x pan-y;overscroll-behavior:none;-webkit-user-select:none;user-select:none}html.installed input,html.installed textarea,html.installed [contenteditable]{-webkit-user-select:text;user-select:text}html.installed body{overflow-x:hidden}#pt-splash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 16px env(safe-area-inset-bottom);background:#f3f6fb;color:#1d1d1f;font:600 15px/1.2 -apple-system,BlinkMacSystemFont,'Inter Variable','Segoe UI',Roboto,sans-serif;letter-spacing:-.01em;transition:opacity .28s cubic-bezier(.4,0,.2,1)}#pt-splash svg{filter:drop-shadow(0 10px 24px rgba(124,58,237,.28))}#pt-splash.out{opacity:0;pointer-events:none}html[data-theme=dark] #pt-splash{background:#0b0e15;color:#f5f5f7}html[data-theme=dark] #pt-splash svg{filter:drop-shadow(0 10px 28px rgba(139,108,246,.35))}@media (prefers-color-scheme:dark){html:not([data-theme]) #pt-splash{background:#0b0e15;color:#f5f5f7}}@media (prefers-reduced-motion:reduce){#pt-splash{transition:none}}html.landing #pt-splash{display:none}html.app #site{display:none}html.landing,html.landing body{background:#000}</style>
   </head>
   <body>
+    <!-- Shown from the first byte until the app's first screen paints, so a slow start is never a blank page: still, like a phone's launch
+         screen, and it fades out into the app. The same in the browser, the installed phone app and the native apps. -->
+    <div id="pt-splash" aria-hidden="true">
+      <svg width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="pts-g" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8b6cf6"/><stop offset=".55" stop-color="#a27cf8"/><stop offset="1" stop-color="#b996fb"/></linearGradient><linearGradient id="pts-h" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#pts-g)"/><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#pts-h)"/><rect x="2.5" y="2.5" width="59" height="59" rx="15.5" fill="none" stroke="#fff" stroke-opacity=".35"/><path d="M20 34l8 8L43 24" fill="none" stroke="#fff" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="44.5" cy="22.5" r="4.4" fill="#fff"/></svg>
+      <span>ProjectTracker</span>
+    </div>
+    <script>
+      // Takes the splash away (with a short fade) once the app's first screen has painted; at the latest 20 s after the page loaded, so
+      // nothing can ever stay covered.
+      (function () {
+        var el = document.getElementById('pt-splash'), gone = false;
+        window.__ptSplashDone = function () {
+          if (gone || !el) return; gone = true;
+          window.__ptFirstScreen = true; dispatchEvent(new Event('pt-first-screen'));
+          // Two frames: the screen just committed is on the glass before the splash starts to fade.
+          requestAnimationFrame(function () { requestAnimationFrame(function () { el.classList.add('out'); }); });
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 420);
+        };
+        // The first screen is there when the app has put something into #root that is not a loading state (the app's own splash or a
+        // page spinner): a page, its skeleton, the sign-in page or an error. lib/splash.ts also ends it when the app says "still connecting".
+        // (#root comes after this script in the page, so it is looked up when something changes.)
+        var check = function () {
+          var root = document.getElementById('root');
+          if (gone || !root || !root.firstElementChild) return;
+          if (root.querySelector('.app-splash, #root > .page-loader, main > .page-loader')) return;
+          mo.disconnect(); window.__ptSplashDone();
+        };
+        var mo = new MutationObserver(check);
+        mo.observe(document.body, { childList: true, subtree: true });
+        addEventListener('load', function () { setTimeout(window.__ptSplashDone, 20000); });
+      })();
+    </script>
+    <!--pt:styles-->
     <div id="site"><!--site:body--></div>
     <div id="root"></div>
     <!--site:scripts-->

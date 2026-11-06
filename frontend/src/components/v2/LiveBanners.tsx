@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { chatApi, notificationApi } from '../../api/endpoints';
 import type { AppNotification } from '../../api/types';
 import { CHECK_NOTIFICATIONS } from '../../features/notifications/events';

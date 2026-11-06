@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { gzipSync, constants as zlibConstants } from 'node:zlib';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { publicSite } from './site/plugin';
@@ -33,6 +34,66 @@ function buildVersion(): Plugin {
 }
 
 /**
+ * The splash in index.html paints from the first bytes of the page: the app's stylesheets are moved from <head> to just after it in
+ * <body> (where the build leaves <!--pt:styles-->). A stylesheet in the body holds back only what comes after it, so the splash is on
+ * screen at once while the app (#root, and the scripts, which wait for the stylesheets before them) still never shows unstyled.
+ */
+function stylesAfterSplash(): Plugin {
+  let patched = false;
+  return {
+    name: 'pm-styles-after-splash',
+    apply: 'build',
+    // Vite's loader adds each page's stylesheet with document.head.appendChild: with the app's own stylesheets now in <body>, a page's
+    // stylesheet would land ahead of them and lose to them. It is appended to <body> instead, after them, as before.
+    // (renderChunk, so the file's fingerprint reflects the change and a cached copy of the old helper is never reused.)
+    renderChunk(code) {
+      const end = code.indexOf('Unable to preload CSS');
+      if (end < 0) return null;
+      const at = code.lastIndexOf('document.head.appendChild(', end);
+      if (at < 0 || end - at > 600) this.error('pm-styles-after-splash: Vite\'s CSS preload helper changed; page stylesheets would load ahead of the app\'s.');
+      patched = true;
+      return { code: `${code.slice(0, at)}document.body.appendChild(${code.slice(at + 'document.head.appendChild('.length)}`, map: null };
+    },
+    generateBundle() {
+      if (!patched) this.error('pm-styles-after-splash: Vite\'s CSS preload helper was not found; page stylesheets would load ahead of the app\'s.');
+    },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        if (!html.includes('<!--pt:styles-->')) return html;
+        const links: string[] = [];
+        const head = html.slice(0, html.indexOf('</head>')).replace(/[ \t]*<link rel="stylesheet"[^>]*>\n?/g, (m) => { links.push(m.trim()); return ''; });
+        return head + html.slice(html.indexOf('</head>')).replace('<!--pt:styles-->', links.join('\n    '));
+      },
+    },
+  };
+}
+
+/**
+ * Every fingerprinted script and stylesheet is also written pre-compressed at gzip's highest level (file.js.gz), which nginx sends as is
+ * (gzip_static in nginx.conf): smaller than compressing on the fly, and no CPU spent on it per request. Caddy in front passes an
+ * already-encoded answer through untouched.
+ */
+function precompress(): Plugin {
+  return {
+    name: 'pm-precompress',
+    apply: 'build',
+    generateBundle: {
+      order: 'post',
+      handler(_options, bundle) {
+        for (const [name, file] of Object.entries(bundle)) {
+          if (!name.startsWith('assets/') || !/\.(js|css|svg|json)$/.test(name)) continue;
+          const body = file.type === 'chunk' ? file.code : file.source;
+          const raw = typeof body === 'string' ? Buffer.from(body) : Buffer.from(body);
+          if (raw.length < 1024) continue;
+          this.emitFile({ type: 'asset', fileName: `${name}.gz`, source: gzipSync(raw, { level: zlibConstants.Z_BEST_COMPRESSION }) });
+        }
+      },
+    },
+  };
+}
+
+/**
  * The libraries every page needs, each in a file of its own: they change far less often than the app, so a release does not make every
  * visitor download React, the router and the query cache again.
  */
@@ -44,7 +105,7 @@ const vendorGroups = [
 ];
 
 export default defineConfig({
-  plugins: [react(), publicSite(), buildVersion()],
+  plugins: [react(), publicSite(), stylesAfterSplash(), buildVersion(), precompress()],
   server: {
     port: 5173,
     // Same-origin in development, so the HttpOnly refresh cookie works exactly as it does behind the production reverse proxy.

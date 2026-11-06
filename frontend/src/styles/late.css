@@ -1,0 +1,16 @@
+/*
+ * The global styles the first screen does not use, in their original order. lib/lateStyles.ts loads them after the first paint (or
+ * before any other page opens), as one stylesheet placed straight after the app's main one, so the cascade is unchanged.
+ * scripts/css-defer-check.mjs lists any selector one of these shares with a later first-screen file: keep that list empty.
+ */
+@import './enterprise.css';
+@import './chat.css';
+@import './celebrate.css';
+@import './org.css';
+@import './documents.css';
+@import './documents-theme.css';
+@import './reminders.css';
+@import './notification-center.css';
+@import './documents-studio.css';
+@import './ds-auth.css';
+@import './landing-auth.css';

@@ -9,16 +9,18 @@ try {
   assert.equal(await bar.locator('.v2-phone-tab').count(), 5);
   assert.equal(await bar.getByRole('link', { name: /Today/ }).getAttribute('aria-current'), 'page');
   assert.equal(await s.page.locator('.v2-side').count(), 0);
-  await bar.getByRole('link', { name: /Projects/ }).click();
-  await s.page.waitForURL(/\/work\/projects/);
-  await waitFor(async () => await bar.getByRole('link', { name: /Projects/ }).getAttribute('aria-current') === 'page', 'Projects becomes the current phone destination');
+  // The calm phone bar: Today, Work, Approvals, Messages and More (Projects and the other places live in More).
+  await bar.getByRole('link', { name: /Work$/ }).click();
+  await s.page.waitForURL(/\/work(\?|$)/);
+  await waitFor(async () => await bar.getByRole('link', { name: /Work$/ }).getAttribute('aria-current') === 'page', 'Work becomes the current phone destination');
   await bar.getByRole('button', { name: /More/ }).click();
   const more = s.page.getByRole('dialog'); await more.waitFor();
   await more.getByRole('button', { name: /Library/ }).waitFor();
+  await more.getByRole('button', { name: /Projects/ }).waitFor();
   await s.page.keyboard.press('Escape'); await more.waitFor({ state: 'hidden' });
   await go(s);
-  await s.page.locator('.aura-dock input').click();
-  await s.page.locator('.aura-chip[data-chip="task"]').click();
+  await s.page.getByRole('button', { name: 'Create', exact: true }).click();
+  await s.page.getByRole('menu', { name: 'Create', exact: true }).getByRole('menuitem', { name: /New task/ }).click();
   const create = s.page.getByRole('dialog'); await create.waitFor();
   assert.ok(await create.isVisible(), 'Create task opens a phone sheet');
   assert.ok(await s.page.evaluate(() => [...document.querySelectorAll('input,textarea,select')].filter((e) => e.getBoundingClientRect().height).every((e) => parseFloat(getComputedStyle(e).fontSize) >= 16)), 'Phone fields avoid focus zoom');
