@@ -154,9 +154,9 @@ try {
     await page.locator('.shell-head .ncx-bell').click(); await page.waitForTimeout(400); await page.locator('.ncx-pop').waitFor();
     assert.ok(await page.getByRole('button', { name: 'Mark all read' }).isVisible()); assert.ok(await page.getByRole('button', { name: 'Notification settings' }).isVisible());
     await snap(page, 'shell-bell-1440-light'); await page.keyboard.press('Escape'); await page.waitForTimeout(300); checks.push('bell');
-    // Aura = search (round 4a): the orb and ⌘K open the search sheet; an "Ask Aura" line there opens the Aura panel (four tabs)
+    // Aura (aura-siri): the ring and ⌘K open the Aura surface; its ring opens the Aura panel (four tabs)
     await page.locator('.shell-head .shell-orb').click(); await page.getByTestId('aura-search').waitFor();
-    await page.locator('.aura-s-row.ask').first().click(); const panel = page.locator('.groot-chat.float'); await panel.waitFor(); await page.waitForTimeout(600);
+    await page.locator('.aura-s-open').click(); const panel = page.locator('.groot-chat.float'); await panel.waitFor(); await page.waitForTimeout(600);
     assert.deepEqual(await panel.locator('.gc-tabs [role="tab"]').allTextContents(), ['Chat', 'Recent', 'Automations', 'Activity']);
     const pb = await panel.boundingBox(); assert.ok(pb.x + pb.width <= 1440 - 20 && pb.y >= 50, `panel at the top right: ${JSON.stringify(pb)}`);
     await snap(page, 'shell-aura-1440-light');
@@ -235,7 +235,7 @@ try {
     await page.locator('.shell-fab-btn').click(); await page.waitForTimeout(500); await snap(page, 'phone-fab-390-light');
     await page.locator('.shell-fab-btn').click(); await page.waitForTimeout(300);
     await page.locator('.m-top .m-aura-orb').click(); await page.getByTestId('aura-search').waitFor();
-    await page.locator('.aura-s-row.ask').first().click(); const sheet = page.locator('.groot-chat.phone'); await sheet.waitFor(); await page.waitForTimeout(500);
+    await page.locator('.aura-s-open').click(); const sheet = page.locator('.groot-chat.phone'); await sheet.waitFor(); await page.waitForTimeout(500);
     assert.deepEqual(await sheet.locator('.gc-tabs [role="tab"]').allTextContents(), ['Chat', 'Recent', 'Automations', 'Activity']);
     // pinned to the bottom: the sheet reaches the screen's foot and its field sits just above it (no extra page padding pushes it up)
     const sb = await sheet.boundingBox(), cb = await sheet.locator('.gc-compose').boundingBox();
