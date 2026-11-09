@@ -91,6 +91,8 @@ public class ProjectStage : TenantEntity, ITenantScoped
     public StageStatus Status { get; set; } = StageStatus.Pending;
     public Guid? OwnerId { get; set; }
     public Guid? AssigneeId { get; set; }
+    /// <summary>A team that owns this stage instead of (or as well as) one person: its members are told when the stage reaches them.</summary>
+    public Guid? OwnerTeamId { get; set; }
     public string? Description { get; set; }
 }
 

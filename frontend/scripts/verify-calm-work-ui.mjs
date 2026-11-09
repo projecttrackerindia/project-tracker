@@ -247,34 +247,36 @@ try {
 
     // ---------------------------------------------------------------- a project
     await page.goto(`${origin}/northwind/work/projects/${atlas.id}`);
-    await page.getByTestId('project-hero').waitFor();
-    await page.getByRole('group', { name: 'QA & hardening' }).getByText('Staging API keys').waitFor();
-    await page.getByRole('region', { name: 'Project details' }).getByText('Release sync').waitFor();
+    // Since stages-project: Plan · Board · … tabs, the journey with owners, one Edit (no ⋯); the task panel has Details · Activity · Comments.
+    await page.getByTestId('stages-project').waitFor();
+    await page.getByRole('button', { name: 'Staging API keys', exact: true }).waitFor();
     if (phone) await fitsPhone(page, `project ${tag}`, assert); else await noOverlapX(page, `project ${tag}`);
-    if (process.env.DBG) console.log(await page.evaluate(() => { return [...document.querySelectorAll('body *')].filter((e) => { const r = e.getBoundingClientRect(); return r.left > 1000 && r.width > 300 && r.height > 600; }).map((e) => `${e.tagName}.${e.className} ${getComputedStyle(e).position} op=${getComputedStyle(e).opacity}`).slice(0, 6).join('\n'); }));
     await shot(page, `project-${tag}.png`);
-    await page.getByRole('button', { name: 'More on this project' }).click();
-    await page.getByRole('menuitem', { name: /Edit project/ }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'More on this project' }).count(), 0, 'no ⋯ menu');
+    await page.getByTestId('project-edit').click();
+    await page.getByTestId('edit-stages').waitFor();
     await shot(page, `project-menu-${tag}.png`);
     await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
 
-    // the task sheet
+    // the task panel
     await page.getByRole('button', { name: 'Refund webhook retries', exact: true }).click();
-    const ts = page.getByRole('dialog', { name: 'Refund webhook retries' });
-    await ts.getByText('QA is ready to go as soon as this lands.').waitFor();
+    const ts = page.getByTestId('task-panel');
     await ts.getByText('Checklist · 2 of 3').waitFor();
     if (phone) await fitsPhone(page, `task sheet ${tag}`, assert);
     await shot(page, `task-sheet-${tag}.png`);
     if (theme === 'light' && width === 1440) {
       await ts.getByRole('button', { name: 'Idempotency on retry' }).click();
-      await ts.getByText('Saved').waitFor();
+      await page.getByTestId('saved').filter({ hasText: 'Saved' }).first().waitFor();
       assert.ok(writes.some((x) => /checklist\/.+$/.test(x.w) && x.w.startsWith('PUT')), 'checklist saves in place');
-      checks.push('Task sheet: comments, linked, checklist with ✓ Saved');
+      await ts.getByRole('tab', { name: /Comments/ }).click();
+      await ts.getByText('QA is ready to go as soon as this lands.').waitFor();
+      checks.push('Task panel: comments, linked, checklist with ✓ Saved');
     }
     await page.keyboard.press('Escape');
 
-    // New task with quick-add parsing, from the project's + Task
-    await page.getByRole('button', { name: 'Task', exact: true }).click();
+    // New task with quick-add parsing, through the + hook in the project
+    await page.evaluate((p) => window.dispatchEvent(new CustomEvent('pt:new', { detail: { type: 'task', project: p } })), { id: atlas.id, name: atlas.name });
     const nt = page.getByRole('dialog', { name: 'New task' });
     await nt.getByLabel('Task, with @owner, a day and #project').fill('Fix refund retries @Lena fri #atl');
     await nt.getByText('Lena Park').first().waitFor();
