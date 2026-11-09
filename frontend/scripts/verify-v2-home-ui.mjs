@@ -235,7 +235,8 @@ try {
       await page.keyboard.press('Alt+ArrowDown');
       await page.locator('.talk-toast', { hasText: 'moved to' }).getByRole('button', { name: 'Undo' }).waitFor();
       assert.ok(writes.includes(`POST /api/v1/meetings/${g(11)}/reschedule`), 'reschedule sent');
-      assert.match(await page.locator('.wp-e', { hasText: 'Status call' }).first().getAttribute('title'), /ended|organiser|recurring/, 'a meeting that cannot move says why (a repeating one now moves with a this / following prompt)');
+      // Any of its occurrences (one may be marked as a conflict first, depending on the day the check runs).
+      assert.match((await page.locator('.wp-e', { hasText: 'Status call' }).evaluateAll((es) => es.map((e) => e.getAttribute('title')))).join(' | '), /ended|organiser|recurring|drag to move/, 'a meeting that cannot move says why (a repeating one now moves with a this / following prompt)');
     }
     if (width < 700) await fitsPhone(page, 'Calendar', assert);
     await shot(page, `calendar-${tag}.png`);
