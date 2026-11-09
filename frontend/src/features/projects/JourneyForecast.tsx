@@ -130,7 +130,7 @@ function ForecastLine({ detail, tasks, canEdit }: { detail: ProjectDetail; tasks
                 {state === 'done' ? '✓ ' : ''}{s.name}
               </button>
               <span className={`jf-tick${canEdit && state !== 'done' ? ' can' : ''}`} onPointerDown={startDrag(s)} title={canEdit ? `Drag to move ${s.name}` : undefined}
-                aria-label={`${s.name} ends ${dm(drag?.id === s.id ? toIso(drag.ms) : s.plannedEnd)}`} role="slider" aria-valuetext={dm(s.plannedEnd)} tabIndex={-1} />
+                aria-label={`Drag date of ${s.name}: ${dm(drag?.id === s.id ? toIso(drag.ms) : s.plannedEnd)}`} role="slider" aria-valuetext={dm(s.plannedEnd)} tabIndex={-1} />
               {drag?.id === s.id && <span className="jf-drag">{dm(toIso(drag.ms))}</span>}
               {pop === s.id && <StagePopover stage={s} tasks={tasks} canEdit={canEdit} projectId={p.id} current={i === cur}
                 onOwner={() => { setPop(null); setOwning(s); }} onCurrent={() => void makeCurrent(s)} onSaved={(r) => { refresh(r); setPop(null); }} onClose={() => setPop(null)} />}

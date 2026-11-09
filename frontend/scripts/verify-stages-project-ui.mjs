@@ -221,7 +221,7 @@ try {
         await page.getByTestId('stage-owner-sheet').waitFor();
         await page.keyboard.press('Escape'); await page.locator('.calm-scrim').waitFor({ state: 'detached' });
         // drag Code review's end tick later → the reason sheet
-        const tick = page.getByRole('slider', { name: /^Code review & security sign-off ends/ });
+        const tick = page.getByRole('slider', { name: /^Drag date of Code review/ });
         const tb = await tick.boundingBox();
         await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2); await page.mouse.down();
         await page.mouse.move(tb.x + 90, tb.y + tb.height / 2, { steps: 6 }); await page.mouse.up();
