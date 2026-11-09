@@ -160,7 +160,7 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       counts: { total: 6, reviewed: 2, done: 0, inProgress: 1, overdue: 0, blocked: 0, noUpdate: 0 }, items: reviewItems(), finished: false, sent: false, draft: [], projectId: null };
     else {
       assert.ok(method === 'GET' || ep.endsWith('/auth/refresh'), `Unexpected write: ${method} ${ep}`);
-      if (ep.startsWith('/api/v1/portfolio/') || ep === '/api/v1/resources/plan') { reads.push(ep); if (delay) await new Promise((r) => setTimeout(r, delay)); }
+      if (ep.startsWith('/api/v1/portfolio/') || ep === '/api/v1/resources/plan' || ep.startsWith('/api/v1/load')) { reads.push(ep); if (delay) await new Promise((r) => setTimeout(r, delay)); }
       if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
       else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['projects.view', 'projects.edit', 'tasks.view', 'tasks.edit', 'tasks.create', 'org.manage', 'reports.view', 'reports.broad', 'work.view'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
       else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
