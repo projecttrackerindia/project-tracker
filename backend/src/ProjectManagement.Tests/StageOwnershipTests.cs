@@ -105,4 +105,24 @@ public class StageOwnershipTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.UnprocessableEntity, res.Status);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.Post($"/api/v1/projects/{project}/stages/{S(stages[0]["id"])}/owner", new { })).Status);
     }
+
+    [Fact]
+    public async Task The_forecast_says_how_late_and_why_when_the_current_stage_is_behind()
+    {
+        var (c, project, stages) = await Setup();
+        var first = stages[0];
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var put = await c.Put($"/api/v1/projects/{project}/stages/{S(first["id"])}", new { name = S(first["name"]), status = "InProgress",
+            plannedStart = today.AddDays(-20).ToString("yyyy-MM-dd"), plannedEnd = today.AddDays(-5).ToString("yyyy-MM-dd"), extensionReason = "Scope changed" });
+        Assert.True(put.Ok, put.ToString());
+        await NewTask(c, project, "Collect requirements", Guid.Parse(S(first["id"])));
+
+        var f = await c.Get($"/api/v1/projects/{project}/forecast");
+        Assert.True(f.Ok, f.ToString());
+        Assert.True(f.Data!["slipDays"]!.GetValue<int>() >= 5);
+        Assert.Contains("is behind", S(f.Data!["reason"]));
+        Assert.Equal(S(first["name"]), S(f.Data!["currentStage"]));
+        // The project detail carries the same forecast.
+        Assert.Equal(f.Data!["forecast"]?.ToString(), (await c.Get($"/api/v1/projects/{project}")).Data!["forecast"]!["forecast"]?.ToString());
+    }
 }

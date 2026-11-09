@@ -29,7 +29,8 @@ public record StageDto(Guid Id, string Name, int Order, DateOnly? PlannedStart, 
     int TaskTotal = 0, int TaskDone = 0, bool Locked = false, string? LockedBy = null, int OpenIssues = 0, int TotalIssues = 0, int? DurationDays = null,
     Guid? OwnerTeamId = null, string? OwnerTeamName = null);
 public record ProjectMemberDto(Guid UserId, string Name, string Email, TenantRole? Role);
-public record ProjectDetailDto(ProjectListItemDto Project, IReadOnlyList<StatusDto> Statuses, IReadOnlyList<StageDto> Stages, IReadOnlyList<ProjectMemberDto> Members);
+public record ProjectDetailDto(ProjectListItemDto Project, IReadOnlyList<StatusDto> Statuses, IReadOnlyList<StageDto> Stages, IReadOnlyList<ProjectMemberDto> Members,
+    ProjectForecastDto? Forecast = null);
 public record LabelDto(Guid Id, string Name, string Color);
 
 public record CreateProjectRequest(string Name, string? Key, string? Description, Priority Priority, ProjectStatus? Status, Guid? OwnerId,
@@ -275,7 +276,8 @@ public partial class ProjectService(
         var signOffs = (await GetSignOffsAsync([project.Id], ct))[project.Id];
         var slips = await DateSlips.ProjectsAsync(db, [project.Id], ct);
         return new ProjectDetailDto(WithSlip(ToItem(project, owner, teamName, members.Count, stats, groupName, signOffs), slips),
-            await GetStatusesAsync(project.Id, ct), await GetStagesAsync(project.Id, ct), members);
+            await GetStatusesAsync(project.Id, ct), await GetStagesAsync(project.Id, ct), members,
+            await ForecastAsync(project, await db.ProjectStages.AsNoTracking().Where(s => s.ProjectId == project.Id).OrderBy(s => s.Order).ToListAsync(ct), ProjectMetrics.Progress(stats), ct));
     }
 
     // ---------------------------------------------------------------- create / update / delete

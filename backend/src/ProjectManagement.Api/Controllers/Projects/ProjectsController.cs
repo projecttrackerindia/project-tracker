@@ -125,6 +125,10 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
     public async Task<IActionResult> Schedule(Guid id, [FromBody] ProjectScheduleRequest req, CancellationToken ct) =>
         Ok(await projects.SaveScheduleAsync(id, req, ct));
 
+    /// <summary>Promised vs likely finish, why, the ring numbers and one fix.</summary>
+    [HttpGet("{id:guid}/forecast")]
+    public async Task<IActionResult> Forecast(Guid id, CancellationToken ct) => Ok(await projects.GetForecastAsync(id, ct));
+
     [HttpGet("{id:guid}/stages")]
     public async Task<IActionResult> Stages(Guid id, CancellationToken ct)
     {
