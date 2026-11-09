@@ -26,7 +26,8 @@ public record ProjectListItemDto(Guid Id, string Key, string Name, string? Descr
 public record StatusDto(Guid Id, string Name, int Order, StatusCategory Category, string Color);
 public record StageDto(Guid Id, string Name, int Order, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
     StageStatus Status, StageStatus EffectiveStatus, UserRefDto? Owner, UserRefDto? Assignee, string? Description,
-    int TaskTotal = 0, int TaskDone = 0, bool Locked = false, string? LockedBy = null, int OpenIssues = 0, int TotalIssues = 0, int? DurationDays = null);
+    int TaskTotal = 0, int TaskDone = 0, bool Locked = false, string? LockedBy = null, int OpenIssues = 0, int TotalIssues = 0, int? DurationDays = null,
+    Guid? OwnerTeamId = null, string? OwnerTeamName = null);
 public record ProjectMemberDto(Guid UserId, string Name, string Email, TenantRole? Role);
 public record ProjectDetailDto(ProjectListItemDto Project, IReadOnlyList<StatusDto> Statuses, IReadOnlyList<StageDto> Stages, IReadOnlyList<ProjectMemberDto> Members);
 public record LabelDto(Guid Id, string Name, string Color);
@@ -54,7 +55,12 @@ public record ReorderStatusesRequest(IReadOnlyList<Guid> StatusIds);
 public record ReorderStagesRequest(IReadOnlyList<Guid> StageIds, string? ScheduleReason = null, int? ProjectVersion = null);
 public record UpsertStageRequest(string Name, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
     StageStatus Status, Guid? OwnerId, Guid? AssigneeId, string? Description, int? Order, int? DurationDays = null, string? ScheduleReason = null, int? ProjectVersion = null,
-    string? ExtensionReason = null);
+    string? ExtensionReason = null, Guid? OwnerTeamId = null);
+/// <summary>Finish the current stage and start the next. CarryOpenTasks moves the current stage's unfinished tasks along instead of blocking.</summary>
+public record AdvanceStageRequest(bool CarryOpenTasks = false, int? ProjectVersion = null);
+/// <summary>A new owner for a stage: a person, a team, or both. MoveOpenTasks hands the previous owner's unfinished tasks in the stage to the new person.</summary>
+public record ReassignStageRequest(Guid? OwnerId, Guid? TeamId, bool MoveOpenTasks = false);
+public record StageChangeResultDto(IReadOnlyList<StageDto> Stages, int MovedTasks, string? Message);
 public record UpsertLabelRequest(string Name, string? Color);
 
 public static partial class ProjectMetrics

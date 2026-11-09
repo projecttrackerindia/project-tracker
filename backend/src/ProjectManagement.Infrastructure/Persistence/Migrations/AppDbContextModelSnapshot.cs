@@ -9847,6 +9847,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OwnerId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("OwnerTeamId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateOnly?>("PlannedEnd")
                         .IsConcurrencyToken()
                         .HasColumnType("date");

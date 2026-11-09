@@ -140,6 +140,16 @@ public class ProjectsController(ProjectService projects, TaskService tasks, Acti
     public async Task<IActionResult> ReorderStages(Guid id, [FromBody] ReorderStagesRequest req, CancellationToken ct) =>
         Ok(await projects.ReorderStagesAsync(id, req, ct));
 
+    /// <summary>Completes the current stage, starts the next and notifies its owner (person or team).</summary>
+    [HttpPost("{id:guid}/stages/advance")]
+    public async Task<IActionResult> AdvanceStage(Guid id, [FromBody] AdvanceStageRequest req, CancellationToken ct) =>
+        Ok(await projects.AdvanceStageAsync(id, req, ct));
+
+    /// <summary>Hands a stage to a new person and/or team, optionally moving the previous owner's open tasks in it.</summary>
+    [HttpPost("{id:guid}/stages/{stageId:guid}/owner")]
+    public async Task<IActionResult> ReassignStage(Guid id, Guid stageId, [FromBody] ReassignStageRequest req, CancellationToken ct) =>
+        Ok(await projects.ReassignStageAsync(id, stageId, req, ct));
+
     [HttpPut("{id:guid}/stages/{stageId:guid}")]
     public async Task<IActionResult> UpdateStage(Guid id, Guid stageId, [FromBody] UpsertStageRequest req, CancellationToken ct) =>
         Ok(await projects.UpdateStageAsync(id, stageId, req, ct));
