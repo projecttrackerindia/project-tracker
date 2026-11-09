@@ -183,6 +183,11 @@ public class TaskItem : WorkItem, ISoftDelete
     /// (checklist share, else finished sub-items, else 0 / 100 by status).
     /// </summary>
     public int? ManualProgress { get; set; }
+    /// <summary>
+    /// A rough size when there is no estimate: "S" (1h), "M" (4h), "L" (8h) or "XL" (24h). Load uses the estimate first, then this, then the
+    /// person's learned median for that kind of work. Null: not sized.
+    /// </summary>
+    public string? Size { get; set; }
 
     public Project? Project { get; set; }
     public WorkflowStatus? Status { get; set; }

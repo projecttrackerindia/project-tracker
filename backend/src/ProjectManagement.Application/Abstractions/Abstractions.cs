@@ -253,6 +253,7 @@ public interface IAppDbContext
     DbSet<ChatPoll> ChatPolls { get; }
     DbSet<ChatPollVote> ChatPollVotes { get; }
     DbSet<ImportBatch> ImportBatches { get; }
+    DbSet<LoadSignal> LoadSignals { get; }
     DbSet<ClientPortalLink> ClientPortalLinks { get; }
     DbSet<ProjectInbox> ProjectInboxes { get; }
     DbSet<CalendarSyncLink> CalendarSyncLinks { get; }

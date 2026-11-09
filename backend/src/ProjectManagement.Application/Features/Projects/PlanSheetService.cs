@@ -25,7 +25,7 @@ public record PlanSheetRowDto(string Kind, Guid Id, Guid ProjectId, Guid? Parent
     DateOnly? Start, DateOnly? Due, string? DueTime, int? DurationDays, string Status, string Category, Guid? StatusId, int? Progress, IReadOnlyList<string> DependsOn,
     string? Cadence, DateTime? NextAt, DateTime? UpdatedAt, string? UpdatedBy, string? Notes, bool Late, bool AtRisk, int Version, bool CanEdit, DateOnly? Forecast = null,
     decimal? EstimatedHours = null, int? ChecklistTotal = null, int? ChecklistDone = null, bool ManualProgress = false, int? SlipDays = null,
-    Guid? StageId = null, string? Stage = null, DateOnly? OriginalDate = null, int ExtensionCount = 0, int TotalSlipDays = 0);
+    Guid? StageId = null, string? Stage = null, DateOnly? OriginalDate = null, int ExtensionCount = 0, int TotalSlipDays = 0, string? Size = null);
 public record PlanSheetStatusDto(Guid Id, Guid ProjectId, string Name, string Category);
 /// <summary>A "Viewing" choice. Only what exists today is allowed (everything I can see, my work, one team of the team lens); team-scoped views come later.</summary>
 public record PlanSheetScopeDto(string Id, string Label, bool Allowed, string? Why = null, Guid? TeamId = null);
@@ -99,7 +99,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         var tasks = ids.Count == 0 ? [] : await access.VisibleTasks().AsNoTracking().Where(t => ids.Contains(t.ProjectId))
             .OrderBy(t => t.ProjectId).ThenBy(t => t.Position).ThenBy(t => t.Number)
             .Select(t => new { t.Id, t.ProjectId, t.ParentTaskId, t.Number, t.Title, t.AssigneeId, t.StartDate, t.DueDate, t.DueTime, t.StatusId, StatusName = t.Status!.Name,
-                Cat = t.Status.Category, t.Version, t.UpdatedAt, t.UpdatedBy, t.CreatedAt, t.CreatedBy, t.Description, t.EstimatedHours, t.ManualProgress, t.StageId })
+                Cat = t.Status.Category, t.Version, t.UpdatedAt, t.UpdatedBy, t.CreatedAt, t.CreatedBy, t.Description, t.EstimatedHours, t.ManualProgress, t.StageId, t.Size })
             .Take(MaxRows + 1).ToListAsync(ct);
         var truncated = tasks.Count > MaxRows || brief.Truncated;
         tasks = tasks.Take(MaxRows).ToList();
@@ -179,7 +179,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                         depsBy.GetValueOrDefault(t.Id) ?? [], null, null, t.UpdatedAt ?? t.CreatedAt, Name(t.UpdatedBy ?? t.CreatedBy), PlanSheetMath.FirstLine(t.Description), late, risk, t.Version, canEdit, null,
                         t.EstimatedHours, check?.Total, check?.Done, t.ManualProgress is not null && t.Cat != StatusCategory.Done,
                         t.DueDate is { } due && originalDue.TryGetValue(t.Id, out var first) && due > first ? due.DayNumber - first.DayNumber : null,
-                        t.StageId, t.StageId is { } sg ? stageNames.GetValueOrDefault(sg) : null));
+                        t.StageId, t.StageId is { } sg ? stageNames.GetValueOrDefault(sg) : null, Size: t.Size));
                 }
                 foreach (var s in subs) AddTask(s.Id, level + 1);
             }

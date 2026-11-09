@@ -21,7 +21,7 @@ public record TaskDto(Guid Id, Guid ProjectId, string ProjectKey, string Project
     DateTime? CompletedAt, DateTime CreatedAt, DateTime? UpdatedAt, int Version, bool IsOverdue,
     Guid? MilestoneId, string? MilestoneName, int DependsOnCount, int BlocksCount, bool IsBlocked, Guid? SprintId = null, string? SprintName = null,
     int ChecklistTotal = 0, int ChecklistDone = 0, bool CanEdit = true, Guid? StageId = null, string? StageName = null,
-    TimeOnly? DueTime = null, DateTime? DueAt = null, DateOnly? OriginalDate = null, int ExtensionCount = 0, int TotalSlipDays = 0);
+    TimeOnly? DueTime = null, DateTime? DueAt = null, DateOnly? OriginalDate = null, int ExtensionCount = 0, int TotalSlipDays = 0, string? Size = null);
 public record TaskDetailDto(TaskDto Task, IReadOnlyList<TaskDto> Subtasks);
 
 public record TaskQuery(Guid? ProjectId, bool Mine = false, Guid? AssigneeId = null, Guid? StatusId = null, StatusCategory? Category = null,
@@ -101,7 +101,7 @@ public class TaskService(
                 t.Version, open && clock.IsPastDue(t.DueDate, t.DueTime),
                 t.MilestoneId, r.MilestoneName, r.DependsOn, r.Blocks, open && r.Unmet > 0, t.SprintId, r.SprintName, r.ChecklistTotal, r.ChecklistDone,
                 canEditAny || (canEditAssigned && t.AssigneeId == uid), t.StageId, r.StageName, t.DueTime, clock.DueAt(t.DueDate, t.DueTime),
-                slip.OriginalDate, slip.ExtensionCount, slip.TotalSlipDays);
+                slip.OriginalDate, slip.ExtensionCount, slip.TotalSlipDays, t.Size);
         }).ToList();
     }
 
