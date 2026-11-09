@@ -31,27 +31,29 @@ export function LoadPicker({ value, onChange, people, label, placeholder, classN
   const openTasks = useWsQuery(['capacity', 'load-open', moveOpen?.stageId ?? '', moveOpen?.fromUserId ?? ''],
     () => loadApi.reassign({ toUserId: moveOpen!.fromUserId, fromUserId: moveOpen!.fromUserId, stageId: moveOpen!.stageId, dryRun: true }),
     { enabled: open && !!moveOpen, staleTime: 30_000, retry: false });
-  const best = q.data?.people.find((p) => p.bestFit)?.userId ?? null;
+  // A reply without people (an old server, a stub) reads as "no load": the plain list.
+  const fitData = Array.isArray(q.data?.people) && Array.isArray(q.data?.teams) ? q.data : undefined;
+  const best = fitData?.people.find((p) => p.bestFit)?.userId ?? null;
   const items = useMemo<PickItem[]>(() => {
-    if (!q.data) return people;
+    if (!fitData) return people;
     const known = new Map(people.map((p) => [p.id, p]));
-    const ranked: PickItem[] = q.data.people.filter((p) => known.has(p.userId)).map((p) => ({
+    const ranked: PickItem[] = fitData.people.filter((p) => known.has(p.userId)).map((p) => ({
       id: p.userId, label: p.isCurrent ? `${p.name} · now` : p.name, keywords: known.get(p.userId)?.sub ?? undefined, sub: p.reason, tone: TONE[p.state],
       avatar: { text: initials(p.name), tone: TONE[p.state] },
       badge: p.state === 'balanced' ? null : { text: p.state === 'overloaded' ? 'Over' : STATE_LABEL[p.state], tone: TONE[p.state] },
     }));
-    const rest = people.filter((p) => !q.data!.people.some((x) => x.userId === p.id));
-    const teams: PickItem[] = q.data.teams.filter((t) => t.bestUserId).map((t) => ({
+    const rest = people.filter((p) => !fitData!.people.some((x) => x.userId === p.id));
+    const teams: PickItem[] = fitData.teams.filter((t) => t.bestUserId).map((t) => ({
       id: `team:${t.teamId}`, label: t.name, sub: `${t.people} ${t.people === 1 ? 'person' : 'people'} · ${t.free} free`, group: 'Teams', avatar: { text: initials(t.name), tone: 'team' },
     }));
     return [...ranked, ...rest, ...teams];
-  }, [q.data, people]);
+  }, [fitData, people]);
   const n = openTasks.data?.items.length ?? 0;
 
   const pick = async (id: string | null) => {
-    const team = id?.startsWith('team:') ? q.data?.teams.find((t) => `team:${t.teamId}` === id) : null;
+    const team = id?.startsWith('team:') ? fitData?.teams.find((t) => `team:${t.teamId}` === id) : null;
     const to = team ? team.bestUserId : id;
-    if (team && to) toast(`Given to ${first(q.data?.people.find((p) => p.userId === to)?.name ?? team.name)} (${team.name}).`);
+    if (team && to) toast(`Given to ${first(fitData?.people.find((p) => p.userId === to)?.name ?? team.name)} (${team.name}).`);
     onChange(to ?? null);
     if (to && moveOpen && alsoMove && n > 0 && to !== moveOpen.fromUserId) {
       try {
@@ -78,7 +80,7 @@ export function LoadPicker({ value, onChange, people, label, placeholder, classN
 
   return (
     <CalmPicker label={label} placeholder={placeholder} className={className} allowClear={allowClear} disabled={disabled} selected={selected} testId={testId}
-      items={items} value={value} onChange={(id) => void pick(id)} recentKey={q.data ? undefined : 'people'} ranked={!!q.data} limit={q.data ? 50 : undefined}
+      items={items} value={value} onChange={(id) => void pick(id)} recentKey={fitData ? undefined : 'people'} ranked={!!fitData} limit={fitData ? 50 : undefined}
       suggestedId={best} title={title} subtitle={subtitle ?? (q.isLoading ? 'Checking load…' : undefined)} footer={footer} onOpenChange={setOpen} />
   );
 }
