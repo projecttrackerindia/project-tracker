@@ -235,7 +235,11 @@ try {
       await page.keyboard.press('Alt+ArrowDown');
       await page.locator('.talk-toast', { hasText: 'moved to' }).getByRole('button', { name: 'Undo' }).waitFor();
       assert.ok(writes.includes(`POST /api/v1/meetings/${g(11)}/reschedule`), 'reschedule sent');
-      assert.match(await page.locator('.wp-e', { hasText: 'Status call' }).first().getAttribute('title'), /ended|organiser|recurring/, 'a meeting that cannot move says why (a repeating one now moves with a this / following prompt)');
+      // A meeting that cannot move says why. The fixture's status calls fall on the other weekdays of the real week, so on a Monday none has
+      // ended yet and every one is movable: then there is nothing to explain.
+      const statusTitles = await page.locator('.wp-e', { hasText: 'Status call' }).evaluateAll((els) => els.map((e) => e.getAttribute('title') ?? ''));
+      const fixed = statusTitles.filter((t) => !/drag to move/.test(t));
+      for (const t of fixed) assert.match(t, /ended|organiser|recurring/, 'a meeting that cannot move says why (a repeating one now moves with a this / following prompt)');
     }
     if (width < 700) await fitsPhone(page, 'Calendar', assert);
     await shot(page, `calendar-${tag}.png`);
