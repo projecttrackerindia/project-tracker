@@ -20,6 +20,7 @@ public class StageScheduleUpgradeTests
         {
             base.OnModelCreating(builder);
             builder.Entity<Project>().Ignore(p => p.HealthOverride).Ignore(p => p.HealthNote).Ignore(p => p.HealthUntil).Ignore(p => p.HealthSetById).Ignore(p => p.HealthSetAt);
+            builder.Entity<ProjectStage>().Ignore(s => s.OwnerTeamId);   // added later by 20261231001000_StageOwnerTeams
         }
     }
     private sealed class PreviousContext(DbContextOptions<AppDbContext> options, CurrentContext context) : PreviousContextBase(options, context);
