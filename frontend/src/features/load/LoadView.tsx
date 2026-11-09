@@ -68,12 +68,12 @@ function Rebalance({ s, phone, onMove, onDismiss, busy }: { s: LoadSuggestion; p
 }
 
 /** The day card: what fills it, and "13h of 8h". */
-function DayDetail({ userId, name, date }: { userId: string; name: string; date: string }) {
+function DayDetail({ userId, name, date, head = true }: { userId: string; name: string; date: string; head?: boolean }) {
   const q = useWsQuery(loadKeys.day(userId, date), () => loadApi.day(userId, date), { staleTime: 30_000 });
   const d = q.data;
   return (
     <div className="ld-day" aria-live="polite">
-      <div className="ld-day-h">{first(name)} · {DAY_NAME[at(date).getDay()]}</div>
+      {head && <div className="ld-day-h">{first(name)} · {DAY_NAME[at(date).getDay()]}</div>}
       {q.isLoading ? <div className="ld-day-sk" aria-label="Loading the day" />
         : q.isError || !d ? <p className="ld-mute">This day could not be loaded.</p>
         : <>
@@ -191,7 +191,7 @@ export function LoadView() {
         </div>
       )}
       <CalmSheet open={!!sheetDay} onClose={() => setSheetDay(null)} kind="bottom" title={sheetDay ? `${first(sheetDay.name)} · ${DAY_NAME[at(sheetDay.date).getDay()]}` : ''} label="Day detail">
-        {sheetDay && <DayDetail {...sheetDay} />}
+        {sheetDay && <div className="ld ld-insheet"><DayDetail {...sheetDay} head={false} /></div>}
       </CalmSheet>
     </section>
   );

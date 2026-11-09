@@ -88,9 +88,10 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
   useLayoutEffect(() => {
     if (!open || phone || !trigger.current) return;
     const r = trigger.current.getBoundingClientRect();
-    const up = window.innerHeight - r.bottom < 340 && r.top > 340;
+    const need = footer || title ? 470 : 340;   // a heading and a footer make the list taller
+    const up = window.innerHeight - r.bottom < need && r.top > window.innerHeight - r.bottom;
     setPlace({ left: Math.min(r.left, window.innerWidth - Math.max(r.width, 300) - 8), top: up ? r.top - 6 : r.bottom + 6, width: Math.max(r.width, 300), up });
-  }, [open, phone]);
+  }, [open, phone]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (open) requestAnimationFrame(() => input.current?.focus()); else setQ(''); }, [open]);
   useEffect(() => {
     if (!open || phone) return;
@@ -159,7 +160,7 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
         ? <div className="cpk-scrim" data-keep-detail="" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
             <div className="cpk-sheet" role="dialog" aria-label={label}><div className="cpk-grab" aria-hidden="true" /><h3 className="cpk-h">{title ?? label}</h3>{list}</div>
           </div>
-        : place && <div data-keep-detail="" className={`cpk-pop${place.up ? ' up' : ''}`} style={{ left: place.left, width: place.width, ...(place.up ? { bottom: window.innerHeight - place.top } : { top: place.top }) }}>{list}</div>,
+        : place && <div data-keep-detail="" className={`cpk-pop${place.up ? ' up' : ''}`} style={{ left: place.left, width: place.width, ...(place.up ? { bottom: window.innerHeight - place.top } : { top: place.top }), ...(footer || title ? { maxHeight: (place.up ? place.top : window.innerHeight - place.top) - 12, overflowY: 'auto' as const } : {}) }}>{list}</div>,
       document.body)}
     </>
   );

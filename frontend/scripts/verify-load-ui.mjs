@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
+import { makeState, portfolioContext, people as fxPeople } from './lib/portfolioFixture.mjs';
 
 // Portfolio › Load (approved designs load-desktop / load-phone): rows most loaded first, a strip coloured by day state, the day detail, the Aura move with Undo, People/Teams/Projects. Older note:: person × week heatmap, Hours/% toggle, the ✦ rebalance card (Preview / Rebalance) and team totals.
 // Harness copied from verify-portfolio-ui. Projects › Portfolio (v2; the old /portfolio): the summary (and one written by the AI), decisions with the date change and the other ways
@@ -163,4 +164,38 @@ const run=async(theme,shots)=>{
  }catch(e){await page.screenshot({path:path.join(out,`failure-${theme}.png`),fullPage:true}).catch(()=>{});console.log('URL:',page.url());console.log('errors:',errors);throw e;}
  await ctx.close();
 };
-try{await run('light','full');await run('dark','basic');console.log('load ui ok:',checks.join(', '));}finally{await browser.close();}
+// The load-aware owner picker on the Plan sheet (approved designs assign / reassign-phone): state + reason per person, best fit first, teams, sizes.
+const picker=async(theme,width)=>{
+ const state=makeState();const fits=[];
+ const states=['overloaded','stretched','balanced','free','leave','balanced','free'];
+ const reasons={overloaded:'Overloaded Wed–Thu',stretched:'Stretched this week',balanced:'Balanced · fits by Fri',free:'Free Thu',leave:'On leave until Fri'};
+ state.extra=async({ep,method,req,url})=>{
+  if(ep==='/api/v1/load/fit'){fits.push(url.search);return {minutes:240,people:fxPeople.map((p,i)=>({userId:p.id,name:p.name,state:states[i%states.length],reason:reasons[states[i%states.length]]+(i===3?' · best fit':''),bestFit:i===3,fits:i>=2,freeMinutes:600,isCurrent:i===0}))
+   .sort((a,b)=>(b.bestFit-a.bestFit)),teams:[{teamId:'tq',name:'QA team',people:4,free:2,bestUserId:fxPeople[3].id},{teamId:'td',name:'Dev team',people:6,free:1,bestUserId:fxPeople[6].id}]};}
+  if(ep.startsWith('/api/v1/tasks/')&&ep.endsWith('/size')&&method==='PUT'){state.writes.push({ep,b:req.postDataJSON(),method});return {id:ep.split('/')[4],size:req.postDataJSON().size};}
+  return undefined;
+ };
+ const {ctx,page,errors}=await portfolioContext(browser,{width,theme,state});
+ try{
+  await page.goto(`${origin}/preview-org/work/projects?view=portfolio&mode=sheet`);
+  await page.locator('.cps-t').first().waitFor();await page.waitForTimeout(500);
+  await page.locator('button[aria-label^="Owner of"]').first().click();
+  await page.getByText('best fit').first().waitFor();
+  assert.ok(fits.length>0,'asks Load for the fit');
+  const list=page.getByRole('listbox').first();
+  assert.match(await list.getByRole('option').first().innerText(),/Aisha Khan[\s\S]*Free Thu · best fit/);
+  assert.ok(await list.getByText('Overloaded Wed–Thu').first().isVisible());
+  assert.ok(await page.getByText('QA team').isVisible()&&await page.getByText('4 people · 2 free').isVisible());
+  assert.ok(await page.getByRole('group',{name:'Size'}).isVisible());
+  await page.waitForTimeout(400);
+  await page.screenshot({path:path.join(out,`picker-${width}-${theme}.png`)});
+  if(width===390)await page.screenshot({path:path.join(out,`picker-${width}-${theme}-full.png`),fullPage:true});
+  await page.getByRole('group',{name:'Size'}).getByRole('button',{name:'L · 1 day'}).click();
+  for(let i=0;i<20&&!state.writes.some(w=>w.ep?.endsWith('/size'));i++)await page.waitForTimeout(100);
+  assert.equal(state.writes.find(w=>w.ep?.endsWith('/size'))?.b.size,'L','size saved');
+  assert.deepEqual(errors,[]);
+  checks.push(`picker-${width}-${theme}`);
+ }catch(e){await page.screenshot({path:path.join(out,`failure-picker-${width}-${theme}.png`),fullPage:true}).catch(()=>{});console.log('errors:',errors);throw e;}
+ await ctx.close();
+};
+try{await run('light','full');await run('dark','basic');for(const t of ['light','dark'])for(const w of [1440,390])await picker(t,w);console.log('load ui ok:',checks.join(', '));}finally{await browser.close();}

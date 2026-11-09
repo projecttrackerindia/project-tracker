@@ -61,3 +61,4 @@ html[data-theme='dark'] .cpk-badge.t-stretched { background: rgba(245,158,11,.2)
 .cpk-chips button[aria-pressed='true'] { background: color-mix(in srgb, var(--ds-accent, #2563eb) 12%, transparent); color: var(--ds-accent, #2563eb); }
 .cpk-check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; cursor: pointer; }
 .cpk-check input { width: 22px; height: 22px; accent-color: var(--ds-accent, #2563eb); }
+.cpk-opt:has(.cpk-av) .cpk-t small { white-space: normal; }

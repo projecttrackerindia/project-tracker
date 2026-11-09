@@ -392,4 +392,4 @@ html .pfa-grid { grid-template-columns: 1fr; align-content: start; }
 .pfv-seg button.on { background: var(--ds-bg-elev, #fff); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .pfv-go { align-self: flex-end; min-height: 44px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ds-accent, #2f6bff); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .pfv-go:disabled { opacity: .45; }
-.cps-t-table .cps-size { width: 76px; }
+.cps-t-table .cps-size { width: 96px; }
