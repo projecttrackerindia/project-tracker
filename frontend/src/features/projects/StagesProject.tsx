@@ -87,7 +87,7 @@ export function StagesProject({ detail, canEdit, addWork, allowed, archived, mor
         </p>
       </header>
       {steps.length > 0 && <CalmCard className="stg-journey" aria-label="Journey"><CalmJourney steps={steps} color={projectColor(p.id)} label={`${p.name} journey`} /></CalmCard>}
-      <nav className="stg-tabbar" role="tablist" aria-label="Project">
+      <nav className="stg-tabbar" role="tablist" aria-label="Project sections">
         {tabs.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{LABEL[t]}</button>)}
       </nav>
       <div className="stg-body" data-tab={tab}>

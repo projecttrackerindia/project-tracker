@@ -19,15 +19,19 @@ export function CalmSheet({ open, onClose, title, sub, children, kind = 'side', 
   const phone = useIsMobile();
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
+  // The latest onClose, so a parent passing a new function each render does not re-run the effect (which would pull focus back to the
+  // sheet and blur whatever field is being edited inside it).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const back = document.activeElement as HTMLElement | null;
     const release = lockScroll();
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); } };
     window.addEventListener('keydown', key);
     requestAnimationFrame(() => ref.current?.focus());
     return () => { release(); window.removeEventListener('keydown', key); back?.focus?.(); };
-  }, [open, onClose]);
+  }, [open]);
   const motionProps = phone || kind === 'bottom' ? presets.sheet : presets.panel;
   if (typeof document === 'undefined') return null;
   return createPortal(

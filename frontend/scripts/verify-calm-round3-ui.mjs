@@ -85,7 +85,7 @@ const docs = { items: [{ id: g(960), key: 'DOC-1', number: 1, title: 'Atlas paym
 
 const errors = [], checks = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
-const ALLOWED = [/^PUT \/api\/v1\/tasks\/[^/]+\/recurrence$/, /^POST \/api\/v1\/tasks\/[^/]+\/timer\/start$/, /^POST \/api\/v1\/timer\/stop$/, /^POST \/api\/v1\/reminders\/[^/]+\/done$/, /^PATCH \/api\/v1\/work-items\/[^/]+$/, /^POST \/api\/v1\/work-items$/, /^POST \/api\/v1\/projects$/, /^PUT \/api\/v1\/tasks\/[^/]+\/checklist\/[^/]+$/, /^PATCH \/api\/v1\/tasks\/[^/]+\/move$/, /^POST \/api\/v1\/me\/attendance\/check-in$/, /^POST \/api\/v1\/tasks\/[^/]+\/checklist$/];
+const ALLOWED = [/^PUT \/api\/v1\/tasks\/[^/]+$/, /^PUT \/api\/v1\/tasks\/[^/]+\/recurrence$/, /^POST \/api\/v1\/tasks\/[^/]+\/timer\/start$/, /^POST \/api\/v1\/timer\/stop$/, /^POST \/api\/v1\/reminders\/[^/]+\/done$/, /^PATCH \/api\/v1\/work-items\/[^/]+$/, /^POST \/api\/v1\/work-items$/, /^POST \/api\/v1\/projects$/, /^PUT \/api\/v1\/tasks\/[^/]+\/checklist\/[^/]+$/, /^PATCH \/api\/v1\/tasks\/[^/]+\/move$/, /^POST \/api\/v1\/me\/attendance\/check-in$/, /^POST \/api\/v1\/tasks\/[^/]+\/checklist$/];
 const make = async (theme, writes, opts = {}) => {
   const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });
   await ctx.clock.setFixedTime(new Date(at(today, opts.hh ?? 13, opts.mm ?? 52)));
@@ -105,6 +105,7 @@ const make = async (theme, writes, opts = {}) => {
       writes.push({ w, body: req.postDataJSON?.() ?? null });
       let data = {};
       if (/^\/api\/v1\/work-items\/[^/]+$/.test(ep)) { const t = tasks.find((x) => ep.endsWith(x.id)) ?? tasks[2]; const b = req.postDataJSON() ?? {}; data = { kind: 'task', id: t.id, key: t.key, title: b.title ?? t.title, description: b.description ?? null, projectId: t.projectId, projectKey: 'ATL', projectName: 'Atlas Payments', status: t.statusName, category: t.statusCategory, priority: b.priority ?? t.priority, startDate: b.startDate ?? t.startDate, dueDate: b.dueDate ?? t.dueDate, isOverdue: false, assignee: b.assigneeId ? ref(Number(b.assigneeId.slice(-3))) : t.assignee, reporter: t.reporter, version: 2, createdAt: t.createdAt, updatedAt: t.updatedAt, completedAt: null, loggedMinutes: 70, detail: {}, activity: [] }; }
+      if (/^\/api\/v1\/tasks\/[^/]+$/.test(ep)) { const t = tasks.find((x) => ep.endsWith(x.id)) ?? tasks[2]; data = { ...t, ...(req.postDataJSON() ?? {}), version: 2 }; }
       if (ep === '/api/v1/work-items') data = { ...mine[0], id: g(990), key: 'ATL-499', title: 'created', detail: null, activity: [] };
       if (ep === '/api/v1/projects') data = { project: { ...atlas, id: g(991) }, statuses, stages, members: [] };
       if (ep.includes('/checklist/')) data = { items: [{ id: g(970), title: 'Reproduce double refund', isDone: true, position: 0, completedAt: null }, { id: g(971), title: 'Add exponential backoff', isDone: true, position: 1, completedAt: null }, { id: g(972), title: 'Idempotency on retry', isDone: true, position: 2, completedAt: null }], total: 3, done: 3, progress: 100 };
@@ -211,21 +212,22 @@ try {
     // The task sheet: every field edits in place.
     await page.goto(`${origin}/northwind/work/projects/${atlas.id}`);
     await page.getByRole('button', { name: 'Refund webhook retries', exact: true }).click();
+    // The task panel (stages-project): Owner, Stage, Status, Due, Size, Repeat, Notes and the checklist edit in place; priority and start
+    // date are in the full task (Full ›).
     const ts = page.getByTestId('task-sheet-fields');
-    await ts.getByLabel('Title').waitFor();
+    await ts.getByLabel('Due date').waitFor({ state: 'attached' });
     if (theme === 'light') {
-      await ts.getByLabel('Title').fill('Refund webhook retries v2'); await ts.getByLabel('Title').press('Enter'); await ts.getByLabel('Title').blur();
+      await page.locator('.stg-title-t').click(); await page.getByLabel('Task title').fill('Refund webhook retries v2'); await page.getByLabel('Task title').press('Enter');
       await page.waitForTimeout(400);
-      await ts.getByRole('combobox', { name: 'Priority' }).click(); await page.getByRole('option', { name: 'Low', exact: true }).click();
-      await ts.getByLabel('Start date').fill(day(-2));
       await ts.getByLabel('Due date').fill(day(-1));
       await page.waitForTimeout(500);
-      const patches = writes.filter((x) => /^PATCH \/api\/v1\/work-items\//.test(x.w)).map((x) => Object.keys(x.body ?? {}).filter((k) => k !== 'version')).flat();
-      for (const k of ['title', 'priority', 'startDate', 'dueDate']) assert.ok(patches.includes(k), `${tag}: ${k} saves in place (${patches.join(',')})`);
+      const puts = writes.filter((x) => /^PUT \/api\/v1\/tasks\/[^/]+$/.test(x.w)).map((x) => x.body ?? {});
+      assert.ok(puts.some((b) => b.title === 'Refund webhook retries v2'), `${tag}: title saves in place`);
+      assert.ok(puts.some((b) => b.dueDate === day(-1)), `${tag}: due saves in place`);
       await page.getByRole('textbox', { name: 'Add a checklist item' }).fill('Write the runbook'); await page.keyboard.press('Enter');
       await page.waitForTimeout(300);
       assert.ok(writes.some((x) => /checklist$/.test(x.w) && x.w.startsWith('POST')), 'checklist item added');
-      checks.push(`${tag}: task sheet edits title, priority, start, due, checklist`);
+      checks.push(`${tag}: task panel edits title, due, checklist`);
     }
     if (phone) await fitsPhoneX(page, `task sheet ${tag}`);
     await page.waitForTimeout(700); await page.screenshot({ path: path.join(out, `task-sheet-${tag}.png`) });
