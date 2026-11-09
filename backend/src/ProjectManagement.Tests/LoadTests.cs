@@ -76,6 +76,7 @@ public class LoadApiTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, "Olivia Owner");
         await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("BUSINESS");
         var dev = await owner.AddMemberAsync(factory, TenantRole.Member, "Dev Developer");
         var peer = await owner.AddMemberAsync(factory, TenantRole.Member, "Pat Peer");
         var project = await owner.CreateProjectAsync("Load Project");

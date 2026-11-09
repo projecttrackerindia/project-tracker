@@ -97,10 +97,8 @@ button.ld-bar:focus-visible { outline: none; } button.ld-bar:focus-visible i { b
 }
 @media (prefers-reduced-motion: reduce) { .ld-bar i, .ld-go, .ld-seg button { transition: none; } }
 
-/* The shell's title on this tab (design: a bold "Load" with the quiet line beside it, below it on a phone). */
+/* The shell's title on this tab: a bold "Load" (design); the quiet line keeps the shell's size so the head never moves between tabs. */
 .pfc[data-mode='capacity'] .pfc-title { font-weight: 750; letter-spacing: -.02em; }
-.pfc[data-mode='capacity'] .pfc-title em { display: inline; margin-left: 20px; font-size: clamp(18px, 1.6vw, 24px); font-weight: 400; letter-spacing: 0; color: var(--ld-mute, var(--calm-ink3)); }
-.pfc-phone[data-mode='capacity'] .pfc-title em, .pfx-phone[data-mode='capacity'] .pfc-title em { display: block; margin: 4px 0 0; font-size: 16px; line-height: 1.35; }
 .ld .ld-ghost { color: var(--ld-blue); }
 .ld .ld-go { color: #fff; }
 .ld-insheet { gap: 0; } .ld-insheet .ld-day { padding-top: 0; }
