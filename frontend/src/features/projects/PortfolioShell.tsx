@@ -238,7 +238,7 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
     : mode === 'actions' ? [`${reviewItems.length} action item${reviewItems.length === 1 ? '' : 's'}.`, decisionN ? `${decisionN} need${decisionN === 1 ? 's' : ''} a decision.` : 'Nothing waits on a decision.']
     : mode === 'sheet' ? ['Plan sheet.', fp ? `${firstWord(tabPrefs.names[fp.id] || fp.title)} · ${openWork(fp.id).length} open, ${blocked(fp.id)} late.` : tab === 'actions' ? 'Action items first.' : `${projects.length} projects · ${openWork().length} open.`]
     : mode === 'timeline' ? ['Timeline.', latest?.due ? `${firstWord(latest.title)} drives ${fmtDay(latest.due)}.` : 'No dates yet.']
-    : mode === 'capacity' ? ['Capacity.', `${people.length} people.`]
+    : mode === 'capacity' ? ['Load', phone ? 'Next 2 weeks · from assigned work, meetings and leave' : 'Next 2 weeks · assigned work + meetings + leave']
     : mode === 'board' ? ['Board.', `${inReview} in review, ${blocked()} late.`]
     : ['Present.', `Week ${weekNo(today)}.`];
   const second = tabLine ?? head[1];

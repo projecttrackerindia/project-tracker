@@ -17,7 +17,7 @@ import { dayNum } from './planSheet';
  */
 
 export type PortfolioMode = 'overview' | 'actions' | 'board' | 'timeline' | 'sheet' | 'capacity' | 'present';
-export const MODE_LABEL: Record<PortfolioMode, string> = { overview: 'Overview', actions: 'Action items', sheet: 'Plan sheet', timeline: 'Timeline', capacity: 'Capacity', board: 'Board', present: 'Present' };
+export const MODE_LABEL: Record<PortfolioMode, string> = { overview: 'Overview', actions: 'Action items', sheet: 'Plan sheet', timeline: 'Timeline', capacity: 'Load', board: 'Board', present: 'Present' };
 /** The calm order (design #portfolio): Overview · Action items · Plan sheet · Timeline · Capacity · Board · Present. */
 export const MODES: PortfolioMode[] = ['overview', 'actions', 'sheet', 'timeline', 'capacity', 'board', 'present'];
 export type SheetLayout = 'sheet' | 'split' | 'timeline';

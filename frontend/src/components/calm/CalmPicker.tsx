@@ -5,7 +5,11 @@ import { projectColor } from '../../lib/calm';
 import './calm-picker.css';
 
 /** One choice in a CalmPicker: a label, an optional quiet line, an optional project dot and a group heading. */
-export interface PickItem { id: string; label: string; sub?: string | null; dot?: string | null; group?: string; keywords?: string }
+export interface PickItem {
+  id: string; label: string; sub?: string | null; dot?: string | null; group?: string; keywords?: string;
+  /** Optional tone of the quiet line and a small pill at the end (load-aware pickers: "Free", "Over"); an initials avatar in a tone. */
+  tone?: string; badge?: { text: string; tone?: string } | null; avatar?: { text: string; tone?: string } | null;
+}
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const LIMIT = 8;
@@ -25,7 +29,7 @@ function pushRecent(key: string | undefined, id: string) {
  * Opening it shows your recent picks, then the top 8; typing narrows the list (or asks the server with `search` for long lists, debounced);
  * arrows move, Enter picks, Escape closes. On a phone it opens as a bottom sheet with 44px rows.
  */
-export function CalmPicker({ value, onChange, items = [], search, placeholder = 'Choose…', label, recentKey, allowClear, disabled, selected: selectedProp, className = '', testId, empty, limit = LIMIT }: {
+export function CalmPicker({ value, onChange, items = [], search, placeholder = 'Choose…', label, recentKey, allowClear, disabled, selected: selectedProp, className = '', testId, empty, limit = LIMIT, title, subtitle, footer, suggestedId, ranked, onOpenChange }: {
   value: string | null | undefined; onChange: (id: string | null, item: PickItem | null) => void;
   /** Every choice (filtered on the device). */ items?: PickItem[];
   /** Server search for large lists: called with what was typed (debounced); its results replace the local filter. */ search?: (q: string) => Promise<PickItem[]>;
@@ -33,6 +37,11 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
   /** The chosen item when it is not in `items` (an async list). */ selected?: PickItem | null;
   className?: string; testId?: string; empty?: ReactNode;
   /** How many suggestions show before anything is typed (recent first). */ limit?: number;
+  /** A heading and quiet line for the list (the sheet title on a phone), e.g. Assign “CIBIL mapping” · 4h · due Thu. */ title?: ReactNode; subtitle?: ReactNode;
+  /** Shown under the list (sizes, "also move open tasks"). */ footer?: ReactNode;
+  /** The choice highlighted when the list opens (the best fit), instead of the first. */ suggestedId?: string | null;
+  /** Keep the list's own order (no Recent first) - a load-aware list is already ranked. */ ranked?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const phone = useIsMobile();
   const listId = useId();
@@ -68,12 +77,14 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
     const pool = search && remote ? remote : items;
     const f = fold(q.trim());
     if (f) return pool.filter((i) => fold(`${i.label} ${i.sub ?? ''} ${i.keywords ?? ''}`).includes(f)).slice(0, 50);
+    if (ranked) return pool.slice(0, Math.max(limit, pool.length));
     const rec = readRecent(recentKey).map((id) => known.current.get(id)).filter((x): x is PickItem => !!x).map((x) => ({ ...x, group: 'Recent' }));
     const rest = pool.filter((i) => !rec.some((r) => r.id === i.id));
     return [...rec, ...rest].slice(0, limit);
-  }, [q, items, remote, search, recentKey, open, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, items, remote, search, recentKey, open, limit, ranked]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => setActive(0), [q, open]);
+  useEffect(() => { const i = !q && suggestedId ? shown.findIndex((x) => x.id === suggestedId) : -1; setActive(i > 0 ? i : 0); }, [q, open, suggestedId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onOpenChange?.(open); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     if (!open || phone || !trigger.current) return;
     const r = trigger.current.getBoundingClientRect();
@@ -108,6 +119,8 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
 
   const list = (
     <>
+      {title && !phone && <div className="cpk-head"><b>{title}</b>{subtitle && <small>{subtitle}</small>}</div>}
+      {subtitle && phone && <p className="cpk-subh">{subtitle}</p>}
       <div className="cpk-search">
         <input ref={input} type="search" className="cpk-input" role="combobox" aria-expanded="true" aria-controls={listId} aria-autocomplete="list" aria-label={`Search ${label.toLowerCase()}`}
           aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined} autoComplete="off" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} />
@@ -116,17 +129,20 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
         {shown.map((it, i) => (
           <li key={`${it.group ?? ''}:${it.id}`} role="presentation">
             {it.group && (i === 0 || shown[i - 1].group !== it.group) && <div className="cpk-group" role="presentation">{it.group}</div>}
-            <div role="option" id={`${listId}-${i}`} aria-selected={it.id === value} className={`cpk-opt${i === active ? ' active' : ''}${it.id === value ? ' on' : ''}`}
+            <div role="option" id={`${listId}-${i}`} aria-selected={it.id === value} className={`cpk-opt${i === active ? ' active' : ''}${it.id === value ? ' on' : ''}${it.id === suggestedId ? ' best' : ''}`}
               onMouseMove={() => setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(it)}>
               {it.dot !== undefined && <span className="cpk-dot" style={{ background: it.dot ?? projectColor(it.id) }} aria-hidden="true" />}
-              <span className="cpk-t"><b>{it.label}</b>{it.sub && <small>{it.sub}</small>}</span>
-              {it.id === value && <span className="cpk-tick" aria-hidden="true">✓</span>}
+              {it.avatar && <span className={`cpk-av t-${it.avatar.tone ?? 'none'}`} aria-hidden="true">{it.avatar.text}</span>}
+              <span className="cpk-t"><b>{it.label}</b>{it.sub && <small className={it.tone ? `t-${it.tone}` : undefined}>{it.sub}</small>}</span>
+              {it.badge && <span className={`cpk-badge t-${it.badge.tone ?? 'none'}`}>{it.badge.text}</span>}
+              {(it.id === value || (it.id === suggestedId && !value)) && <span className="cpk-tick" aria-hidden="true">✓</span>}
             </div>
           </li>
         ))}
         {shown.length === 0 && <li className="cpk-empty" role="presentation">{loading ? 'Searching…' : q ? `Nothing matches “${q.trim()}”.` : empty ?? 'Nothing to choose yet.'}</li>}
       </ul>
       {allowClear && value && <button type="button" className="cpk-clear" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)}>Clear</button>}
+      {footer && <div className="cpk-foot" onMouseDown={(e) => { if (!(e.target as HTMLElement).closest('input,button,label')) e.preventDefault(); }}>{footer}</div>}
     </>
   );
 
@@ -141,7 +157,7 @@ export function CalmPicker({ value, onChange, items = [], search, placeholder = 
       </button>
       {open && createPortal(phone
         ? <div className="cpk-scrim" data-keep-detail="" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-            <div className="cpk-sheet" role="dialog" aria-label={label}><div className="cpk-grab" aria-hidden="true" /><h3 className="cpk-h">{label}</h3>{list}</div>
+            <div className="cpk-sheet" role="dialog" aria-label={label}><div className="cpk-grab" aria-hidden="true" /><h3 className="cpk-h">{title ?? label}</h3>{list}</div>
           </div>
         : place && <div data-keep-detail="" className={`cpk-pop${place.up ? ' up' : ''}`} style={{ left: place.left, width: place.width, ...(place.up ? { bottom: window.innerHeight - place.top } : { top: place.top }) }}>{list}</div>,
       document.body)}
