@@ -94,6 +94,11 @@ export function ProjectChatHost() {
   );
 }
 
+/** The project's team chat inside a page (the project's Chat tab) instead of the slide-in panel. */
+export function ProjectChatInline({ projectId, name, onClose }: { projectId: string; name: string; onClose: () => void }) {
+  return <div className="pchat-inline"><PanelBody target={{ projectId, name }} onClose={onClose} /></div>;
+}
+
 function PanelBody({ target, onClose }: { target: Target; onClose: () => void }) {
   const wid = useWorkspaceId()!;
   const q = useQuery({ queryKey: chatKeys.project(wid, target.projectId), queryFn: () => chatApi.openProject(target.projectId), staleTime: 30_000, retry: false });

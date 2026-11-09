@@ -25,7 +25,7 @@ import { ImportModal } from '../import/ImportModal';
 import { templateApi } from '../recurring/api';
 import { IssueDetailModal, ReportIssueModal } from '../issues/IssueModals';
 import { DotsMenu, type DotsItem } from '../talk/DotsMenu';
-import { CalmProject } from './CalmProject';
+import { StagesProject, STAGES_TABS } from './StagesProject';
 import { useClassic } from '../calm/classic';
 import { pinItem, usePins } from '../../components/v2/pins';
 import { TaskModal } from '../tasks/TaskModal';
@@ -130,8 +130,10 @@ export function ProjectPage() {
   }
   // An old tab: the tab that holds it now, keeping the query (a task, an issue…) and the #anchor.
   // A proposal from the Home inbox (?finding=) is reviewed on Activity, beside the agent's switch.
+  // The calm page has its own tabs (Plan · Board · Docs · Chat · Meet · Time · Activity); ?tab=overview and ?tab=work map onto them there.
+  const calmTab = !classic && ((STAGES_TABS as string[]).includes(rawTab) || rawTab === 'work' || rawTab === 'overview');
   const moved = params.has('finding') && !params.has('tab') ? movedTab('agent', params)
-    : !params.has('tab') || (TABS.includes(rawTab as ProjectTab) && rawTab !== 'overview') ? null : movedTab(rawTab, params);
+    : !params.has('tab') || calmTab || (TABS.includes(rawTab as ProjectTab) && rawTab !== 'overview') ? null : movedTab(rawTab, params);
   if (moved) { const s = moved.toString(); return <Navigate to={`${loc.pathname}${s ? `?${s}` : ''}${loc.hash}`} replace state={loc.state} />; }
 
   if (q.isLoading) return <PageLoader />;
@@ -187,29 +189,30 @@ export function ProjectPage() {
             pinItem(pins, p.id),
             { label: 'Delete project', icon: 'trash', danger: true, hidden: !canDelete, onSelect: () => void remove() },
           ];
-  if (!classic && tab === 'overview') return (
-    <>
-      <CalmProject detail={detail} menu={[
-        { label: 'Work · Board and list', icon: 'kanban', hint: 'Tasks, issues and action items; board, list and timeline', hidden: !allowed.includes('work'), onSelect: () => setTab('work') },
-        { label: 'Docs', icon: 'note', onSelect: () => setTab('docs') },
-        { label: 'Time', icon: 'clock', hidden: !allowed.includes('time'), onSelect: () => setTab('time') },
-        { label: 'Activity and agent', icon: 'activity', hidden: !allowed.includes('activity'), onSelect: () => setTab('activity') },
-        { label: 'Share link', icon: 'link', onSelect: () => void share() },
-        ...menu,
-      ]} canEdit={canEdit && !archived} addWork={addWork} onHealth={() => setHealthOpen(true)} onFullTask={(tid) => setParams({ task: tid })} />
-      {healthOpen && <HealthSheet projectId={p.id} projectName={p.name} onClose={() => setHealthOpen(false)} />}
-      {editing && <ProjectFormModal project={p} onClose={() => setEditing(false)} />}
-      {scheduling && <StageScheduleStudio project={p} stages={detail.stages} onClose={() => setScheduling(false)} />}
-      {importing && <ImportModal projectId={p.id} onClose={() => setImporting(false)} />}
-      {risk && <RiskModal projectId={p.id} onClose={() => setRisk(false)} />}
-      {whatIf && <WhatIf projectId={p.id} name={p.name} onClose={() => setWhatIf(false)} />}
-      {settings && <ProjectSettingsModal detail={detail} canEdit={canEdit} initial={settings} onClose={() => setSettings(null)} />}
-      {openTaskId && <TaskModal taskId={openTaskId} onClose={() => drop('task')} />}
-      {openIssueId && <IssueDetailModal projectId={p.id} issueId={openIssueId} stages={detail.stages} members={detail.members} onClose={() => drop('issue')} />}
-      {reporting && <ReportIssueModal projectId={p.id} stages={detail.stages} members={detail.members} defaultStageId={reporting.stageId}
-        onClose={() => setReporting(null)} onCreated={(issueId) => { setReporting(null); setParams({ tab: 'work', kind: 'issue', issue: issueId }); }} />}
-    </>
-  );
+  if (!classic) {
+    // No ⋯ menu: Edit › Details lists the rarer actions; Meet and Chat are tabs; Delay risk, What if and the weekly report are on the Aura card.
+    const more = menu.filter((m) => !['Add work', 'Meet', 'Schedule a meeting', 'Chat', 'Settings', 'Members', 'Delete project', 'Delay risk', 'What if…', 'Weekly report', 'Set status…'].includes(m.label))
+      .map((m) => (m.label === 'Edit details' ? { ...m, label: 'Edit all fields' } : m));
+    return (
+      <>
+        <StagesProject detail={detail} canEdit={canEdit} addWork={addWork} archived={archived} more={more}
+          allowed={{ board: allowed.includes('work'), time: allowed.includes('time'), activity: allowed.includes('activity') }}
+          onDelete={canDelete ? () => void remove() : undefined} onShare={() => void share()} onHealth={() => setHealthOpen(true)}
+          onRisk={() => setRisk(true)} onWhatIf={() => setWhatIf(true)} ai={ai} chatOn={chatOn} summary={(r) => summarise({ ...detail, project: { ...p, description: null } }, r)}
+          activity={<Activity projectId={p.id} archived={archived} agent={!isGuest} history={seeActivity} />} />
+        {healthOpen && <HealthSheet projectId={p.id} projectName={p.name} onClose={() => setHealthOpen(false)} />}
+        {editing && <ProjectFormModal project={p} onClose={() => setEditing(false)} />}
+        {scheduling && <StageScheduleStudio project={p} stages={detail.stages} onClose={() => setScheduling(false)} />}
+        {importing && <ImportModal projectId={p.id} onClose={() => setImporting(false)} />}
+        {risk && <RiskModal projectId={p.id} onClose={() => setRisk(false)} />}
+        {whatIf && <WhatIf projectId={p.id} name={p.name} onClose={() => setWhatIf(false)} />}
+        {openTaskId && <TaskModal taskId={openTaskId} onClose={() => drop('task')} />}
+        {openIssueId && <IssueDetailModal projectId={p.id} issueId={openIssueId} stages={detail.stages} members={detail.members} onClose={() => drop('issue')} />}
+        {reporting && <ReportIssueModal projectId={p.id} stages={detail.stages} members={detail.members} defaultStageId={reporting.stageId}
+          onClose={() => setReporting(null)} onCreated={(issueId) => { setReporting(null); setParams({ tab: 'work', kind: 'issue', issue: issueId }); }} />}
+      </>
+    );
+  }
 
   return (
     <div className="pp">

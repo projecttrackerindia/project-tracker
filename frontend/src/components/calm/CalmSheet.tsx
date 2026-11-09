@@ -12,7 +12,8 @@ import './calm-kit.css';
  * rises as a centred 880px sheet (insights, summaries). On a phone both become a bottom sheet with a grab handle. Escape and the scrim
  * close it; focus moves into the sheet and back to where it was.
  */
-export function CalmSheet({ open, onClose, title, sub, children, kind = 'side', width, label, actions }: {
+export function CalmSheet({ open, onClose, title, sub, children, kind = 'side', width, label, actions, clear, className = '' }: {
+  /** Keep the page visible behind a side panel (no blur, a faint tint): edit-in-place panels. */ clear?: boolean; className?: string;
   open: boolean; onClose: () => void; title?: ReactNode; sub?: ReactNode; children: ReactNode; kind?: 'side' | 'bottom'; width?: number; label?: string; actions?: ReactNode;
 }) {
   const phone = useIsMobile();
@@ -33,8 +34,8 @@ export function CalmSheet({ open, onClose, title, sub, children, kind = 'side', 
     <AnimatePresence>
       {open && (
         <>
-          <motion.div key="scrim" className="calm-scrim" {...presets.fade} onClick={onClose} aria-hidden="true" />
-          <motion.div key="sheet" ref={ref} className={`calm-sheet ${kind}`} role="dialog" aria-modal="true" tabIndex={-1}
+          <motion.div key="scrim" className={`calm-scrim${clear ? ' clear' : ''}`} {...presets.fade} onClick={onClose} aria-hidden="true" />
+          <motion.div key="sheet" ref={ref} className={`calm-sheet ${kind} ${className}`.trim()} role="dialog" aria-modal="true" tabIndex={-1}
             aria-labelledby={title ? id : undefined} aria-label={title ? undefined : label}
             style={width ? ({ '--calm-sheet-w': `${width}px` } as React.CSSProperties) : undefined} {...motionProps}>
             <span className="calm-sheet-grab" aria-hidden="true" />

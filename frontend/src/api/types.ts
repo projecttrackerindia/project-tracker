@@ -141,6 +141,8 @@ export interface Project {
   projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType; deliveryMethod: DeliveryMethod;
   /** When the project last changed (list only; the sidebar's pinned projects fall back to the most recently updated). */
   updatedAt?: string | null;
+  /** How many days the due date has moved later in total (every recorded extension). */
+  totalSlipDays?: number; extensionCount?: number;
 }
 /** A follow-up for a project, with an owner, a due date and a priority (on the project's Actions tab and the Portfolio page). */
 export type ActionItemStatus = 'Open' | 'InProgress' | 'Completed';
@@ -182,6 +184,8 @@ export interface Stage {
   locked: boolean; lockedBy: string | null;
   /** Issues found in this stage: the open (unresolved) ones keep it from completing. */
   openIssues: number; totalIssues: number;
+  /** A team that owns the stage (its members are told when it reaches them). */
+  ownerTeamId?: string | null; ownerTeamName?: string | null;
 }
 /** What the timeline shows for a stage: its status, or Locked while it waits for the stage before it. */
 export type StageDisplayStatus = StageStatus | 'Locked';
