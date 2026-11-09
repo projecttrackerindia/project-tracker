@@ -56,7 +56,7 @@ export function ProjectEditPanel({ open, detail, tasks, canEdit, initial = 'stag
 
 // ------------------------------------------------------------------------------------------------------------------ Stages
 
-function StagesPane({ detail, tasks, canEdit, flash }: { detail: ProjectDetail; tasks: Task[] | undefined; canEdit: boolean; flash: () => void }) {
+export function StagesPane({ detail, tasks, canEdit, flash }: { detail: ProjectDetail; tasks: Task[] | undefined; canEdit: boolean; flash: () => void }) {
   const p = detail.project;
   const wid = useWorkspaceId();
   const [local, setLocal] = useState<Stage[]>(() => ordered(detail.stages));

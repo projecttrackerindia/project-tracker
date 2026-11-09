@@ -2,9 +2,8 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { insightApi, taskApi } from '../../api/endpoints';
 import type { ProjectDetail, Task } from '../../api/types';
-import { CalmCard, CalmJourney, CalmOrb } from '../../components/calm';
+import { CalmCard, CalmOrb } from '../../components/calm';
 import { Icon } from '../../components/Icon';
-import { projectColor } from '../../lib/calm';
 import { todayISO } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { shiftIsoDate } from '../../lib/zone';
@@ -19,10 +18,11 @@ import { dayText } from '../work/workActions';
 import { refreshWork } from '../work/workUi';
 import type { DotsItem } from '../talk/DotsMenu';
 import { ProjectDocs } from './ProjectDocs';
+import { JourneyForecast } from './JourneyForecast';
 import { usePortfolioBrief } from './PortfolioInsights';
 import type { PortfolioRisk } from '../ai/aiApi';
 import { ProjectEditPanel, type EditTab } from './ProjectEditPanel';
-import { dm, errText, journeySteps, sizeOf } from './stagesKit';
+import { dm, errText, sizeOf } from './stagesKit';
 import './stagesProject.css';
 
 export type StagesTab = 'plan' | 'board' | 'docs' | 'chat' | 'meet' | 'time' | 'activity';
@@ -71,7 +71,6 @@ export function StagesProject({ detail, canEdit, addWork, allowed, archived, mor
 
   const slip = p.totalSlipDays ?? 0;
   const meta = [p.owner?.name, p.startDate || p.dueDate ? `${dm(p.startDate) || '…'} → ${dm(p.dueDate) || '…'}` : null].filter(Boolean).join(' · ');
-  const steps = journeySteps(detail.stages);
 
   return (
     <div className="stg-page" data-testid="stages-project">
@@ -86,7 +85,7 @@ export function StagesProject({ detail, canEdit, addWork, allowed, archived, mor
           {archived && <> · <b>Archived, read-only</b></>}
         </p>
       </header>
-      {steps.length > 0 && <CalmCard className="stg-journey" aria-label="Journey"><CalmJourney steps={steps} color={projectColor(p.id)} label={`${p.name} journey`} /></CalmCard>}
+      <JourneyForecast detail={detail} tasks={tasks} canEdit={canEdit && !archived} />
       <nav className="stg-tabbar" role="tablist" aria-label="Project sections">
         {tabs.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{LABEL[t]}</button>)}
       </nav>

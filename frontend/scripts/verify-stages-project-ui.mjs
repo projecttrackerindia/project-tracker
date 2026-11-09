@@ -35,6 +35,7 @@ const projects0 = P.map(([name, key, owner, progress, health, due], i) => ({ id:
   memberCount: 4, version: 1, position: i, enforceDependencies: false, projectGroupId: g(90), projectGroupName: 'Delivery', projectType: 'NewProject', deliveryMethod: 'Hybrid', stageCount: 5, pendingSignOffs: 3, updatedAt: ago(i) }));
 const projects = projects0.map((p, i) => (i === 0 ? { ...p, totalSlipDays: 12, extensionCount: 2 } : p));
 const atlas = projects[0];
+const forecast = { promised: day(34), forecast: day(38), slipDays: 4, reason: 'Development is behind', currentStageId: g(201), currentStage: 'Development', currentOwner: ref(11), daysLeft: -4, journeyPct: 46, timeUsedPct: 68, workDonePct: 58, stageIndex: 2, stageCount: 5, suggestedOwner: ref(14), suggestedOwnerOpenTasks: 1, suggestedForecast: day(34) };
 const team = { id: g(91), name: 'QA team' };
 const J = [['Requirements', 13, null, -60, 'Completed'], ['Development', 11, null, -4, 'InProgress'], ['Code review & security sign-off', 12, null, 9, 'NotStarted'], ['Testing', null, team, 20, 'NotStarted'], ['Go-live', 1, null, 34, 'NotStarted']];
 const stages = J.map(([name, owner, t, end, status], i) => ({ id: g(200 + i), name, order: i, plannedStart: day(end - 10), plannedEnd: day(end), actualStart: null, actualEnd: status === 'Completed' ? day(end) : null,
@@ -134,7 +135,7 @@ const make = async (theme, writes, opts = {}) => {
     else if (ep === '/api/v1/projects/timeline-templates') data = templates;
     else if (ep === '/api/v1/project-groups') data = [{ id: g(90), name: 'Other', description: null, order: 0, isActive: true, projectCount: 8, activeProjectCount: 8 }];
     else if (ep === '/api/v1/teams') data = [{ id: g(91), name: 'QA team', description: null, memberCount: 4, projectCount: 2, lead: ref(12) }];
-    else if (/^\/api\/v1\/projects\/[^/]+$/.test(ep)) { const p = projects.find((x) => ep.endsWith(x.id)) ?? atlas; data = { project: p, statuses, stages: p.id === atlas.id ? stages : [], members: members.slice(0, 5).map((m) => ({ userId: m.userId, name: m.displayName, email: m.email, role: m.role })) }; }
+    else if (/^\/api\/v1\/projects\/[^/]+$/.test(ep)) { const p = projects.find((x) => ep.endsWith(x.id)) ?? atlas; data = { project: p, statuses, stages: p.id === atlas.id ? stages : [], forecast: p.id === atlas.id ? forecast : null, members: members.slice(0, 5).map((m) => ({ userId: m.userId, name: m.displayName, email: m.email, role: m.role })) }; }
     else if (/^\/api\/v1\/projects\/[^/]+\/tasks$/.test(ep)) data = { items: ep.includes(atlas.id) ? tasks : [], page: 1, pageSize: 500, totalItems: tasks.length, totalPages: 1 };
     else if (/^\/api\/v1\/projects\/[^/]+\/activity$/.test(ep)) data = activity;
     else if (/^\/api\/v1\/projects\/[^/]+\/health$/.test(ep)) data = { health: 'AtRisk', byHand: false, note: null, until: null, reasons: [] };
@@ -192,18 +193,50 @@ try {
     await page.getByText('+12 days').waitFor();
     await page.getByRole('button', { name: 'Refund webhook retries', exact: true }).waitFor();
     await page.getByTestId('project-aura').getByRole('button', { name: /What if/ }).waitFor();
-    // Journey: no label wraps or is clipped; the current stage is centred when the bar scrolls.
-    const j = await page.evaluate(() => {
-      const bar = document.querySelector('[data-testid="calm-journey"]'); const br = bar.getBoundingClientRect();
-      const labels = [...bar.querySelectorAll('.calm-step-label, .calm-step-sub')].map((e) => { const r = document.createRange(); r.selectNodeContents(e); const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; const words = (e.textContent.match(/\S+/g) ?? []); return { t: e.textContent, sub: e.classList.contains('calm-step-sub'), lines, words: words.length, over: e.scrollWidth > e.clientWidth + 1 }; });
-      const cur = bar.querySelector('.calm-step.current').getBoundingClientRect();
-      return { labels, off: Math.abs((cur.left + cur.width / 2) - (br.left + br.width / 2)), scrolls: bar.scrollWidth > bar.clientWidth + 2, edge: bar.scrollLeft < 1 || bar.scrollLeft > bar.scrollWidth - bar.clientWidth - 1 };
-    });
-    for (const l of j.labels) { assert.ok(!l.over, `journey label clipped: ${l.t}`); assert.ok(l.sub ? l.lines <= 1 : l.lines <= Math.min(3, l.words), `journey label breaks inside a word or wraps too much: ${l.t} (${l.lines} lines)`); }
-    if (j.scrolls && !j.edge) assert.ok(j.off < 30, `current stage centred (off by ${j.off}px)`);
-    await page.getByTestId('calm-journey').getByText('+4d').waitFor();   // Development is 4 days late
+    // Journey: the forecast line on the web, the rings on a phone.
+    if (phone) {
+      await page.getByTestId('journey-rings').getByText('Journey 46%').waitFor();
+    } else {
+      const jf = page.getByTestId('journey-forecast');
+      await jf.getByText('Likely').waitFor();
+      await jf.getByText(/4 days late/).waitFor();
+      await jf.getByText('Today', { exact: true }).waitFor();
+      await page.getByTestId('journey-aura').getByText(/Give Development to/).waitFor();
+    }
     if (phone) await fitsPhone(page, `project ${tag}`, assert);
     await shot(page, `project-${tag}.png`);
+    if (phone) {
+      await page.getByTestId('journey-rings').click();
+      await page.getByTestId('edit-stages').waitFor();
+      await fitsPhone(page, `rings sheet ${tag}`, assert);
+      await shot(page, `rings-sheet-${tag}.png`);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+    } else {
+      await page.getByTestId('journey-forecast').locator('[data-stage="Development"]').click();
+      const pop = page.getByTestId('stage-popover');
+      await pop.getByRole('button', { name: 'Change owner' }).waitFor();
+      await shot(page, `journey-popover-${tag}.png`);
+      if (theme === 'light' && width === 1440) {
+        await pop.getByRole('button', { name: 'Change owner' }).click();
+        await page.getByTestId('stage-owner-sheet').waitFor();
+        await page.keyboard.press('Escape'); await page.locator('.calm-scrim').waitFor({ state: 'detached' });
+        // drag Code review's end tick later → the reason sheet
+        const tick = page.getByRole('slider', { name: /^Code review & security sign-off ends/ });
+        const tb = await tick.boundingBox();
+        await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2); await page.mouse.down();
+        await page.mouse.move(tb.x + 90, tb.y + tb.height / 2, { steps: 6 }); await page.mouse.up();
+        const reason = page.getByTestId('extension-reason'); await reason.waitFor();
+        await reason.getByRole('button', { name: 'Scope changed' }).click(); await reason.getByRole('button', { name: 'Extend date' }).click();
+        await page.waitForTimeout(400);
+        assert.equal(writes.filter((x) => x.w.endsWith(g(202))).pop()?.body?.extensionReason, 'Scope changed');
+        await page.getByTestId('journey-aura').getByRole('button', { name: 'Do it' }).click();
+        await page.waitForTimeout(400);
+        const doIt = writes.filter((x) => x.w.endsWith(`/stages/${g(201)}/owner`)).pop();
+        assert.equal(doIt?.body?.ownerId, g(14)); assert.equal(doIt?.body?.moveOpenTasks, true);
+        checks.push('Forecast line: popover, Change owner, drag a tick (later asks why), Aura Do it');
+        writes.length = 0;
+      } else { await page.getByTestId('journey-forecast').locator('[data-stage="Development"]').click(); await pop.waitFor({ state: 'detached' }); }
+    }
 
     // ---------------------------------------------------------------- Edit panel
     await page.getByTestId('project-edit').click();

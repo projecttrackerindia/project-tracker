@@ -195,7 +195,13 @@ export interface TimelineTemplate {
   isCustom?: boolean; id?: string | null; weights?: number[] | null;
 }
 export interface ProjectMember { userId: string; name: string; email: string; role: Role | null }
-export interface ProjectDetail { project: Project; statuses: WorkflowStatus[]; stages: Stage[]; members: ProjectMember[] }
+/** Promised vs likely finish (from stage work, owner load and past slips), the ring numbers and one fix. */
+export interface ProjectForecast {
+  promised: string | null; forecast: string | null; slipDays: number; reason: string | null; currentStageId: string | null; currentStage: string | null;
+  currentOwner: UserRef | null; daysLeft: number | null; journeyPct: number; timeUsedPct: number; workDonePct: number; stageIndex: number; stageCount: number;
+  suggestedOwner: UserRef | null; suggestedOwnerOpenTasks: number; suggestedForecast: string | null;
+}
+export interface ProjectDetail { project: Project; statuses: WorkflowStatus[]; stages: Stage[]; members: ProjectMember[]; forecast?: ProjectForecast | null }
 export interface Label { id: string; name: string; color: string }
 
 export interface Task {
