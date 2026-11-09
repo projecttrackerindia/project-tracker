@@ -38,3 +38,27 @@
 .cpk-sheet .cpk-list { max-height: none; flex: 1; }
 .cpk-sheet .cpk-opt { min-height: 48px; }
 @media (prefers-reduced-motion: reduce) { .cpk-pop, .cpk-scrim, .cpk-sheet { animation: none; } }
+
+/* Load-aware rows (a person's state and short reason, the best fit tinted) and the list's heading and footer. */
+.cpk-head { display: flex; flex-direction: column; padding: 12px 14px 4px; }
+.cpk-head b { font-size: 15px; font-weight: 700; }
+.cpk-head small, .cpk-subh { font-size: 13px; color: var(--calm-ink2, #6e6e73); }
+.cpk-subh { margin: -6px 0 10px; font-size: 15px; }
+.cpk-av { width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; background: #94a3b8; }
+.cpk-av.t-free { background: #22c55e; } .cpk-av.t-balanced { background: #3b82f6; } .cpk-av.t-stretched { background: #f59e0b; } .cpk-av.t-overloaded { background: #ef4444; } .cpk-av.t-team { background: #8b5cf6; }
+.cpk-t small.t-free { color: #15803d; } .cpk-t small.t-stretched { color: #b45309; } .cpk-t small.t-overloaded { color: #b91c1c; }
+html[data-theme='dark'] .cpk-t small.t-free { color: #86efac; } html[data-theme='dark'] .cpk-t small.t-stretched { color: #fcd34d; } html[data-theme='dark'] .cpk-t small.t-overloaded { color: #fca5a5; }
+.cpk-badge { margin-left: auto; flex: none; font-size: 12px; font-weight: 650; padding: 3px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; }
+.cpk-badge.t-free { background: #dcfce7; color: #15803d; } .cpk-badge.t-stretched { background: #fef3c7; color: #b45309; } .cpk-badge.t-overloaded { background: #fee2e2; color: #b91c1c; } .cpk-badge.t-leave { background: #f1f5f9; color: #64748b; }
+html[data-theme='dark'] .cpk-badge { background: rgba(59,130,246,.2); color: #93c5fd; } html[data-theme='dark'] .cpk-badge.t-free { background: rgba(34,197,94,.18); color: #86efac; }
+html[data-theme='dark'] .cpk-badge.t-stretched { background: rgba(245,158,11,.2); color: #fcd34d; } html[data-theme='dark'] .cpk-badge.t-overloaded { background: rgba(239,68,68,.2); color: #fca5a5; } html[data-theme='dark'] .cpk-badge.t-leave { background: rgba(148,163,184,.16); color: #cbd5e1; }
+.cpk-opt.best { background: color-mix(in srgb, var(--ds-accent, #2563eb) 9%, transparent); border-radius: 12px; }
+.cpk-opt .cpk-badge + .cpk-tick { margin-left: 8px; }
+.cpk-foot { padding: 8px 14px 12px; border-top: .5px solid var(--ds-separator, rgba(60,60,67,.14)); }
+.cpk-foot h4 { margin: 6px 0 8px; font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--calm-ink2, #6e6e73); }
+.cpk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cpk-chips button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--ds-fill-1, rgba(120,120,128,.1)); color: inherit; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.cpk-chips button[aria-pressed='true'] { background: color-mix(in srgb, var(--ds-accent, #2563eb) 12%, transparent); color: var(--ds-accent, #2563eb); }
+.cpk-check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; cursor: pointer; }
+.cpk-check input { width: 22px; height: 22px; accent-color: var(--ds-accent, #2563eb); }
+.cpk-opt:has(.cpk-av) .cpk-t small { white-space: normal; }

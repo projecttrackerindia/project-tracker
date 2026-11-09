@@ -16,6 +16,8 @@ import { patchPortfolio, refreshPortfolio } from './portfolioShared';
 import { dayNum } from './planSheet';
 import { ExtendedBadge, WasDate } from '../dates/ExtendedDate';
 import { matchesAll } from './planSheetQuery';
+import { LoadPicker } from '../load/LoadPicker';
+import { loadApi, SIZES, type TaskSize } from '../load/loadApi';
 
 /**
  * Portfolio › Plan sheet, the approved calm design (demo shot 13, the user's own screenshot): pastel folder tabs, one per project (dot and short name)
@@ -28,6 +30,7 @@ import { matchesAll } from './planSheetQuery';
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const md = (iso: string | null) => (iso ? `${MON[+iso.slice(5, 7) - 1]} ${+iso.slice(8, 10)}` : '—');
 const short = (t: string) => t.split(/\s+/)[0] ?? t;
+const SIZE_ITEMS = SIZES.map((s) => ({ id: s.id, label: s.label }));
 const done = (r: SheetRow) => r.category === 'Done' || r.category === 'Cancelled';
 const blocked = (r: SheetRow) => !done(r) && /block/i.test(r.status);
 const pill = (r: SheetRow): [string, string] => done(r) ? ['Done', 'green'] : blocked(r) ? ['Blocked', 'red'] : r.category === 'Todo' ? ['To do', 'grey'] : ['In progress', 'blue'];
@@ -60,6 +63,7 @@ export function CalmPlanSheet() {
   const [sheetRow, setSheetRow] = useState<SheetRow | null>(null);
   const [edit, setEdit] = useState<{ id: string; col: 'due' | 'status'; anchor: HTMLElement } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [sizes, setSizes] = useState<Record<string, TaskSize | null>>({});
   const [ask, setAsk] = useState<{ changes: SheetChange[]; label: string; moves: { key: string; from: string; to: string; days: number | null }[] } | null>(null);
   const colours = url.colours;
   const shown = useMemo(() => projects.filter((p) => !colours.length || colours.includes(colourOf(p.id))), [projects, colours, colourOf]);
@@ -90,6 +94,13 @@ export function CalmPlanSheet() {
     finally { void refreshPortfolio(wid); }
   };
   const editRow = edit ? work.find((r) => r.id === edit.id) : undefined;
+  // Size (S/M/L/XL): saved at once, shown before the server answers; Load uses it when there is no estimate.
+  const saveSize = async (r: SheetRow, s: TaskSize | null) => {
+    setSizes((m) => ({ ...m, [r.id]: s }));
+    try { await loadApi.size(r.id, s); setSaved(r.id); window.setTimeout(() => setSaved((x) => (x === r.id ? null : x)), 1800); }
+    catch (e) { setSizes((m) => { const n = { ...m }; delete n[r.id]; return n; }); toast(e instanceof ApiError ? e.message : 'The size could not be saved.', 'error'); }
+    finally { void refreshPortfolio(wid); }
+  };
 
   if (sheet.isLoading) return <PortfolioSkeleton label="Loading the plan sheet" />;
   if (sheet.isError) return <ErrorState error={sheet.error} retry={() => void sheet.refetch()} />;
@@ -102,8 +113,11 @@ export function CalmPlanSheet() {
           <button type="button" className="cps-t" title={r.title} onClick={() => setSheetRow(r)}>{r.title}</button>
         </td>
         <td className="cps-own">{r.canEdit
-          ? <CalmPicker label={`Owner of ${r.title}`} placeholder="—" className="cps-pick" recentKey="people" items={people} value={r.ownerId}
+          ? <LoadPicker label={`Owner of ${r.title}`} placeholder="—" className="cps-pick" people={people} value={r.ownerId}
               selected={r.ownerId && r.owner ? { id: r.ownerId, label: r.owner } : null} allowClear
+              fit={{ start: r.start, due: r.due, minutes: r.estimatedHours ? Math.round(r.estimatedHours * 60) : null, size: sizes[r.id] ?? r.size ?? null, current: r.ownerId }}
+              title={`Assign “${r.title}”`} subtitle={[r.estimatedHours ? `${r.estimatedHours}h` : (sizes[r.id] ?? r.size) ? SIZES.find((s) => s.id === (sizes[r.id] ?? r.size))?.label : null, r.due ? `due ${md(r.due)}` : null].filter(Boolean).join(' · ') || undefined}
+              size={r.kind === 'task' || r.kind === 'subtask' ? { value: (sizes[r.id] ?? r.size ?? null) as TaskSize | null, onChange: (s) => void saveSize(r, s) } : undefined}
               onChange={(v) => { if (v !== r.ownerId) void save([v ? { id: r.id, assigneeId: v } : { id: r.id, unassign: true }], 'Owner'); }} />
           : <span className="cps-dim">{r.owner ? short(r.owner) : '—'}</span>}</td>
         <td><button type="button" className="cps-dc" disabled={!r.canEdit} aria-label={`Start date of ${r.title}: ${md(r.start)}`}
@@ -115,17 +129,21 @@ export function CalmPlanSheet() {
           {saved === r.id && <span className="ps3-saved" role="status">✓ Saved</span>}
         </td>
         <td><button type="button" className={`cps-pill ${tone}`} disabled={!r.canEdit} aria-label={`Status of ${r.title}: ${pl}`} onClick={(e) => setEdit({ id: r.id, col: 'status', anchor: e.currentTarget })}>{pl}</button></td>
+        <td className="cps-size">{r.canEdit && (r.kind === 'task' || r.kind === 'subtask')
+          ? <CalmPicker label={`Size of ${r.title}`} placeholder="—" className="cps-pick" items={SIZE_ITEMS} value={sizes[r.id] ?? r.size ?? null} allowClear limit={4}
+              onChange={(v) => void saveSize(r, (v as TaskSize | null))} />
+          : <span className="cps-dim">{r.size ?? '—'}</span>}</td>
       </tr>
     );
   };
   const projectBody = (pid: string, withHead: boolean) => (
     <tbody key={pid}>
-      {withHead && <tr className="cps-proj"><td colSpan={5}><i className={`cps-pd pc-${colourOf(pid)}`} />{name(pid)}</td></tr>}
+      {withHead && <tr className="cps-proj"><td colSpan={6}><i className={`cps-pd pc-${colourOf(pid)}`} />{name(pid)}</td></tr>}
       {phasesOf(pid, work).map((ph) => <Fragment key={ph.id}>
-        {ph.title && <tr key={`h${ph.id}`} className="cps-ph"><td colSpan={5}>{ph.title}</td></tr>}
+        {ph.title && <tr key={`h${ph.id}`} className="cps-ph"><td colSpan={6}>{ph.title}</td></tr>}
         {ph.rows.map((r, i) => row(r, !!ph.title, i === ph.rows.length - 1))}
       </Fragment>)}
-      {!work.some((r) => r.projectId === pid) && <tr><td colSpan={5} className="cps-empty">No tasks yet.</td></tr>}
+      {!work.some((r) => r.projectId === pid) && <tr><td colSpan={6} className="cps-empty">No tasks yet.</td></tr>}
     </tbody>
   );
   return (
@@ -149,7 +167,7 @@ export function CalmPlanSheet() {
       <div className={`cps-page ${tab === shown[0]?.id ? 'first' : ''}`}>
         <div className="cps-scroll">
           <table className="cps-t-table" aria-label="Plan sheet">
-            <thead><tr><th style={{ width: '44%' }}>Task</th><th>Owner</th><th>Start</th><th>Due</th><th>Status</th></tr></thead>
+            <thead><tr><th style={{ width: '44%' }}>Task</th><th>Owner</th><th>Start</th><th>Due</th><th>Status</th><th className="cps-size">Size</th></tr></thead>
             {tab === 'all' ? shown.filter((p) => !toks.length || work.some((r) => r.projectId === p.id)).map((p) => projectBody(p.id, true)) : projectBody(tab, false)}
           </table>
         </div>

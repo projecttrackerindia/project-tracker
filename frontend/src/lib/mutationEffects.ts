@@ -15,6 +15,7 @@ export function mutationFamilies(method: string, path: string): string[] {
     const touchesTime = method.toUpperCase() === 'DELETE' || /\/(time|timer|time-entries)(\/|$)/.test(route);
     return touchesTime ? WORK : WORK_ONLY;
   }
+  if (/^\/load(\/|$)/.test(route)) return WORK_ONLY; // Load: moves and the self-signal
   if (/^\/(time|timer)(\/|$)/.test(route)) return WORK; // time affects costs, capacity and work summaries too
   if (/^\/(reminders)(\/|$)/.test(route)) return ['reminders', 'notifications', 'timeline', 'inbox'];
   if (/^\/(meetings|calls|attendance)(\/|$)/.test(route)) return ['meet', 'meetings', 'calls', 'attendance', 'timeline', 'calendar'];

@@ -195,6 +195,7 @@ export interface ProjectDetail { project: Project; statuses: WorkflowStatus[]; s
 export interface Label { id: string; name: string; color: string }
 
 export interface Task {
+  /** Rough size (S/M/L/XL) used by Load when there is no estimate. */ size?: 'S' | 'M' | 'L' | 'XL' | null;
   id: string; projectId: string; projectKey: string; projectName: string; number: number; key: string; title: string; description: string | null;
   statusId: string; statusName: string; statusCategory: StatusCategory; statusColor: string; priority: Priority;
   assignee: UserRef | null; reporter: UserRef | null; startDate: string | null; dueDate: string | null;

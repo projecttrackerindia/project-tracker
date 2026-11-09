@@ -251,7 +251,7 @@ html[data-theme='dark'] .pfc .cp-cell:not(.leave) span, html[data-theme='dark'] 
   .cps-t-table tr.cps-r { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "t s" "m d"; padding: 8px 0; box-shadow: inset 0 -1px 0 var(--calm-fill); }
   .cps-t-table tr.cps-r td { height: auto; box-shadow: none; }
   .cps-r td:nth-child(1) { grid-area: t; } .cps-r td:nth-child(2) { grid-area: m; font-size: 12.5px; }
-  .cps-r td:nth-child(3) { display: none; } .cps-r td:nth-child(4) { grid-area: d; justify-self: end; } .cps-r td:nth-child(5) { grid-area: s; justify-self: end; }
+  .cps-r td:nth-child(3), .cps-r td:nth-child(6) { display: none; } .cps-r td:nth-child(4) { grid-area: d; justify-self: end; } .cps-r td:nth-child(5) { grid-area: s; justify-self: end; }
   .cps-dc, .cps-pill { min-height: 36px; }
   .cps-hint { padding: 8px 12px 12px; text-align: left; }
   .cps-curve { display: none; } .cps-tn.nest { padding-left: 10px; }
@@ -367,6 +367,8 @@ html .pfa-grid { grid-template-columns: 1fr; align-content: start; }
 .pfv { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; min-width: 0; }
 .pfv-scroll { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 1; }
 .pfv-scroll::-webkit-scrollbar { display: none; }
+/* Phone: the chips wrap instead of being cut at the edge (a half-shown "Da…" read as truncated). */
+@media (max-width: 720px) { .pfv { align-items: flex-start; } .pfv-scroll { flex-wrap: wrap; overflow: visible; } }
 .pfv-chip, .pfv-more { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 0; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer;
   background: var(--ds-fill-2, rgba(120,120,128,.1)); color: var(--ds-label, inherit); transition: transform 200ms var(--calm-spring, ease); }
 .pfv-chip:active, .pfv-more:active { transform: scale(.96); }
@@ -390,3 +392,4 @@ html .pfa-grid { grid-template-columns: 1fr; align-content: start; }
 .pfv-seg button.on { background: var(--ds-bg-elev, #fff); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .pfv-go { align-self: flex-end; min-height: 44px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ds-accent, #2f6bff); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .pfv-go:disabled { opacity: .45; }
+.cps-t-table .cps-size { width: 96px; }

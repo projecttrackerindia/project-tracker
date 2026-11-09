@@ -26,7 +26,7 @@ import './projectsHome.css';
 // Each tab is its own chunk: only the one on screen loads.
 const PlanSheetView = lazy(() => import('./PlanSheet').then((m) => ({ default: m.PlanSheetView })));
 const PortfolioTimeline = lazy(() => import('./PortfolioTimeline').then((m) => ({ default: m.PortfolioTimeline })));
-const CapacityPlanView = lazy(() => import('./CapacityPlan').then((m) => ({ default: m.CapacityPlanView })));
+const LoadView = lazy(() => import('../load/LoadView').then((m) => ({ default: m.LoadView })));
 const CalmPlanSheet = lazy(() => import('./CalmPlanSheet').then((m) => ({ default: m.CalmPlanSheet })));
 const PortfolioTaskBoard = lazy(() => import('./PortfolioTaskBoard').then((m) => ({ default: m.PortfolioTaskBoard })));
 
@@ -83,7 +83,7 @@ export function PortfolioView(_props: { switcher?: ReactNode }) {
           : url.mode === 'sheet' ? <PlanSheetView onPresent={() => url.setMode('present')} />
           : url.mode === 'actions' ? <ActionsTab />
           : url.mode === 'timeline' ? <PortfolioTimeline filter={url.filter} />
-          : url.mode === 'capacity' ? <CapacityPlanView />
+          : url.mode === 'capacity' ? <LoadView />
           : url.mode === 'board' ? <PortfolioTaskBoard />
           : <PortfolioOverview ai={ai} more={classicView || url.mode === 'present' ? <BoardTab ai={ai} /> : null} />}</Suspense>}
       </PortfolioShell>

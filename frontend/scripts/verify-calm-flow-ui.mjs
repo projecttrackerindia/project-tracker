@@ -204,8 +204,9 @@ try {
 
       // Time, and "Request leave" opening the sheet with Leave chosen.
       ({ ctx, page } = await open(theme, w, h, 'time', '.tm-hero'));
-      assert.match(await page.locator('.tm-hero h2').innerText(), /missing on Monday/);
-      assert.match(await page.locator('.tm-acts').innerText(), /Log 35m/);
+      // On a Monday the week has no past gap yet, so the hero says the week is ready instead.
+      assert.match(await page.locator('.tm-hero h2').innerText(), todayIst === monday ? /ready to submit|missing on Monday/ : /missing on Monday/);
+      assert.match(await page.locator('.tm-acts').innerText(), todayIst === monday ? /Log 35m|Log time/ : /Log 35m/);
       await shot(page, `time-${tag}.png`);
       await page.getByRole('button', { name: 'Request leave' }).click(); await page.locator('.apq-types').waitFor();
       assert.equal(await page.getByRole('radio', { name: 'Leave' }).getAttribute('aria-checked'), 'true');

@@ -6996,6 +6996,46 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("Labels");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.LoadSignal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Signal")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("WeekStart")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UserId", "WeekStart")
+                        .IsUnique();
+
+                    b.ToTable("LoadSignals");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.MailAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -17386,6 +17426,10 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnUpdateSometimes()
                         .HasColumnType("uuid")
                         .HasColumnName("ProjectId");
+
+                    b.Property<string>("Size")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
 
                     b.Property<Guid?>("SprintId")
                         .HasColumnType("uuid");
