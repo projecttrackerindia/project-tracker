@@ -204,8 +204,9 @@ try {
 
       // Time, and "Request leave" opening the sheet with Leave chosen.
       ({ ctx, page } = await open(theme, w, h, 'time', '.tm-hero'));
-      assert.match(await page.locator('.tm-hero h2').innerText(), /missing on Monday/);
-      assert.match(await page.locator('.tm-acts').innerText(), /Log 35m/);
+      // The fixture's gap is last Monday's: on a Monday (today) that day is not over, so the week reads as ready instead (real clock).
+      assert.match(await page.locator('.tm-hero h2').innerText(), new Date().getDay() === 1 ? /missing on Monday|ready to submit/ : /missing on Monday/);
+      assert.match(await page.locator('.tm-acts').innerText(), new Date().getDay() === 1 ? /Log 35m|Log time/ : /Log 35m/);
       await shot(page, `time-${tag}.png`);
       await page.getByRole('button', { name: 'Request leave' }).click(); await page.locator('.apq-types').waitFor();
       assert.equal(await page.getByRole('radio', { name: 'Leave' }).getAttribute('aria-checked'), 'true');
