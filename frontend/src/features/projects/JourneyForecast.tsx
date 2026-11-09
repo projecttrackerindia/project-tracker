@@ -7,7 +7,7 @@ import { useIsMobile } from '../../lib/mobile';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { StagesPane } from './ProjectEditPanel';
-import { currentIndex, dm, errText, isClosed, loadHint, moveStageDate, ordered, StageOwnerSheet, stageBody } from './stagesKit';
+import { currentIndex, dm, errText, isClosed, moveStageDate, ordered, StageOwnerSheet, stageBody, useStageLoad } from './stagesKit';
 
 const DAY = 86_400_000;
 const toMs = (iso: string) => Date.parse(`${iso.slice(0, 10)}T00:00:00Z`);
@@ -153,7 +153,8 @@ function StagePopover({ stage, tasks, canEdit, projectId, current, onOwner, onCu
   stage: Stage; tasks: Task[] | undefined; canEdit: boolean; projectId: string; current: boolean; onOwner: () => void; onCurrent: () => void; onSaved: (s: Stage[]) => void; onClose: () => void;
 }) {
   const who = stage.ownerTeamName ?? stage.owner?.name ?? null;
-  const load = stage.owner ? loadHint(stage.owner.id, tasks) : null;
+  const loadOf = useStageLoad(stage, stage.owner?.id, tasks, !!stage.owner && !isClosed(stage));
+  const load = stage.owner ? loadOf(stage.owner.id) : null;
   const date = useRef<HTMLInputElement>(null);
   return (
     <div className="jf-pop" role="dialog" aria-label={stage.name} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }} data-testid="stage-popover">

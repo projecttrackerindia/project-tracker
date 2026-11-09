@@ -17,6 +17,7 @@ import { WorkItemPanel } from '../work/WorkItemPanel';
 import { ActivityHistory, PanelTabs } from '../dates/ActivityHistory';
 import { askExtensionReason, isExtension } from '../dates/ExtensionReason';
 import { loadHint, SIZES, sizeOf } from '../projects/stagesKit';
+import { LoadPicker } from '../load/LoadPicker';
 import '../calm/calm-pages.css';
 import '../projects/stagesProject.css';
 
@@ -136,10 +137,11 @@ export function CalmTaskSheet({ taskId, onClose, onFull }: { taskId: string | nu
             <div className="stg-rows" data-testid="task-sheet-fields">
               <div className="stg-row"><span>Owner</span>
                 <span className="stg-val">
-                  {/* LOAD-PICKER HOOK: swap for the load engine's picker (load-v2) when it lands; loadHint() is the fallback signal. */}
-                  <CalmPicker label="Owner" value={t.assignee?.id ?? null} disabled={ro} recentKey="person" className="stg-pick" allowClear
+                  <LoadPicker label="Owner" value={t.assignee?.id ?? null} disabled={ro} className="stg-pick" allowClear
                     selected={t.assignee ? { id: t.assignee.id, label: t.assignee.name } : null}
-                    items={(detail?.members ?? []).map((m) => { const h = loadHint(m.userId, ptasks.data?.items); return { id: m.userId, label: m.name, sub: h?.label ?? m.role }; })}
+                    people={(detail?.members ?? []).map((m) => { const h = loadHint(m.userId, ptasks.data?.items); return { id: m.userId, label: m.name, sub: h?.label ?? m.role }; })}
+                    fit={{ start: t.startDate ?? null, due: t.dueDate ?? null, minutes: t.estimatedHours ? Math.round(t.estimatedHours * 60) : null, current: t.assignee?.id ?? null }}
+                    title={`Assign “${t.title}”`}
                     onChange={(id) => id !== (t.assignee?.id ?? null) && void save({ assigneeId: id }, 'the owner')} />
                   {hint && <em className={`stg-hint ${hint.tone}`}>· {hint.label}</em>}
                 </span>

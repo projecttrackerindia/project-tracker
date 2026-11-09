@@ -9,6 +9,7 @@ import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { askExtensionReason, isExtension } from '../dates/ExtensionReason';
+import { loadApi, loadKeys, type LoadFit } from '../load/loadApi';
 
 /*
  * Stages = the project's journey (Requirements → Development → Code review → Testing → Go-live), each with an owner (a person or a team) and
@@ -69,8 +70,7 @@ export const sizeOf = (h: number | null | undefined) => (h == null || h <= 0 ? n
 export const SIZES: { id: string; hours: number }[] = [{ id: 'S', hours: 2 }, { id: 'M', hours: 4 }, { id: 'L', hours: 8 }, { id: 'XL', hours: 16 }];
 
 /**
- * How busy a person is, for the owner pickers. LOAD-PICKER HOOK: the load engine (branch load-v2) replaces this with its workload signal
- * (Free / Balanced / Stretched / Over with when they free up); until then it counts their open tasks in this project.
+ * How busy a person is, from their open tasks in this project: the fallback when the load engine (useStageLoad) cannot be read.
  */
 export function loadHint(userId: string, tasks: Task[] | undefined): { label: string; tone: 'free' | 'ok' | 'busy' | 'over' } | null {
   if (!tasks) return null;
@@ -82,6 +82,23 @@ export function loadHint(userId: string, tasks: Task[] | undefined): { label: st
   return { label: `${open.length} open`, tone: 'ok' };
 }
 const TONE_WORD = { free: 'Free', ok: 'Balanced', busy: 'Stretched', over: 'Over' } as const;
+type Hint = { label: string; tone: 'free' | 'ok' | 'busy' | 'over'; best?: boolean };
+const LOAD_TONE: Record<string, Hint['tone']> = { free: 'free', balanced: 'ok', stretched: 'busy', overloaded: 'over', leave: 'over', off: 'over' };
+
+/**
+ * The load engine's signal for a stage's owner choice (GET /load/fit over the stage's dates): Free / Balanced / Stretched / Over with its
+ * reason ("Free Thu · best fit"). Falls back to loadHint() from the project's open tasks when Load cannot be read.
+ */
+export function useStageLoad(stage: Pick<Stage, 'plannedStart' | 'plannedEnd'> | null, current: string | null | undefined, tasks: Task[] | undefined, enabled = true) {
+  const fit = { start: stage?.plannedStart ?? null, due: stage?.plannedEnd ?? null, current: current ?? null };
+  const q = useWsQuery(loadKeys.fit(fit), () => loadApi.fit(fit), { enabled: enabled && !!stage, staleTime: 30_000, retry: false });
+  const data: LoadFit | undefined = q.data;
+  return useMemo(() => (userId: string): Hint | null => {
+    const p = Array.isArray(data?.people) ? data.people.find((x) => x.userId === userId) : undefined;
+    if (p) return { label: p.reason || TONE_WORD[LOAD_TONE[p.state] ?? 'ok'], tone: LOAD_TONE[p.state] ?? 'ok', best: p.bestFit };
+    return loadHint(userId, tasks);
+  }, [data, tasks]);
+}
 
 /**
  * "Who owns <stage>?": people (with how busy they are) and teams; "Also move <previous>'s N open tasks" hands their unfinished work in the
@@ -97,7 +114,8 @@ export function StageOwnerSheet({ projectId, stage, tasks, onClose, onSaved }: {
   const prevOpen = useMemo(() => (prev && stage ? (tasks ?? []).filter((t) => t.stageId === stage.id && t.assignee?.id === prev.id && t.statusCategory !== 'Done' && t.statusCategory !== 'Cancelled').length : 0), [tasks, prev, stage]);
   const [move, setMove] = useState(true);
   const [busy, setBusy] = useState(false);
-  const hint = prev ? loadHint(prev.id, tasks) : null;
+  const hintOf = useStageLoad(stage, prev?.id, tasks, !!stage);
+  const hint = prev ? hintOf(prev.id) : null;
   const pick = async (b: { ownerId?: string | null; teamId?: string | null }) => {
     if (!stage || busy) return;
     setBusy(true);
@@ -112,18 +130,18 @@ export function StageOwnerSheet({ projectId, stage, tasks, onClose, onSaved }: {
   };
   const list = (people.data ?? []).filter((m) => m.isActive !== false);
   const rank = { free: 0, ok: 1, busy: 2, over: 3 } as const;
-  const sorted = [...list].sort((a, b) => (rank[loadHint(a.userId, tasks)?.tone ?? 'ok'] - rank[loadHint(b.userId, tasks)?.tone ?? 'ok']) || a.displayName.localeCompare(b.displayName));
+  const sorted = [...list].sort((a, b) => ((hintOf(a.userId)?.best ? -1 : 0) - (hintOf(b.userId)?.best ? -1 : 0) || rank[hintOf(a.userId)?.tone ?? 'ok'] - rank[hintOf(b.userId)?.tone ?? 'ok']) || a.displayName.localeCompare(b.displayName));
   return (
     <CalmSheet open={!!stage} onClose={onClose} kind="bottom" width={520} title={stage ? `Who owns ${stage.name}?` : 'Owner'}
       sub={prev ? `${prev.name}${hint && hint.tone !== 'free' ? ` · ${TONE_WORD[hint.tone].toLowerCase()} (${hint.label})` : ' owns it now'}` : 'Nobody owns it yet'}>
       <div className="stg-owner" data-testid="stage-owner-sheet">
         {sorted.map((m, i) => {
-          const h = loadHint(m.userId, tasks);
+          const h = hintOf(m.userId);
           const now = m.userId === prev?.id;
           return (
-            <button key={m.userId} type="button" className={`stg-owner-row${i === 0 && !now && h?.tone === 'free' ? ' best' : ''}`} disabled={busy || now} onClick={() => void pick({ ownerId: m.userId })}>
+            <button key={m.userId} type="button" className={`stg-owner-row${!now && (h?.best || (i === 0 && h?.tone === 'free')) ? ' best' : ''}`} disabled={busy || now} onClick={() => void pick({ ownerId: m.userId })}>
               <CalmAv name={m.displayName} size={40} />
-              <span className="stg-owner-t"><b>{m.displayName}{now ? ' · now' : ''}</b><small>{h ? (h.tone === 'free' ? `No open work here${i === 0 ? ' · best fit' : ''}` : h.label) : m.jobRole ?? m.role}</small></span>
+              <span className="stg-owner-t"><b>{m.displayName}{now ? ' · now' : ''}</b><small>{h ? (h.best && !/best fit/.test(h.label) ? `${h.label} · best fit` : h.tone === 'free' && h.label === 'free' ? `No open work here${i === 0 ? ' · best fit' : ''}` : h.label) : m.jobRole ?? m.role}</small></span>
               {h && <span className={`stg-load ${h.tone}`}>{TONE_WORD[h.tone]}</span>}
             </button>
           );
