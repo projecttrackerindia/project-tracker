@@ -62,6 +62,12 @@ public class AuraBriefingRulesTests
 [Collection("api")]
 public class AuraBriefingTests(ApiFactory factory)
 {
+    private DateOnly ServerToday()
+    {
+        using var scope = factory.Services.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Services.AppClock>().TodayIn((string?)null);
+    }
+
     private static string S(JsonNode? n) => n!.GetValue<string>();
 
     private async Task<(TestClient Owner, TestClient Dev, Guid Project, string Key)> SetupAsync(string name)
@@ -91,7 +97,7 @@ public class AuraBriefingTests(ApiFactory factory)
 
         factory.WithDb(db =>
         {
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var today = ServerToday();   // the app's calendar day (its zone), not UTC: they differ for part of every day
             var tasks = db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == project).ToList();
             tasks.First(t => t.Id == mine).DueDate = today;
             tasks.First(t => t.Id == wire).DueDate = today.AddDays(3);
@@ -267,7 +273,7 @@ public class AuraBriefingTests(ApiFactory factory)
         var recon = await TaskAsync(owner, project, "Reconciliation screen", owner.UserId);
         var number = factory.WithDb(db =>
         {
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var today = ServerToday();   // the app's calendar day (its zone), not UTC: they differ for part of every day
             var tasks = db.Tasks.IgnoreQueryFilters().Where(t => t.ProjectId == project).ToList();
             tasks.First(t => t.Id == recon).DueDate = today.AddDays(-2);
             tasks.First(t => t.Id == feed).DueDate = today.AddDays(-5);
