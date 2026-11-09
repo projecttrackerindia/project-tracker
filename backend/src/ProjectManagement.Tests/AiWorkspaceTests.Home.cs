@@ -445,6 +445,12 @@ public partial class AiWorkspaceTests
         await RunTool(o.Owner, AiWorkdayTools.MyTime, new { from = Iso(0), to = Iso(-10) }, "How many hours did I log?");
         Assert.Contains("start before the end", ToolResult());
 
+        // "Why is X late?" in the chat runs the Aura briefing's evidence service and hands back linked records to cite.
+        var why = await RunTool(o.Owner, AiWorkdayTools.WhyLate, new { item = "the runbook" }, "Why is the runbook late?");
+        Assert.Contains("Write the runbook", why);
+        Assert.Contains($"/work?item={taskId}", why);
+        Assert.Contains("markdown links", why);
+
         factory.WithDb(db =>
         {
             var run = new AgentRun { TenantId = o.Owner.WorkspaceId, ProjectId = o.Project, Trigger = "meeting", Status = "done", StartedAt = DateTime.UtcNow, FinishedAt = DateTime.UtcNow };

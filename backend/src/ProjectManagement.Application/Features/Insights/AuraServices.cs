@@ -36,7 +36,8 @@ public partial class AuraWhyService(IAppDbContext db, AppClock clock, DocumentAi
 
     private static string D(DateOnly? d) => AuraBriefingRules.D(d);
 
-    public async Task<AuraAnswerDto> AskAsync(AuraAskRequest req, CancellationToken ct = default)
+    /// <param name="polish">False when the caller is itself a model (the Aura chat's why_late tool): the rules' facts come back unshortened.</param>
+    public async Task<AuraAnswerDto> AskAsync(AuraAskRequest req, CancellationToken ct = default, bool polish = true)
     {
         var question = (req.Question ?? "").Trim();
         if (question.Length == 0 && req.TaskId is null) throw new ValidationException("question", "Ask about a task, for example “Why is ABC-12 late?”.");
@@ -53,7 +54,7 @@ public partial class AuraWhyService(IAppDbContext db, AppClock clock, DocumentAi
             return new AuraAnswerDto(question, "I could not tell which item you mean. Name it by its key, like ABC-12, or by its title.", false, null, null, [],
                 late.Select(l => $"Why is {l.Key}-{l.Number} late?").ToList());
         }
-        return await ExplainAsync(question, taskId.Value, ct);
+        return await ExplainAsync(question, taskId.Value, ct, polish);
     }
 
     /// <summary>The task the question is about: by key, else the open task whose title shares the most words with it. Only tasks the caller can open.</summary>
@@ -81,7 +82,7 @@ public partial class AuraWhyService(IAppDbContext db, AppClock clock, DocumentAi
             .OrderByDescending(r => r.Score).Select(r => (Guid?)r.Id).FirstOrDefault();
     }
 
-    private async Task<AuraAnswerDto> ExplainAsync(string question, Guid taskId, CancellationToken ct)
+    private async Task<AuraAnswerDto> ExplainAsync(string question, Guid taskId, CancellationToken ct, bool polish)
     {
         var today = clock.Today;
         var t = await (from x in db.Tasks.AsNoTracking()
@@ -164,7 +165,7 @@ public partial class AuraWhyService(IAppDbContext db, AppClock clock, DocumentAi
 
         var answer = string.Join(" ", facts);
         var byAi = false;
-        try
+        if (polish) try
         {
             await ai.EnsureAiAsync(ct);
             var system = GrootIdentity.Generic + "Answer the question in at most three short sentences using ONLY the facts given. Lead with the main reason. Keep task keys as written. " +

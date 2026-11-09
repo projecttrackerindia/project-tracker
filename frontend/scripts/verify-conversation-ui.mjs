@@ -73,7 +73,7 @@ try {
     if(kind==='chat'){await page.waitForFunction(()=>!document.querySelector('.m-shell').classList.contains('keyboard-open'));assert.equal(await page.locator('.m-tabs').isVisible(),false);checks.push('chat-stays-full-screen-after-keyboard');}
     else{await page.locator('.m-tabs').waitFor({state:'visible'});checks.push(`${kind}-navigation-restored-after-keyboard`);}
    }
-   if(kind==='agent'&&width===390){await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-ribbon').first().evaluate(e=>getComputedStyle(e).animationName),'none');checks.push('agent-mark-reduced-motion');}
+   if(kind==='agent'&&width===390){await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.agent-mark > i').first().evaluate(e=>getComputedStyle(e).animationName),'none');checks.push('agent-mark-reduced-motion');}
    await page.close();
   }
  }
