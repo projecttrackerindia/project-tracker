@@ -244,7 +244,7 @@ function GrootChat() {
       {!phone && !card && !float && <div className="gc-resize" role="separator" aria-orientation="vertical" aria-label="Resize Aura" onPointerDown={startResize} />}
       {phone && <span className="gc-grab" aria-hidden="true" />}
       <header className="gc-head">
-        {float || phone ? <SiriOrb className="calm-orb gc-orb" /> : <GrootAvatar state={state} size={34} />}
+        <GrootAvatar state={state} size={24} className="gc-orb-wrap" />
         <div className="gc-title"><b>Aura</b><small aria-live="polite">{status}</small></div>
         {!phone && <kbd className="gc-kbd" aria-hidden="true">{/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K'}</kbd>}
         {turns.length > 0 && tab === 'chat' && <button type="button" className="gc-icon" title="New chat" aria-label="New chat" onClick={() => { abort.current?.abort(); reset(); setFlash('greeting'); }}><Icon name="plus" size={16} /></button>}
@@ -260,7 +260,7 @@ function GrootChat() {
       <div className="gc-body" ref={body} aria-live="polite">
         {turns.length === 0 ? (
           <div className="gc-empty" data-part={part}>
-            <GrootAvatar state={flash === 'greeting' ? 'greeting' : state} size={phone ? 96 : float ? 72 : 112} />
+            <GrootAvatar state={flash === 'greeting' ? 'greeting' : state} size={phone ? 64 : 56} />
             <h3>{greeting(part, now, day.zone, firstName)}</h3>
             <p>I'm Aura, {org}'s assistant. {about ? `Ask me anything about ${about}.` : 'Ask me anything, or tell me what to do.'}</p>
             <p className="gc-when">{part === 'off' ? 'Not a working day' : `Working hours ${workingHours(day)}`} · {day.zone}</p>
@@ -305,6 +305,7 @@ function Turn({ t, acting, still, onAsk, onGo, onRun, onCancel, onUndo, onEdit }
     <div className="gc-turn">
       <div className="gc-me"><p>{t.q}</p></div>
       <div className="gc-groot">
+        <div className="gc-who" aria-hidden="true"><SiriOrb size={22} state={t.streaming ? 'thinking' : 'idle'} /><span>Aura</span></div>
         {waiting ? <Thinking steps={steps} still={still} /> : steps.length > 0 && (
           <ol className="gc-steps" aria-label="What Aura did">
             {steps.map((s, i) => (
@@ -314,7 +315,7 @@ function Turn({ t, acting, still, onAsk, onGo, onRun, onCancel, onUndo, onEdit }
             ))}
           </ol>
         )}
-        {t.text && <div className="gc-md"><Markdown text={t.text} />{t.streaming && <span className="gc-cur" aria-hidden="true" />}</div>}
+        {t.text && <div className="gc-md"><Markdown text={t.text} onLink={onGo} />{t.streaming && <span className="gc-cur" aria-hidden="true" />}</div>}
         {t.error && <p className="gc-err" role="alert">{t.error}</p>}
         {t.actions.length > 0 && <PlanCard t={t} acting={acting} onRun={onRun} onCancel={onCancel} onUndo={onUndo} onEdit={onEdit} onGo={onGo} />}
         {!t.streaming && sources.length > 0 && (

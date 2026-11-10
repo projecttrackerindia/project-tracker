@@ -98,7 +98,7 @@ const make = async (theme, writes, opts = {}) => {
     else if (ep === '/api/v1/calendar') { const from = url.searchParams.get('from'), to = url.searchParams.get('to'); data = calendar.filter((e) => e.date >= from && e.date <= to && (url.searchParams.get('mine') === 'true' ? e.type !== 'project' : true)); }
     else if (ep === '/api/v1/meet') data = { items: calendar.filter((e) => e.type === 'meeting').map((e) => ({ ref: `p:${e.id}`, kind: 'project', id: e.id, title: e.title, description: e.title === 'CRIF UAT sign-off' ? '1. Open defects\n2. Token rotation status' : null, start: e.startsAt,
       end: new Date(Date.parse(e.startsAt) + (e.durationMinutes ?? 30) * 60_000).toISOString(), timeZone: 'Asia/Kolkata', projectId: e.projectId, projectName: e.projectName, projectKey: null, provider: 'google', providerName: 'Google Meet', joinUrl: e.joinUrl ?? '',
-      calendarUrl: null, isScrum: false, recurring: e.title !== 'CRIF UAT sign-off', sessionsLeft: null, notetaker: 'off', myRsvp: 'Organizer', isOrganizer: true, canManage: true, organizerName: 'Asha', invited: 3, accepted: 1, declined: 0, status: 'Scheduled', notes: null, live: false })), from: '', to: '', truncated: false };
+      calendarUrl: null, isScrum: false, recurring: e.title !== 'CRIF UAT sign-off', sessionsLeft: null, notetaker: 'off', myRsvp: 'Organizer', isOrganizer: e.title !== 'Status call', canManage: e.title !== 'Status call', organizerName: e.title === 'Status call' ? 'Ravi' : 'Asha', invited: 3, accepted: 1, declined: 0, status: 'Scheduled', notes: null, live: false })), from: '', to: '', truncated: false };
     else if (ep === '/api/v1/reminders') data = { open: [{ id: g(7), title: 'Rotate CRIF token', nextFireAt: at(today, 15, 15) }], completed: [], sent: [], counts: { now: 0, today: 1, upcoming: 0, completed: 0 }, limits: { open: 100, recurring: 10, openUsed: 1, recurringUsed: 0 } };
     else if (ep === '/api/v1/calendar/feed') data = { enabled: true, url: 'https://projecttracker-preview.test/api/v1/calendar/feed/abc.ics', createdAt: ago(100), lastUsedAt: null };
     else if (ep === '/api/v1/dashboard') data = dashboard;
@@ -235,7 +235,11 @@ try {
       await page.keyboard.press('Alt+ArrowDown');
       await page.locator('.talk-toast', { hasText: 'moved to' }).getByRole('button', { name: 'Undo' }).waitFor();
       assert.ok(writes.includes(`POST /api/v1/meetings/${g(11)}/reschedule`), 'reschedule sent');
-      assert.match(await page.locator('.wp-e', { hasText: 'Status call' }).first().getAttribute('title'), /ended|organiser|recurring/, 'a meeting that cannot move says why (a repeating one now moves with a this / following prompt)');
+      // A meeting that cannot move says why. The fixture's status calls fall on the other weekdays of the real week, so on a Monday none has
+      // ended yet and every one is movable: then there is nothing to explain.
+      const statusTitles = await page.locator('.wp-e', { hasText: 'Status call' }).evaluateAll((els) => els.map((e) => e.getAttribute('title') ?? ''));
+      const fixed = statusTitles.filter((t) => !/drag to move/.test(t));
+      for (const t of fixed) assert.match(t, /ended|organiser|recurring/, 'a meeting that cannot move says why (a repeating one now moves with a this / following prompt)');
     }
     if (width < 700) await fitsPhone(page, 'Calendar', assert);
     await shot(page, `calendar-${tag}.png`);

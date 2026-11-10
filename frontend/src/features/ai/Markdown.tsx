@@ -2,18 +2,26 @@ import { Fragment, memo, type ReactNode } from 'react';
 
 /**
  * Renders the assistant's Markdown as React elements - never as HTML - so nothing the model writes can inject markup or script. Handles what
- * answers use: headings, paragraphs, bold/italic/code, links (http, https, mailto only), bullet and numbered lists, tables, quotes, rules
+ * answers use: headings, paragraphs, bold/italic/code, links (http, https, mailto, and paths inside the app), bullet and numbered lists, tables, quotes, rules
  * and fenced code. Half-written Markdown (an unclosed fence, a table still arriving) renders sensibly while an answer streams in.
  */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
-  return <div className="ai-md">{blocks(text)}</div>;
+export const Markdown = memo(function Markdown({ text, onLink }: { text: string; /** Opens a link inside the app (a cited record); default: the browser's history. */ onLink?: (to: string) => void }) {
+  return (
+    <div className="ai-md" onClick={(e) => {
+      const a = (e.target as Element).closest?.('a[data-app-link]');
+      if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      const to = a.getAttribute('href')!;
+      if (onLink) onLink(to); else { window.history.pushState(null, '', to); window.dispatchEvent(new PopStateEvent('popstate')); }
+    }}>{blocks(text)}</div>
+  );
 });
 
 const KEY = /\b[A-Z][A-Z0-9]{1,5}-\d+\b/;   // work item keys like PRJ-12
 
 // ------------------------------------------------------------------ inline
 
-const INLINE = /(\*\*[^*\n]+\*\*)|(`[^`\n]+`)|(\[[^\]\n]+\]\((?:https?:\/\/|mailto:)[^)\s]+\))|(\*[^*\n]+\*)|(_[^_\n]+_)/g;
+const INLINE = /(\*\*[^*\n]+\*\*)|(`[^`\n]+`)|(\[[^\]\n]+\]\((?:https?:\/\/|mailto:|\/(?![/\\]))[^)\s]+\))|(\*[^*\n]+\*)|(_[^_\n]+_)/g;
 
 function inline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -28,7 +36,9 @@ function inline(text: string, keyBase: string): ReactNode[] {
     else if (m[2]) out.push(<code key={k}>{tok.slice(1, -1)}</code>);
     else if (m[3]) {
       const mm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok)!;
-      out.push(<a key={k} href={mm[2]} target="_blank" rel="noopener noreferrer">{mm[1]}</a>);
+      // A link inside the app (a cited record, "/work?item=…") opens in place, through the router; others in a new tab.
+      if (mm[2].startsWith('/')) out.push(<a key={k} href={mm[2]} data-app-link="">{mm[1]}</a>);
+      else out.push(<a key={k} href={mm[2]} target="_blank" rel="noopener noreferrer">{mm[1]}</a>);
     } else out.push(<em key={k}>{inline(tok.slice(1, -1), k)}</em>);
     last = i + tok.length;
   }

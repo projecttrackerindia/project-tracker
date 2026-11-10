@@ -10,7 +10,7 @@ import { makeState, origin, portfolioContext } from './lib/portfolioFixture.mjs'
 // another column saves with "✓ Saved"; a Timeline bar dragged later ripples its dependents. Fictional fixture (lib/portfolioFixture.mjs).
 const out = path.resolve('test-results/calm-portfolio-ui');
 await fs.mkdir(out, { recursive: true });
-const TABS = [['overview', 'Overview'], ['actions', 'Action items'], ['sheet', 'Plan sheet'], ['timeline', 'Timeline'], ['capacity', 'Capacity'], ['board', 'Board']];
+const TABS = [['overview', 'Overview'], ['actions', 'Action items'], ['sheet', 'Plan sheet'], ['timeline', 'Timeline'], ['capacity', 'Load'], ['board', 'Board']];
 const url = (m) => `${origin}/preview-org/work/projects?view=portfolio${m === 'overview' ? '' : `&mode=${m}`}`;
 /**
  * The demo's portfolio (fictional): short project names, and Atlas with four phases and ten tasks, one blocked and one overdue, so the
@@ -66,13 +66,13 @@ try {
       await page.goto(url(m)); await page.locator('.pfx-stage').first().waitFor(); await page.waitForTimeout(700);
       const s = await look(page);
       assert.equal(s.sideways, false, `${m} ${width} ${theme}: no sideways scroll`);
-      assert.deepEqual(s.pills, ['Overview', 'Action items', 'Plan sheet', 'Timeline', 'Capacity', 'Board', 'Present']);
+      assert.deepEqual(s.pills, ['Overview', 'Action items', 'Plan sheet', 'Timeline', 'Load', 'Board', 'Present']);
       assert.ok(s.title.length > 3, `${m}: a title`);
       assert.equal(s.folder, m === 'sheet', `${m}: folder tabs only on the Plan sheet`);
       if (m === 'sheet') {
         // The approved design: one folder tab per project by its short name, All last, no Action items tab; exactly five columns; no field bar.
         assert.equal(s.folderTabs.at(-1), 'All'); assert.ok(!s.folderTabs.some((t) => /Action items/.test(t)));
-        assert.deepEqual(s.cols, ['Task', 'Owner', 'Start', 'Due', 'Status']); assert.equal(s.field, false);
+        assert.deepEqual(s.cols, ['Task', 'Owner', 'Start', 'Due', 'Status', 'Size']); assert.equal(s.field, false);
       }
       if (width !== 390) assert.equal(s.underFab, 0, `${m} ${width}: nothing under the + button`);
       await page.screenshot({ path: path.join(out, `${m}-${width}-${theme}.png`), fullPage: false });

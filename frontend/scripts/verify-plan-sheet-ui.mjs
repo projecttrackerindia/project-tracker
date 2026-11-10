@@ -214,7 +214,7 @@ try {
   const tabs = page.getByRole('tablist', { name: 'Portfolio view' });
   const grid = page.getByRole('grid', { name: 'Plan sheet' });
   await grid.waitFor();
-  assert.deepEqual(await tabs.getByRole('tab').allInnerTexts(), ['Overview', 'Action items', 'Plan sheet', 'Timeline', 'Capacity', 'Board', 'Present']);
+  assert.deepEqual(await tabs.getByRole('tab').allInnerTexts(), ['Overview', 'Action items', 'Plan sheet', 'Timeline', 'Load', 'Board', 'Present']);
   assert.equal(await tabs.getByRole('tab', { name: 'Plan sheet' }).getAttribute('aria-selected'), 'true');
   assert.match(await page.locator('.pfc-title').innerText(), /^Plan sheet\./);
 

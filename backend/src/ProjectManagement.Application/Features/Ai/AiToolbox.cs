@@ -120,6 +120,8 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         Include(@"\b(what should i|first|priorit\w*|pending|waiting|inbox)\b", AiHomeTools.NeedsYou, AiWorkdayTools.MySchedule);
         Include(@"\b(mail|mails|email|emails|gmail|outlook|inbox)\b", AiWorkdayTools.MailInbox, AiWorkdayTools.MailRead);
         Include(@"\b(watch|watching|watches|keep an eye)\b", ListWatches);
+        // "Why is X late?" adds the evidence tool without narrowing the rest (portfolio questions about delays keep their own tools).
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(late|slipp\w*|delayed|behind|holding up|overdue)\b")) selected.Add(AiWorkdayTools.WhyLate);
         Include(@"\b(decide|decided|decision|decisions|agreed)\b", AiWorkdayTools.DecisionLog, AiHomeTools.ChatSearch);
         Include(@"\b(chat|chats|messages|said)\b", AiHomeTools.ChatCatchUp, AiHomeTools.ChatSearch);
         Include(@"\b(page|pages|doc|docs|wiki|section)\b", SearchDocuments, ReadDocument, SearchKnowledge);

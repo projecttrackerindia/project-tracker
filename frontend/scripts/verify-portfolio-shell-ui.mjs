@@ -12,7 +12,7 @@ import { makeState, origin, portfolioContext, T } from './lib/portfolioFixture.m
 const out = path.resolve('test-results/portfolio-shell-ui');
 await fs.mkdir(out, { recursive: true });
 // The calm order (design #portfolio). The project columns (the old Board) live under the Overview; Board is the task board.
-const TABS = [['overview', 'Overview'], ['actions', 'Action items'], ['sheet', 'Plan sheet'], ['timeline', 'Timeline'], ['capacity', 'Capacity'], ['board', 'Board'], ['present', 'Present']];
+const TABS = [['overview', 'Overview'], ['actions', 'Action items'], ['sheet', 'Plan sheet'], ['timeline', 'Timeline'], ['capacity', 'Load'], ['board', 'Board'], ['present', 'Present']];
 const url = (q = '') => `${origin}/preview-org/work/projects?view=portfolio${q}`;
 const checks = [], allErrors = [];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });

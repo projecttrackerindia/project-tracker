@@ -108,7 +108,7 @@ public partial class AppDbContext
             if (plansChanged) entitlementCache.InvalidateAllPlans();
             foreach (var t in tenants) await entitlementCache.InvalidateTenantAsync(t, cancellationToken);
         }
-        if (changes is { Count: > 0 }) changeFeed!.Publish(changes);
+        if (changes is { Count: > 0 }) { ProjectManagement.Application.Features.Load.LoadCache.Bump(changes); changeFeed!.Publish(changes); }
         if (created is { Count: > 0 }) notificationFeed!.Announce(created);
         return saved;
     }
@@ -143,7 +143,7 @@ public partial class AppDbContext
             if (plansChanged) entitlementCache.InvalidateAllPlans();
             foreach (var tenant in tenants) await entitlementCache.InvalidateTenantAsync(tenant, ct);
         }
-        if (changes.Length > 0) changeFeed?.Publish(changes);
+        if (changes.Length > 0) { ProjectManagement.Application.Features.Load.LoadCache.Bump(changes); changeFeed?.Publish(changes); }
         if (created.Length > 0) notificationFeed?.Announce(created);
     }
 

@@ -232,6 +232,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<ChatPoll> ChatPolls => Set<ChatPoll>();
     public DbSet<ChatPollVote> ChatPollVotes => Set<ChatPollVote>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<LoadSignal> LoadSignals => Set<LoadSignal>();
     public DbSet<ClientPortalLink> ClientPortalLinks => Set<ClientPortalLink>();
     public DbSet<ProjectInbox> ProjectInboxes => Set<ProjectInbox>();
     public DbSet<CalendarSyncLink> CalendarSyncLinks => Set<CalendarSyncLink>();
@@ -385,6 +386,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigureApprovalsAndNotes(b);
         ConfigureAdoption(b);
         ConfigureNotifySmart(b);
+        ConfigureLoad(b);
         ApplyQueryFilters(b);
     }
 }
