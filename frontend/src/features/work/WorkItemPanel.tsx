@@ -190,6 +190,7 @@ function TitleEdit({ value, disabled, onSave }: { value: string; disabled: boole
 function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
   w: WorkItemDetail; save: (f: Omit<WorkItemPatch, 'version'>) => Promise<boolean>; conflict: boolean; onDismissConflict: () => void; refetch: () => void;
 }) {
+  const wid = useWorkspaceId();
   const editable = canEditOf(w);
   const me = useAuth((s) => s.ctx?.user);
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000 });
@@ -199,6 +200,13 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
     ? [...(project.data?.statuses ?? [])].sort((a, b) => a.order - b.order).map((s) => ({ id: s.id, label: s.name }))
     : STATUSES[w.kind];
   const current = statusValue(w);
+  // Status and owner show at once (the name comes from the lists the pickers already have); the server's answer then replaces them, and a
+  // refusal reads what is saved again. Priority, due date, title and notes already do this inside `save`.
+  const showNow = (patch: (now: WorkItemDetail) => WorkItemDetail) => {
+    const key = [wid, 'work-items', 'item', w.id];
+    const now = queryClient.getQueryData<WorkItemDetail>(key);
+    if (now) queryClient.setQueryData<WorkItemDetail>(key, patch(now));
+  };
   const statusOptions = statuses.some((s) => s.id === current) ? statuses : [{ id: current, label: w.status }, ...statuses];
 
   // Pushing a task's due date (or its time) later needs a reason (the Portfolio shows why delivery moved): asked for right here before saving.
@@ -224,7 +232,11 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
   // "Today", "Tomorrow" and "2d late" get the date after them; a date that is already the text (a finished or older task) is not said twice.
   const dueValue = w.dueDate ? dueBase + (hm(w.dueTime) || (daysUntil(w.dueDate) ?? 0) > 1 || dueBase.replace(/^0/, '') === dueDate6.replace(/^0/, '') ? '' : ` · ${dueDate6}`)
     : w.dueFromSla && w.dueAt ? `SLA · ${clock24(w.dueAt)}` : 'No date';
-  const setStatus = (v: string) => void save(w.kind === 'task' ? { statusId: v } : { status: v });
+  const setStatus = (v: string) => {
+    const label = statuses.find((x) => x.id === v)?.label;
+    if (label) showNow((n) => ({ ...n, status: label, detail: { ...(n.detail as object), ...(n.kind === 'task' ? { statusId: v } : { status: v }) } as WorkItemDetail['detail'] }));
+    void save(w.kind === 'task' ? { statusId: v } : { status: v });
+  };
 
   return (
     <div className="wkp">
@@ -246,7 +258,7 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
           <Select aria-label="Priority" value={w.priority} onChange={(e) => void save({ priority: e.target.value as Priority })} disabled={!editable}><PriorityOptions /></Select>
         </Tile>
         <Tile label="Owner" value={w.assignee ? (w.assignee.id === me?.id ? `${w.assignee.name.split(' ')[0]} (you)` : w.assignee.name) : 'Nobody yet'} disabled={!editable}>
-          <Select aria-label="Owner" value={w.assignee?.id ?? ''} onChange={(e) => void save({ assigneeId: e.target.value || null })} disabled={!editable}>
+          <Select aria-label="Owner" value={w.assignee?.id ?? ''} onChange={(e) => { const v = e.target.value; const who = people.find((m) => m.userId === v)?.displayName; showNow((n) => ({ ...n, assignee: v && who ? ({ ...(n.assignee ?? {}), id: v, name: who } as WorkItemDetail['assignee']) : null })); void save({ assigneeId: v || null }); }} disabled={!editable}>
             <option value="">Nobody yet</option>
             {w.assignee && !people.some((p) => p.userId === w.assignee!.id) && <option value={w.assignee.id}>{w.assignee.name}</option>}
             {people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}{m.userId === me?.id ? ' (you)' : ''}</option>)}
