@@ -241,7 +241,8 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
 public class CurrentContextMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext http, CurrentContext ctx, IAppDbContext db, TimeProvider clock,
-        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone)
+        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone,
+        ProjectManagement.Application.Services.SessionCache sessions)
     {
         ctx.IpAddress = http.Connection.RemoteIpAddress?.ToString();
         ctx.UserAgent = http.Request.Headers.UserAgent.ToString();
@@ -281,14 +282,10 @@ public class CurrentContextMiddleware(RequestDelegate next)
             }
 
             var now = clock.GetUtcNow().UtcDateTime;
-            var session = await (from s in db.UserSessions
-                                 join u in db.Users on s.UserId equals u.Id
-                                 where s.Id == sessionId && s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now
-                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, u.TimeZone, s.SsoTenantId, s.AuthMethod, s.CreatedAt, u.PasswordLength,
-                                     s.LockedAt, s.LastActivityAt, s.LastSeenAt,
-                                     // "Sign out after inactivity" of the session's own workspace (its settings row only; read before any workspace is resolved).
-                                     IdleMinutes = db.TenantSecuritySettings.IgnoreQueryFilters().Where(t => t.TenantId == s.WorkspaceId).Select(t => (int?)t.IdleTimeoutMinutes).FirstOrDefault(),
-                                     ZoneChosen = db.ReminderSettings.Any(r => r.UserId == u.Id && !r.FollowDeviceTimeZone) }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+            // Who the session belongs to is remembered for a few seconds and cleared the moment it is revoked, locked, or its person changes
+            // (SessionCache); expiry and revocation are still judged here against this request's own clock.
+            var session = await sessions.SessionAsync(db, sessionId, userId, http.RequestAborted);
+            if (session is not null && (session.RevokedAt is not null || session.ExpiresAt <= now)) session = null;
             if (session is null || !session.IsActive)
             {
                 await ErrorWriter.WriteAsync(http, 401, "Your session has ended. Please sign in again.", [new ApiError("SESSION_REVOKED", "Your session has ended. Please sign in again.")]);
@@ -353,10 +350,7 @@ public class CurrentContextMiddleware(RequestDelegate next)
         else if (!Guid.TryParse(http.User.FindFirst(JwtClaims.WorkspaceId)?.Value, out workspaceId)) return;
         // Signed in through this organization's own single sign-on: its identity provider vouched for the person (and applies its MFA).
         if (ssoTenantId == workspaceId) mfaEnabled = true;
-        var membership = await (from m in db.TenantMembers
-                                join t in db.Tenants on m.TenantId equals t.Id
-                                where m.UserId == userId && m.TenantId == workspaceId && t.Status == TenantStatus.Active
-                                select new { m.Role, m.Status, t.Type, t.ProjectVisibility, t.TimeZone }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+        var membership = await http.RequestServices.GetRequiredService<ProjectManagement.Application.Services.SessionCache>().MembershipAsync(db, userId, workspaceId, http.RequestAborted);
         if (membership is null) return;
         zone.WorkspaceZoneId = membership.TimeZone;
         // A suspended member keeps their place but cannot open the workspace: every workspace request is refused with MEMBER_SUSPENDED.

@@ -213,7 +213,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public T WithDb<T>(Func<AppDbContext, T> action)
     {
         using var scope = Services.CreateScope();
-        return action(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+        try { return action(scope.ServiceProvider.GetRequiredService<AppDbContext>()); }
+        // A test that edits rows directly (bulk updates, backdated timestamps) is a change made behind the API's back: forget what was remembered
+        // about sessions and members, as the API itself does after every change that matters.
+        finally { scope.ServiceProvider.GetRequiredService<ProjectManagement.Application.Services.SessionCache>().InvalidateAllAsync().GetAwaiter().GetResult(); }
     }
 
     private sealed class AiLimitClock : TimeProvider

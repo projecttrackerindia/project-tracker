@@ -87,6 +87,7 @@ public static class DependencyInjection
         else
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiRequestLimiter, MemoryAiRequestLimiter>();
         services.AddSingleton<ProjectManagement.Application.Services.EntitlementCache>();
+        services.AddSingleton<ProjectManagement.Application.Services.SessionCache>();
 
         // Data-protection keys live in the database: cookies and protected tokens survive redeploys and work across servers.
         Microsoft.AspNetCore.DataProtection.DataProtectionBuilderExtensions.SetApplicationName(services.AddDataProtection(), "projecttracker");
