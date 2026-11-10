@@ -294,6 +294,9 @@ export interface CalendarEvent {
   dueAt?: string | null; slaBreachAt?: string | null; slaState?: SlaState | null;
 }
 export interface SearchHit { type: string; id: string; title: string; subtitle: string | null; projectId: string | null; taskId: string | null }
+/** One related result of the ask bar: found by words, by meaning or both, with a short excerpt and where it opens. Only what the person may open. */
+export interface MeaningHit { kind: string; id: string; title: string; key: string | null; link: string; excerpt: string; via: 'words' | 'meaning' | 'both'; at: string | null }
+export interface MeaningSearch { items: MeaningHit[]; meaning: boolean }
 export interface ReportSummary {
   days: number;
   totals: { total: number; completed: number; pending: number; inProgress: number; overdue: number; cancelled: number; completionRate: number };

@@ -75,6 +75,7 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.SourceKind, x.SourceId });
             e.HasIndex(x => new { x.SourceId });
             e.HasIndex(x => new { x.TenantId, x.IndexedAt });
+            e.HasIndex(x => new { x.TenantId, x.ConversationId });
             e.Property(x => x.SourceKind).HasMaxLength(16);
             e.Property(x => x.Title).HasMaxLength(200);
             e.Property(x => x.Text).HasMaxLength(1300);
