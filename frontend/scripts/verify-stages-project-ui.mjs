@@ -46,7 +46,7 @@ const task = (n, title, stage, owner, due, done = false, extra = {}) => ({ id: g
   estimatedHours: 0.83, actualHours: 0.2, position: n, parentTaskId: null, subtaskTotal: 0, subtaskDone: 0, commentCount: 2, labels: [], completedAt: done ? ago(30) : null, createdAt: ago(60), updatedAt: ago(1), version: 1,
   isOverdue: !done && due < today, milestoneId: null, milestoneName: null, dependsOnCount: 0, blocksCount: 1, isBlocked: false, sprintId: null, sprintName: null, checklistTotal: 4, checklistDone: 2, canEdit: true,
   stageId: g(200 + Math.min(stage, 4)), stageName: stages[Math.min(stage, 4)].name, ...extra });
-const tasks = [task(8, 'Posting service split', 2, 1, day(-3), true), task(6, 'Idempotency keys', 2, 1, day(-2), true), task(2, 'Refund webhook retries', 3, 1, today), task(3, 'Staging API keys', 3, 13, day(-2)),
+const tasks = [task(8, 'Posting service split', 2, 1, day(-3), true), task(6, 'Idempotency keys', 2, 1, day(-2), true), task(2, 'Refund webhook retries', 1, 1, today), task(3, 'Staging API keys', 1, 13, day(-2)),
   task(4, 'Load test 2k tps', 3, 14, day(2)), task(10, 'Release checklist', 4, 15, day(3)), task(11, 'Rollback drill', 4, 14, day(2)), task(12, 'Status page notice', 4, 15, day(3)), task(20, 'Metrics review', 5, 1, day(10)), task(21, 'Retro with Contoso', 5, 11, day(13))];
 
 // My work (work items).
@@ -206,6 +206,12 @@ try {
     }
     if (phone) await fitsPhone(page, `project ${tag}`, assert);
     await shot(page, `project-${tag}.png`);
+    if (theme === 'light' && (width === 1440 || width === 390)) {
+      assert.ok(await page.locator('.stg-sh').count() >= 2 && await page.locator('.stg-elbow').count() >= 3, 'tasks sit under their stage with a curved connector');
+      await page.locator('.stg-plan .stg-sh').first().scrollIntoViewIfNeeded(); await page.evaluate(() => { const e = document.querySelector('.stg-plan'); e?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -90); }); await page.waitForTimeout(250);
+      await shot(page, `plan-rail-${tag}.png`);
+      await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(150);
+    }
     if (phone) {
       await page.getByTestId('journey-rings').click();
       await page.getByTestId('edit-stages').waitFor();

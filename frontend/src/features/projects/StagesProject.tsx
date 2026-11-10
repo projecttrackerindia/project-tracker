@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { insightApi, taskApi } from '../../api/endpoints';
 import type { ProjectDetail, Task } from '../../api/types';
@@ -22,7 +22,7 @@ import { usePortfolioBrief } from './PortfolioInsights';
 import type { PortfolioRisk } from '../ai/aiApi';
 import { JourneyForecast } from './JourneyForecast';
 import { ProjectEditPanel, type EditTab } from './ProjectEditPanel';
-import { dm, errText, sizeOf } from './stagesKit';
+import { currentIndex, dm, errText, isClosed, ordered, sizeOf } from './stagesKit';
 import './stagesProject.css';
 
 export type StagesTab = 'plan' | 'board' | 'docs' | 'chat' | 'meet' | 'time' | 'activity';
@@ -132,26 +132,45 @@ function PlanList({ tasks, loading, detail, onOpen, onTick, addWork }: {
   tasks: Task[] | undefined; loading: boolean; detail: ProjectDetail; onOpen: (id: string) => void; onTick: (t: Task) => Promise<void>; addWork: boolean;
 }) {
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  const order = useMemo(() => new Map(detail.stages.map((s) => [s.id, s.order])), [detail.stages]);
-  const rows = useMemo(() => (tasks ?? []).filter((t) => !t.parentTaskId && t.statusCategory !== 'Cancelled').sort((a, b) =>
-    Number(isDone(a)) - Number(isDone(b)) || (order.get(a.stageId ?? '') ?? 99) - (order.get(b.stageId ?? '') ?? 99) || (a.dueDate ?? '9').localeCompare(b.dueDate ?? '9')), [tasks, order]);
+  const stages = useMemo(() => ordered(detail.stages), [detail.stages]);
+  const cur = currentIndex(stages);
+  // Tasks sit under the stage they belong to, in the stage bar's order: open ones first, then done, then by date. No stage: last.
+  const groups = useMemo(() => {
+    const rows = (tasks ?? []).filter((t) => !t.parentTaskId && t.statusCategory !== 'Cancelled');
+    const sort = (a: Task, b: Task) => Number(isDone(a)) - Number(isDone(b)) || (a.dueDate ?? '9').localeCompare(b.dueDate ?? '9');
+    const known = new Set(stages.map((x) => x.id));
+    const out = stages.map((st, i) => ({ key: st.id, name: st.name, due: st.plannedEnd, state: isClosed(st) ? 'done' : i === cur ? 'current' : 'next', items: rows.filter((t) => t.stageId === st.id).sort(sort) }));
+    const rest = rows.filter((t) => !t.stageId || !known.has(t.stageId)).sort(sort);
+    if (rest.length) out.push({ key: 'none', name: 'No stage', due: null, state: 'next', items: rest });
+    return out.filter((g) => g.items.length);
+  }, [tasks, stages, cur]);
   if (loading) return <CalmCard className="stg-plan"><p className="stg-empty">Loading tasks…</p></CalmCard>;
-  if (!rows.length) return <CalmCard className="stg-plan"><p className="stg-empty">No tasks yet.{addWork && ' Add one with the + button.'}</p></CalmCard>;
+  if (!groups.length) return <CalmCard className="stg-plan"><p className="stg-empty">No tasks yet.{addWork && ' Add one with the + button.'}</p></CalmCard>;
   return (
     <CalmCard className="stg-plan" aria-label="Plan">
       <ul>
-        {rows.map((t) => {
-          const off = isDone(t) || ticked.has(t.id);
-          const right = off ? 'Done' : [t.assignee?.name.split(' ')[0], dayText(t.dueDate), sizeOf(t.estimatedHours)].filter(Boolean).join(' · ');
-          return (
-            <li key={t.id} className={`stg-task${off ? ' done' : ''}`}>
-              <button type="button" className={`stg-ring${off ? ' done' : ''}`} aria-pressed={off} aria-label={`Done: ${t.title}`} disabled={off || !t.canEdit}
-                onClick={() => { setTicked((s) => new Set(s).add(t.id)); void onTick(t).catch(() => setTicked((s) => { const x = new Set(s); x.delete(t.id); return x; })); }} />
-              <button type="button" className="stg-task-t" onClick={() => onOpen(t.id)}>{t.title}</button>
-              <span className={`stg-task-m${!off && t.isOverdue ? ' late' : ''}`}>{right}</span>
+        {groups.map((g) => (
+          <Fragment key={g.key}>
+            <li className={`stg-sh sc-${g.state}`} data-stage-group={g.name}>
+              <span className="stg-sh-dot" aria-hidden="true" />
+              <b>{g.name}</b>
+              <span className="stg-sh-m">{g.items.length} {g.items.length === 1 ? 'task' : 'tasks'}{g.due ? ` · due ${dm(g.due)}` : ''}</span>
             </li>
-          );
-        })}
+            {g.items.map((t, n) => {
+              const off = isDone(t) || ticked.has(t.id);
+              const right = off ? 'Done' : [t.assignee?.name.split(' ')[0], dayText(t.dueDate), sizeOf(t.estimatedHours)].filter(Boolean).join(' · ');
+              return (
+                <li key={t.id} className={`stg-task child sc-${g.state}${n === g.items.length - 1 ? ' last' : ''}${off ? ' done' : ''}`}>
+                  <span className="stg-elbow" aria-hidden="true" />
+                  <button type="button" className={`stg-ring${off ? ' done' : ''}`} aria-pressed={off} aria-label={`Done: ${t.title}`} disabled={off || !t.canEdit}
+                    onClick={() => { setTicked((x) => new Set(x).add(t.id)); void onTick(t).catch(() => setTicked((x) => { const y = new Set(x); y.delete(t.id); return y; })); }} />
+                  <button type="button" className="stg-task-t" onClick={() => onOpen(t.id)}>{t.title}</button>
+                  <span className={`stg-task-m${!off && t.isOverdue ? ' late' : ''}`}>{right}</span>
+                </li>
+              );
+            })}
+          </Fragment>
+        ))}
       </ul>
     </CalmCard>
   );

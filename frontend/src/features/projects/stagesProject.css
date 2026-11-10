@@ -226,3 +226,23 @@ html body .stg-title h1 { margin: 0; font-size: 26px; font-weight: 700; letter-s
 .jr-now { margin-top: 4px; color: var(--calm-ink2); } .jr-now b { color: var(--calm-ink); }
 .jr-f { color: var(--calm-ink2); }
 @media (prefers-reduced-motion: reduce) { .jr-arc { transition: none; } .jf-pop { animation: none; } }
+
+/* Plan: tasks sit under the stage they belong to. A rail runs down from the stage's dot and curves into each task, ending in a small arrow. */
+.stg-sh { --sc: var(--calm-p3); position: relative; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 0 0 3px; }
+.stg-sh.sc-next, .stg-task.sc-next { --sc: color-mix(in srgb, var(--calm-ink3) 80%, var(--calm-ink)); }
+.stg-sh.sc-done, .stg-sh.sc-current, .stg-task.sc-done, .stg-task.sc-current { --sc: var(--calm-p3); }
+.stg-sh b { font-size: 15px; font-weight: 700; color: var(--calm-ink); }
+.stg-sh-m { margin-left: auto; font-size: 13px; color: var(--calm-ink3); white-space: nowrap; }
+.stg-sh-dot { position: relative; z-index: 1; flex: none; width: 16px; height: 16px; border-radius: 50%; box-sizing: border-box; background: var(--calm-solid, #fff); border: 2px solid var(--calm-ink3); }
+.stg-sh.sc-done .stg-sh-dot { background: var(--sc); border-color: var(--sc); }
+.stg-sh.sc-done .stg-sh-dot::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(40deg); }
+.stg-sh.sc-current .stg-sh-dot { border-color: var(--sc); box-shadow: 0 0 0 5px color-mix(in srgb, var(--sc) 20%, transparent); }
+.stg-sh::after { content: ''; position: absolute; left: 10px; top: calc(50% + 14px); bottom: 0; width: 2px; background: color-mix(in srgb, var(--sc) 80%, transparent); }
+.stg-task.child { padding-left: 38px; }
+.stg-task.child::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: color-mix(in srgb, var(--sc) 80%, transparent); }
+.stg-task.child.last::before { bottom: calc(50% + 12px); }
+.stg-task.child { position: relative; }
+.stg-task.child.last { border-bottom: 0; }
+.stg-elbow { position: absolute; left: 10px; top: calc(50% - 12px); width: 19px; height: 12px; box-sizing: border-box; border-left: 2px solid color-mix(in srgb, var(--sc) 80%, transparent); border-bottom: 2px solid color-mix(in srgb, var(--sc) 80%, transparent); border-bottom-left-radius: 12px; }
+.stg-elbow::after { content: ''; position: absolute; right: -7px; bottom: -6px; border-left: 7px solid var(--sc); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+@media (max-width: 760px) { .stg-task.child { padding-left: 34px; } .stg-sh-m { font-size: 12px; } }
