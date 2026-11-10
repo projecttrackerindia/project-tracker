@@ -6,6 +6,7 @@ using ProjectManagement.Application.Exceptions;
 using ProjectManagement.Application.Features.Attendance;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.Issues;
+using ProjectManagement.Application.Features.Load;
 using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.ProjectMeetings;
 using ProjectManagement.Application.Features.Quality;
@@ -25,7 +26,7 @@ namespace ProjectManagement.Application.Features.Ai;
 /// What Undo needs is recorded with the result; <see cref="UndoAsync"/> reverses it through the same services.
 /// </summary>
 public class AiPowerActions(IAppDbContext db, ICurrentContext ctx, PermissionService permissions, TaskService tasks, WorkTaskService workTasks, TimeService time,
-    AttendanceService attendance, IssueService issues, MeetingService meetings, QualityService quality, DocumentWorkflowService workflows, MeetConnectService connect)
+    AttendanceService attendance, IssueService issues, MeetingService meetings, QualityService quality, DocumentWorkflowService workflows, MeetConnectService connect, LoadService load, ProjectService projects)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -100,6 +101,29 @@ public class AiPowerActions(IAppDbContext db, ICurrentContext ctx, PermissionSer
                 var saved = await time.UpdateAsync(id, new UpdateTimeRequest(minutes, date, Str(a, "note")), ct);
                 return new AiActionResult($"/timesheet?week={TimesheetApprovalService.WeekOf(saved.WorkDate):yyyy-MM-dd}", id,
                     JsonSerializer.Serialize(new { entryId = id, minutes = before.Minutes, workDate = before.WorkDate, note = before.Note }, Json));
+            }
+            case "reassign_by_load":
+            {
+                await RequireLevelAsync(Modules.Tasks, AccessLevel.Edit, ct);
+                var toId = Id(a, "toUserId");
+                var items = a.GetProperty("items").EnumerateArray().Select(i => new LoadMoveItem(i.GetProperty("kind").GetString() ?? "", Id(i, "id"))).ToList();
+                await load.ReassignAsync(new LoadReassignRequest(toId, items, null, null, false), ct);   // the same service as the Load page, as the person
+                return new AiActionResult("/load", null);
+            }
+            case "advance_stage":
+            {
+                await RequireLevelAsync(Modules.Projects, AccessLevel.Edit, ct);
+                var projectId = Id(a, "projectId");
+                int? version = a.TryGetProperty("version", out var ver) && ver.ValueKind == JsonValueKind.Number && ver.TryGetInt32(out var verN) ? verN : null;
+                await projects.AdvanceStageAsync(projectId, new AdvanceStageRequest(True(a, "carryOpenTasks"), version), ct);
+                return new AiActionResult($"/projects/{projectId}", projectId);
+            }
+            case "reassign_stage":
+            {
+                await RequireLevelAsync(Modules.Projects, AccessLevel.Edit, ct);
+                var projectId = Id(a, "projectId");
+                await projects.ReassignStageAsync(projectId, Id(a, "stageId"), new ReassignStageRequest(OptId(a, "ownerId"), OptId(a, "teamId"), True(a, "moveOpenTasks")), ct);
+                return new AiActionResult($"/projects/{projectId}", projectId);
             }
             case "check_in":
             {
