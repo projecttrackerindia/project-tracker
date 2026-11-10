@@ -54,6 +54,7 @@ public class AuraBriefingService(IAppDbContext db, ICurrentContext ctx, AppClock
 
         var needs = new List<(AuraBriefItemDto Item, AuraBriefingRules.Need Need)>();
         needs.AddRange(await ApprovalsAsync(me, now, ct));
+        needs.AddRange(await SlipFixesAsync(me, now, ct));
         needs.AddRange(await ReviewsAsync(now, ct));
         needs.AddRange(await MyWorkAsync(me, today, ct));
         var ranked = AuraBriefingRules.Rank(needs, x => x.Need).Select(x => x.Item).ToList();
@@ -91,6 +92,30 @@ public class AuraBriefingService(IAppDbContext db, ICurrentContext ctx, AppClock
                 age >= 2 ? "orange" : "neutral");
             return (item, new AuraBriefingRules.Need(item.Id, "approval", age));
         }).ToList();
+    }
+
+    /// <summary>
+    /// Aura's prepared fixes for projects that will miss their date (the slip-and-fix job): each is a card on the person's own Aura chat, still waiting
+    /// and inside its 24 hours. The one tap confirms the same card, with the same checks as in the chat.
+    /// </summary>
+    private async Task<List<(AuraBriefItemDto, AuraBriefingRules.Need)>> SlipFixesAsync(Guid me, DateTime now, CancellationToken ct)
+    {
+        var rows = await db.AiMessages.AsNoTracking().Where(m => m.UserId == me && m.Role == "assistant" && m.Model == SlipFixOwnerRun.Model && m.CreatedAt > now.AddHours(-24))
+            .OrderByDescending(m => m.CreatedAt).Select(m => new { m.Id, m.Content, m.ActionsJson }).Take(10).ToListAsync(ct);
+        var list = new List<(AuraBriefItemDto, AuraBriefingRules.Need)>();
+        foreach (var r in rows)
+        {
+            List<AiProposal> cards;
+            try { cards = System.Text.Json.JsonSerializer.Deserialize<List<AiProposal>>(r.ActionsJson ?? "[]", new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? []; }
+            catch (System.Text.Json.JsonException) { continue; }
+            foreach (var c in cards.Where(c => c.Status == "proposed" && c.Execution is { } e && e.ExpiresAt > now))
+            {
+                var item = new AuraBriefItemDto($"slipfix:{r.Id}:{c.Id}", "slipfix", c.Title, c.Summary, null, null,
+                    new AuraActionDto("approve", "Do it", c.Link, $"/api/v1/ai/messages/{r.Id}/actions/{c.Id}/confirm", null, r.Id), "orange");
+                list.Add((item, new AuraBriefingRules.Need(item.Id, "slipfix", 0)));
+            }
+        }
+        return list;
     }
 
     /// <summary>Meetings the agent read whose action items wait for this person's decision (projects they may edit).</summary>

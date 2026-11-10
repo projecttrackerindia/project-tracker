@@ -61,6 +61,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Webhooks__WorkerEnabled", "false"); // tests run the webhook processor explicitly
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly
         Environment.SetEnvironmentVariable("TimesheetNudges__WorkerEnabled", "false"); // tests run the timesheet reminders explicitly
+        Environment.SetEnvironmentVariable("SlipFix__WorkerEnabled", "false"); // tests run the slip-and-fix job explicitly
         Environment.SetEnvironmentVariable("RecurringWork__WorkerEnabled", "false"); // tests run repeating tasks and the manager e-mail explicitly
         Environment.SetEnvironmentVariable("MailWatch__WorkerEnabled", "false"); // tests run the mail watcher explicitly
         Environment.SetEnvironmentVariable("Attendance__WorkerEnabled", "false"); // tests run the attendance reminders explicitly

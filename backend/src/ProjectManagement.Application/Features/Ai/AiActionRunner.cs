@@ -33,7 +33,7 @@ public sealed record AiActionResult(string? Link, Guid? RecordId = null, string?
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
     ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches, ProjectManagement.Application.Features.Calls.CallService calls, AiPowerActions power, AiMemoryService memories)
+    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches, ProjectManagement.Application.Features.Calls.CallService calls, AiPowerActions power, SlipFixActions slipFix, AiMemoryService memories)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -227,7 +227,7 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
             }
             default:
                 // Home: the agent's proposals, timesheets, notifications, chat replies, pages, portfolio options and vault requests.
-                return await home.RunAsync(p.Kind, a, executionId, ct) ?? await power.RunAsync(p.Kind, a, ct)
+                return await home.RunAsync(p.Kind, a, executionId, ct) ?? await power.RunAsync(p.Kind, a, ct) ?? await slipFix.RunAsync(p.Kind, a, ct)
                     ?? throw new ValidationException("action", "This kind of suggestion is not supported.");
         }
     }

@@ -26,6 +26,8 @@ public static class QuickActions
 {
     private static readonly Regex StartsIn = new(@"^Starts in \d{1,3} minutes?", RegexOptions.Compiled);
     private static readonly Regex Task = new(@"^/projects/[0-9a-fA-F-]{36}\?task=[0-9a-fA-F-]{36}", RegexOptions.Compiled);
+    /// <summary>Aura's slip-and-fix card: /projects/{id}?fix={messageId}.{actionId} (see SlipFixOwnerRun).</summary>
+    public static readonly Regex SlipFix = new(@"^/projects/[0-9a-fA-F-]{36}\?fix=(?<m>[0-9a-fA-F-]{36})\.(?<a>[0-9a-fA-F]{8})$", RegexOptions.Compiled);
     private static readonly Regex Chat = new(@"^/(chat/[0-9a-fA-F-]{36}$|projects/[0-9a-fA-F-]{36}\?chat=1$)", RegexOptions.Compiled);
 
     public static IReadOnlyList<string> For(NotificationType type, string? link, string? title)
@@ -34,6 +36,7 @@ public static class QuickActions
         // Reminders with their own one-time key keep the Done / Snooze they always had (reminder-actions).
         if (link.StartsWith("/r/", StringComparison.Ordinal)) return [];
         if (title.Contains(" extended", StringComparison.OrdinalIgnoreCase) || title.StartsWith("Date extension", StringComparison.OrdinalIgnoreCase)) return ["accept", "discuss"];
+        if (type == NotificationType.Overdue && SlipFix.IsMatch(link)) return ["confirm", "open"];
         switch (type)
         {
             case NotificationType.Approval when link.StartsWith("/approvals?open=", StringComparison.Ordinal) && !IsOutcome(title):
@@ -75,7 +78,7 @@ public static class QuickActions
 /// </summary>
 public class QuickActionService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ITokenService tokens, Recorder recorder,
     NotificationActionService actions, NotificationService notifications, ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings,
-    ProjectManagement.Application.Features.Approvals.ApprovalService approvals)
+    ProjectManagement.Application.Features.Approvals.ApprovalService approvals, ProjectManagement.Application.Features.Ai.AiAgent aura)
 {
     public const string Purpose = "notification-action";
     public const string AuditAction = "notification.quick_action";
@@ -159,6 +162,14 @@ public class QuickActionService(IAppDbContext db, ICurrentContext ctx, AppClock 
                 return new(s.Message, false, null);
             case "late":
                 return new(await RunningLateAsync(n, ct), false, null);
+            case "confirm" when QuickActions.SlipFix.Match(n.Link ?? "") is { Success: true } fix:
+            {
+                // Aura's prepared fix, confirmed with one tap: the same confirmation as the card (rights, 24-hour expiry, payload binding, undo).
+                var done = await aura.ConfirmAsync(Guid.Parse(fix.Groups["m"].Value), fix.Groups["a"].Value, ct);
+                if (done.Status != "done") throw new ConflictException(done.Error ?? "That could not be done. Open the project to do it by hand.", "AI_ACTION_FAILED");
+                await notifications.SetArchivedAsync(n.Id, true, ct);
+                return new($"Done: {done.Title}. You can undo it from Aura for a few minutes.", false, null);
+            }
             case "accept" when IsExtension(n):
                 await notifications.SetArchivedAsync(n.Id, true, ct);
                 return new("Noted. The new date stands.", false, null);

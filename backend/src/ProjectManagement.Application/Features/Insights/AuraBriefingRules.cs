@@ -19,6 +19,7 @@ public static class AuraBriefingRules
     public static int Score(Need n) => n.Kind switch
     {
         "approval" => 500 + Math.Min(n.AgeDays, 30) * 5,
+        "slipfix" => 480,
         "review" => 450 + Math.Min(n.AgeDays, 30) * 5,
         "unblock" => 400 + Math.Min(n.Blocks, 10) * 10 + Math.Min(n.AgeDays, 30),
         "due" => 300,

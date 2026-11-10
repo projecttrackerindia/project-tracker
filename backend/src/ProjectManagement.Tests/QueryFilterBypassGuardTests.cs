@@ -40,6 +40,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Ai/AiSemanticIndex.cs", // background embedding across workspaces; every search hit is re-opened with the reader's own access
         "ProjectManagement.Application/Features/Ai/AiToolbox.cs",
         "ProjectManagement.Application/Features/Ai/AiWatchService.cs", // the background watch check reads each watch's target by id, for its own tenant only, and notifies only the watch's owner
+        "ProjectManagement.Application/Features/Ai/ForecastScoring.cs", // the weekly forecast snapshots are read across workspaces by the job, and every row is scored and shown only inside its own tenant
+        "ProjectManagement.Application/Features/Ai/SlipFix.cs", // the 3-hourly job lists active workspaces, then reads each one's projects and Aura chat by tenant id; cards go only to that project's owner
         "ProjectManagement.Application/Features/Ai/AiUsageService.cs",
         "ProjectManagement.Application/Features/Auth/AccountDeletionService.cs", // the signed-in person's own account, the workspaces they own (count only) and the platform administrators' e-mail addresses
         "ProjectManagement.Application/Features/Billing/BillingMailer.cs", // billing e-mails are sent from webhooks and background jobs with no signed-in workspace: it reads only that workspace's name and its owner's address

@@ -54,7 +54,7 @@ const CHAT = ['Message', 'Mention'];
 // marks 'normal' priority stays quiet and simply opens.
 const QUICK_LABELS = {
   approve: 'Approve', reject: 'Reject', reply: 'Reply', read: 'Mark read', done: 'Done', snooze: 'Snooze 1h', open: 'Open', join: 'Join',
-  late: 'Running late', accept: 'Accept', decline: 'Decline', maybe: 'Maybe', review: 'Review', discuss: 'Discuss', callback: 'Call back', message: 'Message',
+  late: 'Running late', accept: 'Accept', decline: 'Decline', maybe: 'Maybe', review: 'Review', discuss: 'Discuss', callback: 'Call back', message: 'Message', confirm: 'Do it',
 };
 const QUICK_TEXT = { reply: 'Reply…', reject: 'Reason for rejecting' };
 const QUICK_OPENS = ['open', 'join', 'review', 'discuss', 'callback', 'message'];

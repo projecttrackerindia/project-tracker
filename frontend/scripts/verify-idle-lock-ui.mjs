@@ -116,7 +116,7 @@ async function scenario({ width, height, theme, label, full }) {
   await ctx.clock.fastForward(28 * 60_000 + 1000);
   const warn = page.getByTestId('idle-warning');
   await warn.waitFor();
-  assert.match(await warn.innerText(), /Still there\?[\s\S]*You'll be signed out in 1:5\d/);
+  assert.match(await warn.innerText(), /Still there\?[\s\S]*You'll be signed out in (2:00|1:5\d)/);   // the first tick may not have happened yet when it is read
   await shot(page, 'warning');
   await fits(page);
   if (full) {

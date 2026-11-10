@@ -10,6 +10,8 @@ public class AiOperationsController(AiOperationsService service, AiForecastServi
 {
     [HttpGet("forecasts")]
     public async Task<IActionResult> Forecasts(CancellationToken ct) => Ok(await forecasts.EvaluateAsync(ct));
+    [HttpGet("forecasts/scoreboard")]
+    public async Task<IActionResult> Scoreboard(CancellationToken ct) => Ok(await forecasts.ScoreboardAsync(ct));
     [HttpGet("jobs")]
     public async Task<IActionResult> List(CancellationToken ct) => Ok(await service.ListAsync(ct));
     [HttpGet("jobs/{id:guid}")]
