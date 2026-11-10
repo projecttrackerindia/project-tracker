@@ -33,7 +33,7 @@ public sealed record AiActionResult(string? Link, Guid? RecordId = null, string?
 public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder recorder, TaskService tasks, WorkTaskService workTasks, ActionItemService actionItems,
     ReminderService reminders, ChatService messages, ProjectService projects, WorkspaceService workspaces, DocumentService documents, IEmailSender email,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiActionRunner> log, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches, ProjectManagement.Application.Features.Calls.CallService calls, AiPowerActions power, SlipFixActions slipFix)
+    ProjectManagement.Application.Features.Time.TimeService time, AiHomeActions home, AiWatchService watches, ProjectManagement.Application.Features.Calls.CallService calls, AiPowerActions power, SlipFixActions slipFix, AiMemoryService memories)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
@@ -96,6 +96,16 @@ public class AiActionRunner(IAppDbContext db, ICurrentContext ctx, Recorder reco
                     a.TryGetProperty("days", out var dv) && dv.TryGetInt32(out var nd) ? nd : null), ct);
                 return new AiActionResult("/reminders?tab=watching", saved.Id);
             }
+            case "remember":
+            {
+                // Saved only now, after the person pressed Confirm on the card; every rule is checked again (sensitive text, memory switches, who may write to the scope).
+                var scope = Enum.TryParse<AiMemoryScope>(Str(a, "scope"), true, out var parsed) && Enum.IsDefined(parsed) ? parsed : throw new ValidationException("scope", "The saved suggestion is incomplete. Ask again.");
+                var saved = await memories.SaveAsync(scope, Guid(a, "teamId"), Str(a, "text") ?? "", string.Equals(Str(a, "source"), "Suggested", StringComparison.OrdinalIgnoreCase) ? AiMemorySource.Suggested : AiMemorySource.Said, ct);
+                return new AiActionResult("/settings/profile/memory", saved.Id);
+            }
+            case "forget_memory":
+                await memories.ForgetAsync(Guid(a, "memoryId") ?? throw new ValidationException("memoryId", "Choose the memory."), ct);
+                return new AiActionResult("/settings/profile/memory");
             case "stop_watch":
                 await watches.StopAsync(Guid(a, "watchId") ?? throw new ValidationException("watch", "Choose the watch."), ct);
                 return new AiActionResult("/reminders?tab=watching");

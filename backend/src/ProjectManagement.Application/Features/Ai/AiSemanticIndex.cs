@@ -1,9 +1,12 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProjectManagement.Application.Abstractions;
+using ProjectManagement.Application.Features.Agent;
+using ProjectManagement.Application.Features.Chat;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Services;
 using ProjectManagement.Domain.Entities;
@@ -27,23 +30,31 @@ public sealed class NoEmbedder : IAiEmbedder
     public Task<IReadOnlyList<float[]>> EmbedAsync(IReadOnlyList<string> texts, bool query, CancellationToken ct) => Task.FromResult<IReadOnlyList<float[]>>([]);
 }
 
-public sealed record AiSemanticHit(string SourceKind, Guid SourceId, Guid? ProjectId, string Title, string Text, double Score);
+public sealed record AiSemanticHit(string SourceKind, Guid SourceId, Guid? ProjectId, Guid? ConversationId, string Title, string Text, double Score);
 
 /// <summary>
-/// Meaning-based search over pages, tasks, operational work and action items. A background pass embeds what changed (titles and text,
-/// personal data masked first; confidential and restricted pages never leave the database for this). A search embeds the question and
+/// Meaning-based search over pages, tasks, operational work, action items, chat messages, meeting notes and project mail. A background pass
+/// embeds what changed (titles and text, personal data masked first; confidential and restricted pages, private end-to-end encrypted chats and
+/// personal inboxes never leave the database for this). A search embeds the question and
 /// compares it with the workspace's vectors held in memory, so a question costs one small call to the model plus arithmetic. The caller
 /// checks every hit against the reader's own access; this class never decides who may see what.
 /// </summary>
-public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder embedder, AppClock clock, ILogger<AiSemanticIndex> log)
+public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder embedder, AppClock clock, ISecretProtector secrets, ILogger<AiSemanticIndex> log)
 {
     public const int MaxChunkChars = 1000, MaxParts = 6, MaxPerTenant = 20000, EmbedBatch = 32;
+    /// <summary>Longest stretch of a meeting transcript that is embedded (its start); mail is capped lower.</summary>
+    public const int TranscriptParts = 12, MailParts = 3;
+    /// <summary>Chat: only messages with something to say (a "thanks" has no meaning to find) from the last half year.</summary>
+    public const int MinChatChars = 30, ChatDays = 180;
+    /// <summary>The kinds whose words are encrypted at their source: embedded, but never copied into the index as text.</summary>
+    public static readonly string[] SealedKinds = ["minutes", "transcript", "mail"];
+    private static readonly string[] SealedOrChat = ["chat", "minutes", "transcript", "mail"];
 
     public bool Enabled => embedder.Configured;
 
     // ------------------------------------------------------------------ indexing
 
-    private sealed record Source(string Kind, Guid Id, Guid TenantId, Guid? ProjectId, string Title, string Text);
+    private sealed record Source(string Kind, Guid Id, Guid TenantId, Guid? ProjectId, string Title, string Text, Guid? ConversationId = null, int Parts = MaxParts);
 
     /// <summary>
     /// Embeds up to <paramref name="budget"/> changed sources across all workspaces and drops the pieces of deleted or now-confidential ones.
@@ -52,21 +63,48 @@ public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder 
     public async Task<int> IndexPendingAsync(int budget = 200, CancellationToken ct = default)
     {
         if (!embedder.Configured) return 0;
-        var share = Math.Max(10, budget / 4);
+        var share = Math.Max(10, budget / 7);
         var docs = await db.Documents.IgnoreQueryFilters().AsNoTracking()
             .Where(d => !d.IsDeleted && d.Classification <= DocumentClassification.Internal && d.SearchText != null
                 && !db.AiSearchChunks.IgnoreQueryFilters().Any(c => c.SourceKind == "document" && c.SourceId == d.Id && c.IndexedAt >= (d.SearchIndexedAt ?? d.UpdatedAt ?? d.CreatedAt)))
             .OrderByDescending(d => d.UpdatedAt ?? d.CreatedAt).Take(share)
-            .Select(d => new Source("document", d.Id, d.TenantId, d.ProjectId, d.Title, d.SearchText!)).ToListAsync(ct);
+            .Select(d => new Source("document", d.Id, d.TenantId, d.ProjectId, d.Title, d.SearchText!, null, MaxParts)).ToListAsync(ct);
         var tasks = await db.Tasks.IgnoreQueryFilters().AsNoTracking()
             .Where(t => !t.IsDeleted && !db.AiSearchChunks.IgnoreQueryFilters().Any(c => c.SourceKind == "task" && c.SourceId == t.Id && c.IndexedAt >= (t.UpdatedAt ?? t.CreatedAt)))
             .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).Take(share)
-            .Select(t => new Source("task", t.Id, t.TenantId, t.ProjectId, t.Project!.Key + "-" + t.Number + " " + t.Title, t.Title + "\n" + (t.Description ?? ""))).ToListAsync(ct);
+            .Select(t => new Source("task", t.Id, t.TenantId, t.ProjectId, t.Project!.Key + "-" + t.Number + " " + t.Title, t.Title + "\n" + (t.Description ?? ""), null, MaxParts)).ToListAsync(ct);
         var work = await db.WorkTasks.IgnoreQueryFilters().AsNoTracking()
             .Where(w => !w.IsDeleted && !db.AiSearchChunks.IgnoreQueryFilters().Any(c => (c.SourceKind == "work" || c.SourceKind == "actionitem") && c.SourceId == w.Id && c.IndexedAt >= (w.UpdatedAt ?? w.CreatedAt)))
             .OrderByDescending(w => w.UpdatedAt ?? w.CreatedAt).Take(share)
-            .Select(w => new Source(w.Kind == WorkTaskKind.ActionItem ? "actionitem" : "work", w.Id, w.TenantId, w.RelatedProjectId, w.Title, w.Title + "\n" + (w.Description ?? ""))).ToListAsync(ct);
+            .Select(w => new Source(w.Kind == WorkTaskKind.ActionItem ? "actionitem" : "work", w.Id, w.TenantId, w.RelatedProjectId, w.Title, w.Title + "\n" + (w.Description ?? ""), null, MaxParts)).ToListAsync(ct);
+        // Chat, meeting notes and mail are only read for workspaces that have the assistant switched on.
+        var off = db.Tenants.IgnoreQueryFilters().Where(t => t.AiDisabled).Select(t => t.Id);
+        var chatSince = clock.Now.AddDays(-ChatDays);
+        var chat = await db.ChatMessages.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.DeletedAt == null && m.Kind == ChatMessageKind.User && m.Cipher == null && m.Body.Length >= MinChatChars && m.CreatedAt >= chatSince && !off.Contains(m.TenantId)
+                && db.Conversations.IgnoreQueryFilters().Any(c => c.Id == m.ConversationId && !c.IsPrivate)
+                && !db.AiSearchChunks.IgnoreQueryFilters().Any(c => c.SourceKind == "chat" && c.SourceId == m.Id && c.IndexedAt >= (m.EditedAt ?? m.CreatedAt)))
+            .OrderByDescending(m => m.CreatedAt).Take(share)
+            .Select(m => new { m.Id, m.TenantId, m.ConversationId, m.Body, ProjectId = db.Conversations.IgnoreQueryFilters().Where(c => c.Id == m.ConversationId).Select(c => c.ProjectId).FirstOrDefault() }).ToListAsync(ct);
+        var minutes = await db.MeetingMinutes.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.ContentProtected != "" && !off.Contains(m.TenantId) && !db.AiSearchChunks.IgnoreQueryFilters().Any(c => c.SourceKind == "minutes" && c.SourceId == m.BotRowId && c.IndexedAt >= (m.UpdatedAt ?? m.CreatedAt)))
+            .OrderByDescending(m => m.UpdatedAt ?? m.CreatedAt).Take(share).ToListAsync(ct);
+        var transcripts = await db.AgentMeetingBots.IgnoreQueryFilters().AsNoTracking()
+            .Where(b => !off.Contains(b.TenantId) && b.EndedAt != null && b.TranscriptProtected != null && b.TranscriptProtected != "" && b.TranscriptLength > 0
+                && !db.AiSearchChunks.IgnoreQueryFilters().Any(c => c.SourceKind == "transcript" && c.SourceId == b.Id && c.IndexedAt >= (b.UpdatedAt ?? b.EndedAt!.Value)))
+            .OrderByDescending(b => b.EndedAt).Take(Math.Max(5, share / 4)).ToListAsync(ct);   // a transcript is the largest thing indexed: fewer per pass
+        var mail = await db.AgentSignals.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.Source == AgentSourceKind.ProjectMailbox && x.OwnerUserId == null && x.ContentProtected != "" && !off.Contains(x.TenantId)
+                && !db.AiSearchChunks.IgnoreQueryFilters().Any(c => c.SourceKind == "mail" && c.SourceId == x.Id && c.IndexedAt >= x.CreatedAt))
+            .OrderByDescending(x => x.CreatedAt).Take(share).ToListAsync(ct);
         var sources = docs.Concat(tasks).Concat(work).ToList();
+        sources.AddRange(chat.Select(m => new Source("chat", m.Id, m.TenantId, m.ProjectId, "Chat message", ChatService.Plain(m.Body), m.ConversationId)));
+        foreach (var m in minutes)
+            if (MinutesText(m) is { } text) sources.Add(new Source("minutes", m.BotRowId, m.TenantId, m.ProjectId, m.Title, text));
+        foreach (var b in transcripts)
+            if (Open(b.TranscriptProtected) is { Length: > 0 } text) sources.Add(new Source("transcript", b.Id, b.TenantId, b.ProjectId, b.Title ?? "Meeting transcript", text, null, TranscriptParts));
+        foreach (var x in mail)
+            if (Open(x.ContentProtected) is { Length: > 0 } text) sources.Add(new Source("mail", x.Id, x.TenantId, x.ProjectId, x.Title, text, null, MailParts));
         var removed = await DropStaleAsync(ct);
         if (sources.Count == 0) return 0;
 
@@ -76,7 +114,7 @@ public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder 
         var pending = new List<(Source Source, List<string> Parts, string Hash)>();
         foreach (var s in sources)
         {
-            var parts = Split(s.Title, masker.MaskText(s.Text));
+            var parts = Split(s.Title, masker.MaskText(s.Text), s.Parts);
             var hash = Hash(embedder.Model + "\n" + s.Title + "\n" + string.Join("\n", parts));
             var mine = existing.Where(c => c.SourceId == s.Id).ToList();
             if (mine.Count > 0 && mine.All(c => c.ContentHash == hash)) { foreach (var c in mine) c.IndexedAt = clock.Now; continue; }   // nothing new to embed
@@ -105,7 +143,8 @@ public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder 
                     var (bytes, scale) = Quantize(vectors[v]);
                     db.AiSearchChunks.Add(new AiSearchChunk
                     {
-                        TenantId = s.TenantId, SourceKind = s.Kind, SourceId = s.Id, ProjectId = s.ProjectId, Part = p, Title = Clip(s.Title, 200), Text = parts[p],
+                        TenantId = s.TenantId, SourceKind = s.Kind, SourceId = s.Id, ProjectId = s.ProjectId, ConversationId = s.ConversationId, Part = p, Title = Clip(s.Title, 200),
+                        Text = SealedKinds.Contains(s.Kind) ? "" : parts[p],   // encrypted at the source: the words stay there and the excerpt is cut from them when shown
                         Vector = bytes, Scale = scale, Model = Clip(embedder.Model, 64), ContentHash = hash, IndexedAt = clock.Now, CreatedAt = clock.Now,
                     });
                 }
@@ -117,13 +156,23 @@ public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder 
         return done;
     }
 
-    /// <summary>Pieces of work that was deleted, and of pages now confidential, restricted or deleted.</summary>
+    /// <summary>
+    /// Pieces of work that was deleted, of pages now confidential, restricted or deleted, of messages deleted or now in a private chat, and of
+    /// transcripts and mail the retention rules erased: what was removed at its source also leaves the index.
+    /// </summary>
     private async Task<int> DropStaleAsync(CancellationToken ct)
     {
+        var off = db.Tenants.IgnoreQueryFilters().Where(t => t.AiDisabled).Select(t => t.Id);
         var stale = await db.AiSearchChunks.IgnoreQueryFilters()
-            .Where(c => (c.SourceKind == "document" && !db.Documents.IgnoreQueryFilters().Any(d => d.Id == c.SourceId && !d.IsDeleted && d.Classification <= DocumentClassification.Internal))
+            .Where(c => (SealedOrChat.Contains(c.SourceKind) && off.Contains(c.TenantId))   // the workspace switched the assistant off: what was taken from chat, meetings and mail goes
+                || (c.SourceKind == "document" && !db.Documents.IgnoreQueryFilters().Any(d => d.Id == c.SourceId && !d.IsDeleted && d.Classification <= DocumentClassification.Internal))
                 || (c.SourceKind == "task" && !db.Tasks.IgnoreQueryFilters().Any(t => t.Id == c.SourceId && !t.IsDeleted))
-                || ((c.SourceKind == "work" || c.SourceKind == "actionitem") && !db.WorkTasks.IgnoreQueryFilters().Any(w => w.Id == c.SourceId && !w.IsDeleted)))
+                || ((c.SourceKind == "work" || c.SourceKind == "actionitem") && !db.WorkTasks.IgnoreQueryFilters().Any(w => w.Id == c.SourceId && !w.IsDeleted))
+                || (c.SourceKind == "chat" && !db.ChatMessages.IgnoreQueryFilters().Any(m => m.Id == c.SourceId && m.DeletedAt == null && m.Cipher == null
+                    && db.Conversations.IgnoreQueryFilters().Any(v => v.Id == m.ConversationId && !v.IsPrivate)))
+                || (c.SourceKind == "minutes" && !db.MeetingMinutes.IgnoreQueryFilters().Any(m => m.BotRowId == c.SourceId && m.ContentProtected != ""))
+                || (c.SourceKind == "transcript" && !db.AgentMeetingBots.IgnoreQueryFilters().Any(b => b.Id == c.SourceId && b.TranscriptProtected != null && b.TranscriptProtected != ""))
+                || (c.SourceKind == "mail" && !db.AgentSignals.IgnoreQueryFilters().Any(x => x.Id == c.SourceId && x.OwnerUserId == null && x.ContentProtected != "")))
             .Take(500).ToListAsync(ct);
         if (stale.Count == 0) return 0;
         db.AiSearchChunks.RemoveRange(stale);
@@ -131,8 +180,35 @@ public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder 
         return stale.Count;
     }
 
+    private string? Open(string? protectedText)
+    {
+        if (string.IsNullOrEmpty(protectedText)) return null;
+        try { return secrets.Unprotect(protectedText); }
+        catch (System.Security.Cryptography.CryptographicException) { return null; }   // not readable now: left out until it is
+    }
+
+    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+
+    /// <summary>The words of a notetaker's minutes (summary, discussion, decisions, actions, risks), or null when they cannot be read.</summary>
+    private string? MinutesText(MeetingMinutes row)
+    {
+        var json = Open(row.ContentProtected);
+        if (json is null) return null;
+        try
+        {
+            var c = JsonSerializer.Deserialize<MinutesContent>(json, Web);
+            return c is null ? null : MinutesToText(c);
+        }
+        catch (JsonException) { return null; }
+    }
+
+    public static string MinutesToText(MinutesContent c) => string.Join("\n", new[] { c.Summary }
+        .Concat(c.Discussion ?? []).Concat((c.Decisions ?? []).Select(d => "Decision: " + d))
+        .Concat((c.ActionItems ?? []).Select(a => $"Action: {a.Task}{(string.IsNullOrWhiteSpace(a.Owner) ? "" : " (" + a.Owner + ")")}{(string.IsNullOrWhiteSpace(a.Due) ? "" : " by " + a.Due)}"))
+        .Concat((c.Risks ?? []).Select(r => "Risk: " + r)).Where(x => !string.IsNullOrWhiteSpace(x)));
+
     /// <summary>The title first, then the text in pieces of about a thousand characters, cut at paragraph or sentence ends.</summary>
-    public static List<string> Split(string title, string text)
+    public static List<string> Split(string title, string text, int maxParts = MaxParts)
     {
         var body = (text ?? "").Replace("\r", "").Trim();
         var parts = new List<string>();
@@ -151,14 +227,14 @@ public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder 
         }
         Flush();
         if (parts.Count == 0) parts.Add("");
-        return parts.Take(MaxParts).Select(x => Clip($"{title}\n{x}".Trim(), MaxChunkChars + 220)).ToList();
+        return parts.Take(maxParts).Select(x => Clip($"{title}\n{x}".Trim(), MaxChunkChars + 220)).ToList();
 
         void Flush() { if (sb.Length > 0) { parts.Add(sb.ToString().Trim()); sb.Clear(); } }
     }
 
     // ------------------------------------------------------------------ searching
 
-    private sealed record Entry(Guid Id, string SourceKind, Guid SourceId, Guid? ProjectId, sbyte[] Vector, float Scale);
+    private sealed record Entry(Guid Id, string SourceKind, Guid SourceId, Guid? ProjectId, Guid? ConversationId, sbyte[] Vector, float Scale);
     private sealed record Snapshot(string Stamp, DateTime LoadedAt, Entry[] Entries);
     private static readonly ConcurrentDictionary<Guid, Snapshot> Cache = new();
     private static long _generation;
@@ -189,7 +265,7 @@ public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder 
         if (best.Count == 0) return [];
         var ids = best.Select(b => b.E.Id).ToList();
         var texts = await db.AiSearchChunks.IgnoreQueryFilters().AsNoTracking().Where(c => c.TenantId == tenant && ids.Contains(c.Id)).Select(c => new { c.Id, c.Title, c.Text }).ToDictionaryAsync(c => c.Id, ct);
-        return best.Where(b => texts.ContainsKey(b.E.Id)).Select(b => new AiSemanticHit(b.E.SourceKind, b.E.SourceId, b.E.ProjectId, texts[b.E.Id].Title, texts[b.E.Id].Text, Math.Round(b.Score, 3))).ToList();
+        return best.Where(b => texts.ContainsKey(b.E.Id)).Select(b => new AiSemanticHit(b.E.SourceKind, b.E.SourceId, b.E.ProjectId, b.E.ConversationId, texts[b.E.Id].Title, texts[b.E.Id].Text, Math.Round(b.Score, 3))).ToList();
     }
 
     private async Task<Snapshot> SnapshotAsync(Guid tenant, CancellationToken ct)
@@ -199,8 +275,8 @@ public class AiSemanticIndex(IAppDbContext db, ICurrentContext ctx, IAiEmbedder 
         var stamp = $"{stats?.Count ?? 0}:{stats?.Last.Ticks ?? 0}:{Interlocked.Read(ref _generation)}";
         if (Cache.TryGetValue(tenant, out var cached) && cached.Stamp == stamp && cached.LoadedAt > clock.Now.AddMinutes(-30)) return cached;
         var rows = await db.AiSearchChunks.IgnoreQueryFilters().AsNoTracking().Where(c => c.TenantId == tenant && c.Model == embedder.Model)
-            .OrderByDescending(c => c.IndexedAt).Take(MaxPerTenant).Select(c => new { c.Id, c.SourceKind, c.SourceId, c.ProjectId, c.Vector, c.Scale }).ToListAsync(ct);
-        var snapshot = new Snapshot(stamp, clock.Now, rows.Select(r => new Entry(r.Id, r.SourceKind, r.SourceId, r.ProjectId, (sbyte[])(Array)r.Vector, r.Scale)).ToArray());
+            .OrderByDescending(c => c.IndexedAt).Take(MaxPerTenant).Select(c => new { c.Id, c.SourceKind, c.SourceId, c.ProjectId, c.ConversationId, c.Vector, c.Scale }).ToListAsync(ct);
+        var snapshot = new Snapshot(stamp, clock.Now, rows.Select(r => new Entry(r.Id, r.SourceKind, r.SourceId, r.ProjectId, r.ConversationId, (sbyte[])(Array)r.Vector, r.Scale)).ToArray());
         if (Cache.Count > 500) foreach (var old in Cache.OrderBy(x => x.Value.LoadedAt).Take(100).Select(x => x.Key).ToList()) Cache.TryRemove(old, out _);
         Cache[tenant] = snapshot;
         return snapshot;

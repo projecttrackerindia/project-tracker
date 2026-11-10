@@ -27,6 +27,8 @@ const KIND_LABEL: Record<SearchKind, string> = { all: '', project: 'Project', ta
 const KIND_TONE: Record<SearchKind, string> = { all: '#8e8e93', project: '#f59e0b', task: '#0ea5e9', person: '#7c5cff', message: '#10b981', file: '#64748b', note: '#ec4899', action: '#ef4444' };
 
 interface AuraResult { key: string; kind: SearchKind; title: string; sub: string | null; link: string }
+/** What a result found by meaning is, in the words the person sees. */
+const MEANING_LABEL: Record<string, string> = { project: 'Project', document: 'Page', workitem: 'Work', chat: 'Chat message', minutes: 'Meeting notes', transcript: 'Meeting transcript', mail: 'Project mail' };
 
 /** Turns the global search and the chat search into one list (no deleted items: the server leaves them out; no private chats). */
 function mergeResults(hits: SearchHit[], messages: { messageId: string; conversationId: string; conversationName: string; senderName: string | null; snippet: string }[]): AuraResult[] {
@@ -87,6 +89,9 @@ export default function AuraSurface({ leaving }: { leaving: boolean }) {
   const listening = voice.state === 'listening';
 
   useEffect(() => { const t = window.setTimeout(() => setDebounced(q.trim()), 160); return () => window.clearTimeout(t); }, [q]);
+  // Meaning search sends the words to an embedding model, so it waits until typing has paused (the word search above does not).
+  const [settled, setSettled] = useState('');
+  useEffect(() => { const t = window.setTimeout(() => setSettled(q.trim()), 600); return () => window.clearTimeout(t); }, [q]);
   useEffect(() => { setMood('aura-search', listening ? 'listen' : answering ? 'think' : q ? 'listen' : null); return () => setMood('aura-search', null); }, [q, listening, answering, setMood]);
   useEffect(() => { const unlock = lockScroll('body'); window.setTimeout(() => input.current?.focus({ preventScroll: true }), 20); return unlock; }, []);
   // Closing puts the answer card away with the glow (the side panel, when that is what is open, stays).
@@ -110,8 +115,16 @@ export default function AuraSurface({ leaving }: { leaving: boolean }) {
   const enabled = debounced.length >= 2 && !listening;
   const hits = useWsQuery(['aura-search', debounced], () => insightApi.search(debounced), { enabled, staleTime: 30_000, retry: false });
   const msgs = useWsQuery(['aura-search-chat', debounced], () => chatApi.search(debounced).catch(() => []), { enabled, staleTime: 30_000, retry: false });
+  const meaning = useWsQuery(['aura-meaning', settled], () => insightApi.searchMeaning(settled).catch(() => ({ items: [], meaning: false })),
+    { enabled: ai && settled.length >= 4 && !listening, staleTime: 60_000, retry: false });
   const thinking = (enabled && (hits.isFetching || msgs.isFetching)) || answering;
   const all = useMemo(() => enabled ? mergeResults(hits.data?.hits ?? [], msgs.data ?? []) : [], [enabled, hits.data, msgs.data]);
+  // Related by meaning: what the word search did not already list (a page found only by what it says, a chat message, meeting notes, mail).
+  const related = useMemo(() => {
+    if (!enabled || kind !== 'all' || settled !== debounced) return [];
+    const known = new Set([...(hits.data?.hits ?? []).map((h) => h.id), ...(msgs.data ?? []).map((m) => m.messageId)]);
+    return (meaning.data?.items ?? []).filter((m) => m.via !== 'words' && !known.has(m.id)).slice(0, 5);
+  }, [enabled, kind, settled, debounced, hits.data, msgs.data, meaning.data]);
   const counts = useMemo(() => { const c: Partial<Record<SearchKind, number>> = {}; for (const r of all) c[r.kind] = (c[r.kind] ?? 0) + 1; return c; }, [all]);
   const results = (kind === 'all' ? all : all.filter((r) => r.kind === kind)).slice(0, kind === 'all' ? 8 : 30);
   const asks = useMemo(() => {
@@ -124,7 +137,7 @@ export default function AuraSurface({ leaving }: { leaving: boolean }) {
     ];
   }, [ai, debounced]);
   const suggestions = useMemo(() => ai ? suggestionsFor(dayPart(new Date(), { ...DEFAULT_DAY, zone: appZone() }), about).filter((x) => !x.action).slice(0, 3) : [], [ai, about]);
-  const total = results.length + asks.length;
+  const total = results.length + related.length + asks.length;
   useEffect(() => { setSel(0); }, [debounced, kind]);
   useEffect(() => { list.current?.querySelector('[data-sel="true"]')?.scrollIntoView({ block: 'nearest' }); }, [sel]);
   // Typing (or talking) again while an answer is up: the results or the words take the stage, the answer steps aside.
@@ -168,7 +181,13 @@ export default function AuraSurface({ leaving }: { leaving: boolean }) {
   const micUp = () => { const t = held.current; held.current = null; if (t && Date.now() - t > 450) voice.stop(true); };
 
   const go = (r: AuraResult) => { hide(); nav(r.link); };
-  const activate = (i: number) => { if (i < results.length) go(results[i]); else if (asks[i - results.length]) ask(asks[i - results.length].prompt); else if (ai && q.trim()) ask(q.trim()); };
+  const activate = (i: number) => {
+    const at = i - results.length - related.length;
+    if (i < results.length) go(results[i]);
+    else if (i < results.length + related.length) { hide(); nav(related[i - results.length].link); }
+    else if (asks[at]) ask(asks[at].prompt);
+    else if (ai && q.trim()) ask(q.trim());
+  };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(total - 1, s + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
@@ -225,11 +244,26 @@ export default function AuraSurface({ leaving }: { leaving: boolean }) {
                     </ul>
                   ) : <p className="aura-s-empty">{hits.isFetching || msgs.isFetching ? 'Searching…' : `Nothing matches "${debounced}"${kind !== 'all' ? ' in this filter' : ''}.`}</p>}
                 </section>
+                {related.length > 0 && (
+                  <section aria-label="Related by meaning">
+                    <h4>Related by meaning</h4>
+                    <ul className="aura-s-group">
+                      {related.map((r, j) => { const i = results.length + j; return (
+                        <li key={`m:${r.id}`}><button type="button" id={optId(i)} role="option" aria-selected={sel === i} data-sel={sel === i} className="aura-s-row" data-kind="related"
+                          onMouseMove={() => setSel(i)} onClick={() => { hide(); nav(r.link); }}>
+                          <span className="aura-s-mark" style={{ background: '#7c5cff' }} aria-hidden="true">{(MEANING_LABEL[r.kind] ?? 'R')[0]}</span>
+                          <span className="aura-s-t"><b>{r.title}</b><small>{MEANING_LABEL[r.kind] ?? 'Result'}</small><small className="aura-s-ex">{r.excerpt}</small></span>
+                        </button></li>
+                      ); })}
+                    </ul>
+                    <p className="aura-s-note">Suggested because the words are related, not because they match. Open one to check.</p>
+                  </section>
+                )}
                 {asks.length > 0 && (
                   <section>
                     <h4>Ask Aura</h4>
                     <ul className="aura-s-group">
-                      {asks.map((a, j) => { const i = results.length + j; return (
+                      {asks.map((a, j) => { const i = results.length + related.length + j; return (
                         <li key={a.label}><button type="button" id={optId(i)} role="option" aria-selected={sel === i} data-sel={sel === i} className="aura-s-row ask" onMouseMove={() => setSel(i)} onClick={() => ask(a.prompt)}>
                           <SiriOrb size={20} state="idle" /><span className="aura-s-t"><b>{a.label}</b></span>
                         </button></li>

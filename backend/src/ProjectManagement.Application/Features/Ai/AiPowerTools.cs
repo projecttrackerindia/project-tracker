@@ -5,6 +5,8 @@ using ProjectManagement.Application.Abstractions;
 using ProjectManagement.Application.Features.Attendance;
 using ProjectManagement.Application.Features.Documents;
 using ProjectManagement.Application.Features.Issues;
+using ProjectManagement.Application.Features.Load;
+using ProjectManagement.Application.Features.Projects;
 using ProjectManagement.Application.Features.ProjectMeetings;
 using ProjectManagement.Application.Features.Quality;
 using ProjectManagement.Application.Features.Reminders;
@@ -23,23 +25,25 @@ namespace ProjectManagement.Application.Features.Ai;
 /// billing, security settings, revealing secrets) are never proposed: <see cref="ManualOnly"/> answers with where to do them by hand.
 /// </summary>
 public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access, TimeService time,
-    AttendanceService attendance, IssueService issues, MeetingService meetings, QualityService quality, DocumentWorkflowService workflows, MeetConnectService connect)
+    AttendanceService attendance, IssueService issues, MeetingService meetings, QualityService quality, DocumentWorkflowService workflows, MeetConnectService connect, LoadService load, ProjectService projects)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
 
-    public const string ListMyTimeEntries = "list_my_time_entries", ListApprovals = "list_my_approvals", ManualOnly = "where_to_do_it";
+    public const string ListMyTimeEntries = "list_my_time_entries", ListApprovals = "list_my_approvals", ManualOnly = "where_to_do_it",
+        TeamLoad = "team_load", WhoHasRoom = "who_has_room", ProjectStagesRead = "project_stages";
     public const string AddComment = "propose_add_comment", ReportIssue = "propose_report_issue", UpdateIssue = "propose_update_issue",
         EditTimeEntry = "propose_edit_time_entry", CheckIn = "propose_check_in", CheckOut = "propose_check_out",
         RescheduleMeeting = "propose_reschedule_meeting", UpdateMeeting = "propose_update_meeting",
         CreateTestCase = "propose_create_test_case", RecordTestResult = "propose_record_test_result", DecideReview = "propose_decide_document_review",
-        CaptureActionItem = "propose_capture_action_item";
+        CaptureActionItem = "propose_capture_action_item",
+        ReassignByLoad = "propose_reassign_by_load", AdvanceStage = "propose_advance_stage", ReassignStage = "propose_reassign_stage";
 
-    public static readonly string[] ReadTools = [ListMyTimeEntries, ListApprovals, ManualOnly];
-    public static readonly string[] WriteTools = [AddComment, ReportIssue, UpdateIssue, EditTimeEntry, CheckIn, CheckOut, RescheduleMeeting, UpdateMeeting, CreateTestCase, RecordTestResult, DecideReview, CaptureActionItem];
+    public static readonly string[] ReadTools = [ListMyTimeEntries, ListApprovals, ManualOnly, TeamLoad, WhoHasRoom, ProjectStagesRead];
+    public static readonly string[] WriteTools = [AddComment, ReportIssue, UpdateIssue, EditTimeEntry, CheckIn, CheckOut, RescheduleMeeting, UpdateMeeting, CreateTestCase, RecordTestResult, DecideReview, CaptureActionItem, ReassignByLoad, AdvanceStage, ReassignStage];
 
     /// <summary>The proposal kinds carried out by <see cref="AiPowerActions"/>.</summary>
     public static readonly string[] Kinds = ["add_comment", "create_issue", "update_issue", "update_time_entry", "check_in", "check_out", "reschedule_meeting", "update_meeting",
-        "create_test_case", "record_test_result", "decide_document_review", "capture_action_item"];
+        "create_test_case", "record_test_result", "decide_document_review", "capture_action_item", "reassign_by_load", "advance_stage", "reassign_stage"];
 
     /// <summary>Things the assistant never does, with where the person does them by hand.</summary>
     public static readonly IReadOnlyDictionary<string, (string What, string Link)> Manual = new Dictionary<string, (string, string)>
@@ -64,6 +68,12 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
             """{"type":"object","properties":{},"required":[]}""");
         yield return new AiToolDef(ManualOnly, "Use when the person asks for something the assistant must never do itself: deleting or archiving projects, removing or suspending members, deleting many items at once, billing, security settings, or revealing a stored secret. It returns where they do it by hand; tell them, do not attempt it.",
             """{"type":"object","properties":{"topic":{"type":"string","enum":["delete_project","delete_user","bulk_delete","billing","security","vault_reveal"]}},"required":["topic"]}""");
+        yield return new AiToolDef(TeamLoad, "How loaded people, teams or projects are over the next two weeks (the Load page): each row's state (Free, Balanced, Busy, Over, Leave), percent of capacity, free minutes and a one-line reason. Use for \"who is overloaded\", \"who has room\", \"how busy is the team\". People only see what their role allows.",
+            """{"type":"object","properties":{"scope":{"type":"string","enum":["people","teams","projects"]},"from":{"type":"string","description":"yyyy-mm-dd"},"days":{"type":"integer","minimum":1,"maximum":28}},"required":[]}""");
+        yield return new AiToolDef(WhoHasRoom, "Who could take a piece of work: people ranked by free capacity between a start and a due day, for a size (S 1h, M 4h, L 8h, XL 24h) or a number of minutes, with the best fit marked. Use before proposing to assign or move work.",
+            """{"type":"object","properties":{"size":{"type":"string","enum":["S","M","L","XL"]},"minutes":{"type":"integer","minimum":1,"maximum":10000},"start":{"type":"string","description":"yyyy-mm-dd"},"due":{"type":"string","description":"yyyy-mm-dd"}},"required":[]}""");
+        yield return new AiToolDef(ProjectStagesRead, "A project's stages as its journey: order, dates, current stage, who or which team owns each, task progress, and the projected finish when known. Use for \"where is project X\", \"who owns testing\".",
+            """{"type":"object","properties":{"project":{"type":"string","maxLength":200}},"required":["project"]}""");
         if (!actionsAllowed) yield break;
         yield return new AiToolDef(AddComment, "Propose adding a comment as the person on a task (ATL-12) or operational work (WT-3). Keep their exact words when they gave them. The person confirms first.",
             """{"type":"object","properties":{"key":{"type":"string","maxLength":40},"body":{"type":"string","maxLength":2000}},"required":["key","body"]}""");
@@ -89,6 +99,12 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
             """{"type":"object","properties":{"meeting_id":{"type":"string","format":"uuid"},"line":{"type":"string","maxLength":300}},"required":["meeting_id","line"]}""");
         yield return new AiToolDef(DecideReview, "Propose approving a document review or requesting changes, where the person is the approver of the current step (a document id from list_my_approvals). A comment is required to request changes. The person confirms first.",
             """{"type":"object","properties":{"document_id":{"type":"string","format":"uuid"},"decision":{"type":"string","enum":["approve","request_changes"]},"comment":{"type":"string","maxLength":2000}},"required":["document_id","decision"]}""");
+        yield return new AiToolDef(ReassignByLoad, "Propose moving open work to a person who has room (look at who_has_room first): give the new owner and the keys of the tasks or work items to move (up to 20). The person confirms first; the card shows what moves and the owner's load.",
+            """{"type":"object","properties":{"to":{"type":"string","maxLength":200},"keys":{"type":"array","items":{"type":"string","maxLength":40},"minItems":1,"maxItems":20}},"required":["to","keys"]}""");
+        yield return new AiToolDef(AdvanceStage, "Propose moving a project forward to its next stage (the current stage completes, the next becomes current). Open tasks can be carried over. The person confirms first.",
+            """{"type":"object","properties":{"project":{"type":"string","maxLength":200},"carry_open_tasks":{"type":"boolean"}},"required":["project"]}""");
+        yield return new AiToolDef(ReassignStage, "Propose giving a project stage (by its name, like Testing) to another person or to a team. Open tasks of that stage can move with it. The person confirms first.",
+            """{"type":"object","properties":{"project":{"type":"string","maxLength":200},"stage":{"type":"string","maxLength":120},"owner":{"type":"string","maxLength":200,"description":"a person's name"},"team":{"type":"string","maxLength":120,"description":"a team's name"},"move_open_tasks":{"type":"boolean"}},"required":["project","stage"]}""");
     }
 
     // ------------------------------------------------------------------ running one
@@ -101,6 +117,9 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         ListMyTimeEntries => await TimeEntriesAsync(a, ct),
         ListApprovals => await ApprovalsAsync(ct),
         ManualOnly => ManualAnswer(a),
+        TeamLoad => await TeamLoadAsync(a, ct),
+        WhoHasRoom => await WhoHasRoomAsync(a, ct),
+        ProjectStagesRead => await StagesAsync(a, project, ct),
         AddComment => await ProposeCommentAsync(a, workItem, ct),
         ReportIssue => await ProposeIssueAsync(a, person, project, ct),
         UpdateIssue => await ProposeIssueChangeAsync(a, person, ct),
@@ -113,6 +132,9 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         RecordTestResult => await ProposeTestResultAsync(a, ct),
         DecideReview => await ProposeReviewDecisionAsync(a, ct),
         CaptureActionItem => await ProposeCaptureAsync(a, ct),
+        ReassignByLoad => await ProposeReassignByLoadAsync(a, person, workItem, ct),
+        AdvanceStage => await ProposeAdvanceStageAsync(a, project, ct),
+        ReassignStage => await ProposeReassignStageAsync(a, person, project, ct),
         _ => null,
     };
 
@@ -167,6 +189,102 @@ public class AiPowerTools(IAppDbContext db, ICurrentContext ctx, AppClock clock,
         // A plain sentence the person reads as the answer (VerifiedNoChange), so it is not replaced by a "nothing was done" clarification.
         return new AiToolOutcome($"The assistant never does this itself, not even with a confirmation card. {m.What} is done by hand at {m.Link}, with your own rights.",
             "Pointed to where to do it by hand", 0, VerifiedNoChange: true);
+    }
+
+
+    // ------------------------------------------------------------------ load and stages
+
+    private async Task<AiToolOutcome> TeamLoadAsync(JsonElement a, CancellationToken ct)
+    {
+        var dto = await load.GetAsync(Str(a, "scope"), Date(a, "from"), Int(a, "days"), ct);   // the person's own access decides what is in it
+        var rows = dto.Rows.Take(40).Select(r => new { kind = r.Kind, id = r.Id, name = r.Name, state = r.State, percent = r.Percent, free = Hours(r.FreeMinutes), reason = Cut(r.Reason, 140), people = r.People == 0 ? (int?)null : r.People, freePeople = r.People == 0 ? (int?)null : r.FreePeople, you = r.IsMe ? true : (bool?)null }).ToList();
+        return new AiToolOutcome(Ser(new { from = dto.From, days = dto.Days, scope = dto.Scope, rows, seesOthers = dto.SeesOthers, note = "Load = assigned work spread to its due date, plus meetings, minus leave. " + Untrusted }),
+            rows.Count == 0 ? "No load data" : "Read the load", rows.Count);
+    }
+
+    private async Task<AiToolOutcome> WhoHasRoomAsync(JsonElement a, CancellationToken ct)
+    {
+        var size = Str(a, "size");
+        if (size is not null && LoadMath.SizeHours(size) is null) throw new AiToolException("Size is S, M, L or XL.");
+        var fit = await load.FitAsync(Date(a, "start"), Date(a, "due"), Int(a, "minutes"), size, null, ct);
+        var people = fit.People.Take(12).Select(p => new { id = p.UserId, name = p.Name, state = p.State, fits = p.Fits, bestFit = p.BestFit, free = Hours(p.FreeMinutes), reason = Cut(p.Reason, 140) }).ToList();
+        var teams = fit.Teams.Take(6).Select(t => new { id = t.TeamId, name = t.Name, people = t.People, free = Hours(t.Free), bestPersonId = t.BestUserId }).ToList();
+        return new AiToolOutcome(Ser(new { need = Hours(fit.Minutes), people, teams, note = Untrusted }), people.Count == 0 ? "Nobody listed" : "Checked who has room", people.Count);
+    }
+
+    private async Task<AiToolOutcome> StagesAsync(JsonElement a, Func<string, CancellationToken, Task<(Guid Id, string Key, string Name)>> project, CancellationToken ct)
+    {
+        var p = await project(Str(a, "project") ?? throw new AiToolException("Which project?"), ct);
+        if (p.Id == Guid.Empty) throw new AiToolException("That project does not exist yet.");
+        var detail = await projects.GetAsync(p.Id, ct);
+        var current = detail.Stages.Where(s => s.EffectiveStatus is StageStatus.InProgress or StageStatus.Delayed).Select(s => s.Name).FirstOrDefault();
+        var stages = detail.Stages.OrderBy(s => s.Order).Select(s => new
+        {
+            id = s.Id, name = s.Name, order = s.Order, status = s.EffectiveStatus.ToString(), start = s.PlannedStart, end = s.PlannedEnd,
+            owner = s.OwnerTeamName ?? s.Owner?.Name ?? s.Assignee?.Name, ownerIsTeam = s.OwnerTeamId is not null ? true : (bool?)null, tasks = s.TaskTotal == 0 ? null : $"{s.TaskDone}/{s.TaskTotal} done",
+            openIssues = s.OpenIssues == 0 ? (int?)null : s.OpenIssues,
+        }).ToList();
+        return new AiToolOutcome(Ser(new { project = p.Key, name = p.Name, current, stages, forecast = detail.Forecast, note = Untrusted }), $"Read the stages of {p.Key}", stages.Count);
+    }
+
+    private async Task<AiToolOutcome> ProposeReassignByLoadAsync(JsonElement a, Func<string, CancellationToken, Task<(Guid Id, string Name)>> person,
+        Func<string, CancellationToken, Task<(string Kind, Guid Id, string Key, string Title)>> workItem, CancellationToken ct)
+    {
+        await RequireLevelAsync(Modules.Tasks, AccessLevel.Edit, "reassign work", ct);
+        var to = await person(Str(a, "to") ?? throw new AiToolException("Who should take it? Use who_has_room to pick."), ct);
+        if (!a.TryGetProperty("keys", out var keysEl) || keysEl.ValueKind != JsonValueKind.Array || keysEl.GetArrayLength() == 0) throw new AiToolException("Which work items? Give their keys, like ATL-12.");
+        if (keysEl.GetArrayLength() > 20) throw new AiToolException("Move at most 20 items at a time.");
+        var items = new List<LoadMoveItem>(); var names = new List<string>();
+        foreach (var k in keysEl.EnumerateArray())
+        {
+            var item = await workItem(k.GetString() ?? "", ct);
+            if (item.Kind is not ("Task" or "Operational")) throw new AiToolException($"{item.Key} cannot be moved this way. Only tasks and operational work can.");
+            items.Add(new LoadMoveItem(item.Kind, item.Id)); names.Add(item.Key);
+        }
+        var preview = await load.ReassignAsync(new LoadReassignRequest(to.Id, items, null, null, true), ct);   // a dry run: checks access and what would move, changes nothing
+        var moved = preview.Items.Select(i => i.Title).Take(5).ToList();
+        return AiToolbox.Propose("reassign_by_load", $"Give {names.Count} item{(names.Count == 1 ? "" : "s")} to {to.Name}", $"{string.Join(", ", names.Take(6))}{(names.Count > 6 ? "…" : "")} · {to.Name} has room",
+            new { toUserId = to.Id, toName = to.Name, items = items.Select(i => new { kind = i.Kind, id = i.Id }) }, string.Join("; ", moved));
+    }
+
+    private async Task<AiToolOutcome> ProposeAdvanceStageAsync(JsonElement a, Func<string, CancellationToken, Task<(Guid Id, string Key, string Name)>> project, CancellationToken ct)
+    {
+        await RequireLevelAsync(Modules.Projects, AccessLevel.Edit, "move a project to its next stage", ct);
+        var p = await project(Str(a, "project") ?? throw new AiToolException("Which project?"), ct);
+        if (p.Id == Guid.Empty) throw new AiToolException("That project does not exist yet.");
+        var detail = await projects.GetAsync(p.Id, ct);
+        var ordered = detail.Stages.OrderBy(s => s.Order).ToList();
+        var cur = ordered.FirstOrDefault(s => s.EffectiveStatus is StageStatus.InProgress or StageStatus.Delayed) ?? throw new AiToolException($"{p.Key} has no current stage to complete.");
+        var next = ordered.FirstOrDefault(s => s.Order > cur.Order && s.EffectiveStatus != StageStatus.Completed);
+        var carry = a.TryGetProperty("carry_open_tasks", out var c) && c.ValueKind == JsonValueKind.True;
+        return AiToolbox.Propose("advance_stage", $"Move {p.Key} on to {next?.Name ?? "done"}", $"{cur.Name} completes{(next is null ? "" : $" · {next.Name} becomes current")}{(carry ? " · open tasks move along" : "")}",
+            new { projectId = p.Id, projectKey = p.Key, carryOpenTasks = carry, version = detail.Project.Version }, null);
+    }
+
+    private async Task<AiToolOutcome> ProposeReassignStageAsync(JsonElement a, Func<string, CancellationToken, Task<(Guid Id, string Name)>> person,
+        Func<string, CancellationToken, Task<(Guid Id, string Key, string Name)>> project, CancellationToken ct)
+    {
+        await RequireLevelAsync(Modules.Projects, AccessLevel.Edit, "change who owns a stage", ct);
+        var p = await project(Str(a, "project") ?? throw new AiToolException("Which project?"), ct);
+        if (p.Id == Guid.Empty) throw new AiToolException("That project does not exist yet.");
+        var stageName = Str(a, "stage") ?? throw new AiToolException("Which stage?");
+        var detail = await projects.GetAsync(p.Id, ct);
+        var stage = detail.Stages.FirstOrDefault(s => s.Name.Equals(stageName, StringComparison.OrdinalIgnoreCase)) ?? detail.Stages.FirstOrDefault(s => s.Name.Contains(stageName, StringComparison.OrdinalIgnoreCase))
+            ?? throw new AiToolException($"{p.Key} has no stage called {stageName}. Its stages: {string.Join(", ", detail.Stages.OrderBy(s => s.Order).Select(s => s.Name))}.");
+        var ownerText = Str(a, "owner"); var teamText = Str(a, "team");
+        if ((ownerText is null) == (teamText is null)) throw new AiToolException("Give either a person or a team to own the stage.");
+        Guid? ownerId = null, teamId = null; string who;
+        if (ownerText is not null) { var o = await person(ownerText, ct); ownerId = o.Id; who = o.Name; }
+        else
+        {
+            var matches = await db.Teams.AsNoTracking().Where(t => t.Name.ToLower().Contains(teamText!.ToLower())).Select(t => new { t.Id, t.Name }).Take(3).ToListAsync(ct);
+            var exact = matches.FirstOrDefault(t => t.Name.Equals(teamText, StringComparison.OrdinalIgnoreCase));
+            var team = exact ?? (matches.Count == 1 ? matches[0] : null) ?? throw new AiToolException(matches.Count == 0 ? $"There is no team called {teamText}." : $"More than one team matches {teamText}: {string.Join(", ", matches.Select(m => m.Name))}. Ask which.");
+            teamId = team.Id; who = team.Name;
+        }
+        var move = a.TryGetProperty("move_open_tasks", out var m) && m.ValueKind == JsonValueKind.True;
+        return AiToolbox.Propose("reassign_stage", $"Give {stage.Name} of {p.Key} to {who}", $"{(move ? "Open tasks of the stage move with it" : "Open tasks stay where they are")}",
+            new { projectId = p.Id, projectKey = p.Key, stageId = stage.Id, stageName = stage.Name, ownerId, teamId, who, moveOpenTasks = move }, null);
     }
 
     // ------------------------------------------------------------------ proposals

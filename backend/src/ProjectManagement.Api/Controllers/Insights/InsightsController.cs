@@ -35,6 +35,18 @@ public class InsightsController(DashboardService dashboard, CalendarService cale
     public async Task<IActionResult> Search([FromQuery] string q, CancellationToken ct) => Ok(await search.SearchAsync(q ?? "", ct));
 
     /// <summary>
+    /// The ask bar (Ctrl K) beside the plain search: pages, work, chat messages, meeting notes and project mail found by words and by meaning,
+    /// each with a short excerpt and a link. Only what the caller may open now; empty when the assistant is off for the workspace.
+    /// </summary>
+    [HttpGet("search/meaning"), Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("search")]
+    public async Task<IActionResult> SearchByMeaning([FromQuery] string q, [FromServices] ProjectManagement.Application.Features.Ai.AiAssistant assistant,
+        [FromServices] ProjectManagement.Application.Features.Ai.AiKnowledgeService knowledge, CancellationToken ct)
+    {
+        if (!(await assistant.StatusAsync(ct)).AllowedHere) return Ok(new ProjectManagement.Application.Features.Ai.AiMeaningSearchDto([], false));
+        return Ok(await knowledge.FindAsync(q ?? "", ct));
+    }
+
+    /// <summary>
     /// Without entityType: the workspace's activity feed (needs the Activity module). With entityType (task, project, actionitem, reminder, note,
     /// approval) and entityId: that item's field-level history, newest first, for anyone who may see the item
     /// (<see cref="ProjectManagement.Application.Features.WorkHistory.WorkActivityService"/>).

@@ -121,6 +121,8 @@ export const insightApi = {
   /** Today's "Team & portfolio signals": projects at risk, the team's overdue work, docs out of date, Desk SLA breaches (each with one action). */
   todaySignals: () => get<import('./types').TodaySignals>('/today/signals'),
   search: (q: string) => get<{ hits: SearchHit[] }>('/search', { q }),
+  /** Pages, work, chat messages, meeting notes and project mail found by words and by meaning, with excerpts and links (the ask bar). */
+  searchMeaning: (q: string) => get<import('./types').MeaningSearch>('/search/meaning', { q }),
   activity: (page = 1) => get<Paged<Activity>>('/activity', { page, pageSize: 25 }),
   audit: (action: string | undefined, page = 1) => get<Paged<AuditLog>>('/audit-logs', { action, page, pageSize: 25 }),
   report: (days: number, teamId?: string | null) => get<ReportSummary>('/reports/summary', { days, teamId: teamId ?? undefined }),

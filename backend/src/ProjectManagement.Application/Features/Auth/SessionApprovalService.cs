@@ -299,14 +299,26 @@ public class SessionApprovalGate(IAppDbContext db, ICurrentContext ctx, AppClock
     }
 
     /// <summary>Ends every other session of the person (not saved yet): they signed in on <paramref name="device"/>. Returns the ended sessions.</summary>
+    /// <summary>How many devices may be signed in at once (Auth:MaxActiveDevices, 1 to 5; two by default, so a phone and a computer both work).</summary>
+    public int MaxDevices => Math.Clamp(int.TryParse(config["Auth:MaxActiveDevices"], out var n) ? n : 2, 1, 5);
+
+    /// <summary>
+    /// After a new device was allowed in: the other devices stay signed in up to the limit (the most recently used ones), and any beyond it are
+    /// signed out, each told why. One browser signed in again from the same network counts as one device, so its older sessions are tidied away
+    /// without costing another device its place.
+    /// </summary>
     public async Task<List<Guid>> EndOtherSessionsAsync(Guid userId, Guid keepSessionId, string device, CancellationToken ct = default)
     {
         var now = clock.Now;
-        var reason = Text.Truncate($"Signed out because you signed in on {device}.", 200);
+        var reason = Text.Truncate($"Signed out because you signed in on {device}. Only {MaxDevices} device{(MaxDevices == 1 ? "" : "s")} can be signed in at once.", 200);
         var others = await db.UserSessions.Where(s => s.UserId == userId && s.RevokedAt == null && s.Id != keepSessionId).ToListAsync(ct);
-        foreach (var s in others) { s.RevokedAt = now; s.EndedReason = reason; }
-        if (others.Count > 0) recorder.Audit("session.replaced", "User", userId, newValue: new { Device = device, Ended = others.Count }, userId: userId);
-        return others.Select(s => s.Id).ToList();
+        DateTime Used(UserSession x) => x.LastActivityAt ?? x.LastSeenAt;
+        var keep = others.GroupBy(s => (s.UserAgent ?? "", s.IpAddress ?? "")).Select(g => g.OrderByDescending(Used).First())
+            .OrderByDescending(Used).Take(Math.Max(0, MaxDevices - 1)).Select(s => s.Id).ToHashSet();
+        var ending = others.Where(s => !keep.Contains(s.Id)).ToList();
+        foreach (var s in ending) { s.RevokedAt = now; s.EndedReason = reason; }
+        if (ending.Count > 0) recorder.Audit("session.replaced", "User", userId, newValue: new { Device = device, Ended = ending.Count, Limit = MaxDevices }, userId: userId);
+        return ending.Select(s => s.Id).ToList();
     }
 
     public async Task AnnounceSignedOutAsync(Guid userId, IReadOnlyCollection<Guid> sessionIds, string device, CancellationToken ct = default)

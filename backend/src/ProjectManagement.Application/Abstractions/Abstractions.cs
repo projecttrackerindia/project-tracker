@@ -225,6 +225,7 @@ public interface IAppDbContext
     DbSet<AiSchedule> AiSchedules { get; }
     DbSet<AiMessage> AiMessages { get; }
     DbSet<AiWatch> AiWatches { get; }
+    DbSet<AiMemory> AiMemories { get; }
     DbSet<AiAgentAction> AiAgentActions { get; }
     DbSet<TestCase> TestCases { get; }
     DbSet<TestRun> TestRuns { get; }

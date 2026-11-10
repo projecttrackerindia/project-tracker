@@ -303,13 +303,13 @@ function ApprovalSheet({ item, left, onDone }: { item: ApprovalPrompt; left: num
 
 // ------------------------------------------------------------------ settings
 
-/** Settings › Security › "Single active session": my own switch, and the organizations that already require it. */
+/** Settings › Security › "Two devices at a time": my own switch, and the organizations that already require it. */
 export function SingleSessionRow() {
   const q = useQuery({ queryKey: ['session-policy'], queryFn: sessionApprovalApi.policy });
   const [busy, setBusy] = useState(false);
   const set = async (v: boolean) => {
     setBusy(true);
-    try { queryClient.setQueryData(['session-policy'], await sessionApprovalApi.setPolicy(v)); toast(v ? 'New devices now need your approval.' : 'Single active session is off.'); }
+    try { queryClient.setQueryData(['session-policy'], await sessionApprovalApi.setPolicy(v)); toast(v ? 'New devices now need your approval, and two devices can be signed in at once.' : 'The two-device limit is off.'); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save.', 'error'); }
     finally { setBusy(false); }
   };
@@ -318,11 +318,11 @@ export function SingleSessionRow() {
   return (
     <div className="setting-row" data-setting="account.single-session">
       <div className="setting-info">
-        <h4>Single active session</h4>
-        <p>Signing in on a new device must be allowed from the device you are already signed in on, which is then signed out.
+        <h4>Two devices at a time</h4>
+        <p>Stay signed in on two devices, like your phone and your computer. A new device must be allowed from one you are already signed in on, and a third signs out the one you used longest ago.
           {requiredBy.length > 0 && <> <b>Required by {requiredBy.join(', ')}.</b></>}</p>
       </div>
-      <SSwitch label="Single active session" on={!!p?.singleSession || requiredBy.length > 0} locked={requiredBy.length > 0} disabled={busy || !p} onChange={(v) => void set(v)} />
+      <SSwitch label="Two devices at a time" on={!!p?.singleSession || requiredBy.length > 0} locked={requiredBy.length > 0} disabled={busy || !p} onChange={(v) => void set(v)} />
     </div>
   );
 }
@@ -354,7 +354,7 @@ export function ApprovalHistory() {
   );
 }
 
-/** Workspace settings › Sign-in rules: the organization requires "Single active session" of every member. */
+/** Workspace settings › Sign-in rules: the organization requires "Two devices at a time" of every member. */
 export function WorkspaceSessionPolicyRow() {
   const q = useQuery({ queryKey: ['workspace-session-policy'], queryFn: sessionApprovalApi.workspacePolicy });
   const [busy, setBusy] = useState(false);
@@ -363,7 +363,7 @@ export function WorkspaceSessionPolicyRow() {
     try {
       queryClient.setQueryData(['workspace-session-policy'], await sessionApprovalApi.setWorkspacePolicy(v));
       void queryClient.invalidateQueries({ queryKey: ['session-policy'] });
-      toast(v ? 'Members must now approve new devices from the one they are signed in on.' : 'Single active session is no longer required.');
+      toast(v ? 'Members can now be signed in on two devices, and a new device must be approved from one of them.' : 'The two-device rule is no longer required.');
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save.', 'error'); }
     finally { setBusy(false); }
   };
@@ -371,10 +371,10 @@ export function WorkspaceSessionPolicyRow() {
   return (
     <div className="setting-row sa-ws-row" data-setting="security.single-session">
       <div className="setting-info">
-        <h4>Single active session</h4>
-        <p>Each member can be signed in on one device at a time. A new device waits until the member allows it from the device already signed in.</p>
+        <h4>Two devices at a time</h4>
+        <p>Each member can be signed in on two devices at once, such as a phone and a computer. A new device waits until the member allows it from a device already signed in; a third signs out the one used longest ago.</p>
       </div>
-      <SSwitch label="Require single active session" on={q.data.singleActiveSession} disabled={busy || !q.data.canManage} onChange={(v) => void set(v)} />
+      <SSwitch label="Require two devices at a time" on={q.data.singleActiveSession} disabled={busy || !q.data.canManage} onChange={(v) => void set(v)} />
     </div>
   );
 }

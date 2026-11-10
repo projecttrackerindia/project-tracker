@@ -15,7 +15,7 @@ namespace ProjectManagement.Api.Controllers.Workspaces;
 [Route("api/v1/ai"), RequireWorkspace]
 public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysis analysis, AiPortfolio portfolio, AiFileService files, AiUsageService usage,
     ProjectManagement.Application.Features.Reminders.PortfolioDigestService digest, ProjectManagement.Application.Abstractions.ICurrentContext current, ProjectManagement.Application.Services.AppClock clock,
-    ILogger<AiWorkspaceController> log, AiWatchService watches, AiVoiceInput voice) : ApiControllerBase
+    ILogger<AiWorkspaceController> log, AiWatchService watches, AiVoiceInput voice, AiMemoryService memories) : ApiControllerBase
 {
     private static readonly JsonSerializerOptions StreamJson = Make();
     private static JsonSerializerOptions Make() { var o = new JsonSerializerOptions(); Json.Configure(o); return o; }
@@ -190,6 +190,26 @@ public class AiWorkspaceController(AiAgent agent, AiGuidance guidance, AiAnalysi
 
     [HttpPost("messages/{id:guid}/feedback")]
     public async Task<IActionResult> Feedback(Guid id, [FromBody] AiFeedbackRequest req, CancellationToken ct) { await guidance.FeedbackAsync(id, req.Rating, req.Reason, ct); return NoContent(); }
+
+    // ---- what Aura remembers (each person sees their own, their teams' and the workspace's; nothing else)
+
+    [HttpGet("memories")]
+    public async Task<IActionResult> Memories(CancellationToken ct) => Ok(await memories.ListAsync(ct));
+
+    [HttpDelete("memories/{id:guid}")]
+    public async Task<IActionResult> ForgetMemory(Guid id, CancellationToken ct) { await memories.ForgetAsync(id, ct); return NoContent(); }
+
+    /// <summary>"Forget everything": the caller's own memories (scope=person, the default), or an admin's workspace-wide ones (scope=workspace).</summary>
+    [HttpDelete("memories")]
+    public async Task<IActionResult> ForgetAllMemories([FromQuery] string? scope, CancellationToken ct)
+    {
+        var which = string.Equals(scope, "workspace", StringComparison.OrdinalIgnoreCase) ? ProjectManagement.Domain.Entities.AiMemoryScope.Workspace : ProjectManagement.Domain.Entities.AiMemoryScope.Person;
+        return Ok(new { forgotten = await memories.ForgetAllAsync(which, ct) });
+    }
+
+    /// <summary>Owners and admins: Aura's memory on or off, and workspace-wide memories on or off.</summary>
+    [HttpPut("memories/settings")]
+    public async Task<IActionResult> MemorySettings([FromBody] SetAiMemorySettingsRequest req, CancellationToken ct) => Ok(await memories.SetSettingsAsync(req, ct));
 
     // ---- "tell me when…" watches (the caller's own)
 
