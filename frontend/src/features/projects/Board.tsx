@@ -4,7 +4,7 @@ import type { Paged, Priority, Stage, Task, WorkflowStatus } from '../../api/typ
 import { Icon } from '../../components/Icon';
 import { Avatar, EmptyState, LabelChip, PageLoader, PriorityBadge, ErrorState, PriorityOptions } from '../../components/ui';
 import { } from '../../lib/format';
-import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
+import { useWsQuery } from '../../lib/hooks';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { DueMeta, TaskTable } from '../tasks/parts';
@@ -81,16 +81,18 @@ export function Board({ projectId, statuses, stages, archived, canCreate, onOpen
     } else position = (col.at(-1)?.position ?? 0) + 1024;
     if (task.statusId === statusId && task.position === position) return;
 
-    // optimistic update, roll back on failure
+    // The card moves at once. A read that is already on its way still carries the OLD column and would drop the card back, so those are
+    // cancelled first; the server's own answer then replaces the card (no second read of the whole workspace, no flicker), and a refusal puts it back.
+    await queryClient.cancelQueries({ queryKey: cacheKey });
     const previous = queryClient.getQueryData<Paged<Task>>(cacheKey);
     const target = statuses.find((s) => s.id === statusId)!;
     queryClient.setQueryData<Paged<Task>>(cacheKey, (old) => old && ({
       ...old, items: old.items.map((t) => t.id === task.id ? { ...t, statusId, statusName: target.name, statusCategory: target.category, statusColor: target.color, position } : t),
     }));
     try {
-      await taskApi.move(task.id, { statusId, position });
+      const saved = await taskApi.move(task.id, { statusId, position });
+      queryClient.setQueryData<Paged<Task>>(cacheKey, (old) => old && ({ ...old, items: old.items.map((t) => (t.id === saved.id ? { ...t, ...saved } : t)) }));
       if (task.statusId !== statusId) toast(`Moved to “${target.name}”.`);
-      invalidateWorkspace(wid);
     } catch (e) {
       queryClient.setQueryData(cacheKey, previous);
       reportTaskError(e, 'Could not move the task.');

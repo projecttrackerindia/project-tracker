@@ -119,9 +119,9 @@
 .wkp-tile.late .wkp-tile-v { color: var(--ds-danger); }
 .wkp-tile.done .wkp-tile-v { color: var(--ds-success); }
 .wkp-tile.active .wkp-tile-v { color: var(--ds-accent-text); }
-.wkp-tile select, .wkp-tile input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; font-size: 16px; }
+.wkp-tile select, .wkp-tile input, .wkp-tile .ss-trigger { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; background: transparent; box-shadow: none; font-size: 16px; }
 .wkp-tile input[type='date']::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
-.wkp-tile.ro select, .wkp-tile.ro input { pointer-events: none; }
+.wkp-tile.ro select, .wkp-tile.ro input, .wkp-tile.ro .ss-trigger { pointer-events: none; }
 
 .wkp-due-ask { display: grid; gap: 8px; padding: 14px; border-radius: 14px; background: var(--ds-surface-2); box-shadow: 0 0 0 1px var(--ds-line); font-size: 13.5px; color: var(--ds-text-2); }
 .wkp-due-ask input { height: 38px; padding: 0 12px; border-radius: var(--ds-r-input); border: 0; background: var(--ds-fill); color: var(--ds-text); font: inherit; font-size: 14px; outline: 0; }
