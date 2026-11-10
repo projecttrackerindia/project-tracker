@@ -9,8 +9,13 @@
 export type IdlePhase = 'active' | 'warning' | 'locked';
 
 export const WARN_BEFORE_MS = 2 * 60_000;
-/** The server hears about real use at most this often (POST /auth/activity). */
+/**
+ * The server hears about real use at most once a minute, and no more often than a quarter of the workspace's time (at most every five
+ * minutes): enough for its own check to see the person is there long before the time runs out, without a request for every click.
+ * The first one waits that long after the page opened (signing in or loading the page already told the server).
+ */
 export const PING_EVERY_MS = 60_000;
+export const pingEvery = (timeoutMs: number) => Math.min(5 * 60_000, Math.max(PING_EVERY_MS, Math.floor(timeoutMs / 4)));
 const SHARE_EVERY_MS = 5_000;
 const LAST_KEY = 'pt-idle-last';
 const EVENT_KEY = 'pt-idle-event';
@@ -53,7 +58,7 @@ export function createIdleLock(o: IdleLockOptions): IdleLock {
   let timeoutMs = o.timeoutMs;
   let last = now();
   let phase: IdlePhase = 'active';
-  let lastPing = 0;
+  let lastPing = now();
   let lastShared = 0;
   let reported = '';
 
@@ -92,7 +97,7 @@ export function createIdleLock(o: IdleLockOptions): IdleLock {
     if (timeoutMs > 0 && t - Math.max(last, readLast()) >= timeoutMs) { check(); return; }
     last = t;
     if (t - lastShared >= SHARE_EVERY_MS) { lastShared = t; share(t); }
-    if (t - lastPing >= PING_EVERY_MS) { lastPing = t; o.onPing(); }
+    if (timeoutMs > 0 && t - lastPing >= pingEvery(timeoutMs)) { lastPing = t; o.onPing(); }
     if (phase === 'warning') report('active', timeoutMs);
   };
 
@@ -121,7 +126,7 @@ export function createIdleLock(o: IdleLockOptions): IdleLock {
 
   return {
     phase: () => phase,
-    touch: () => { lastPing = 0; touch(); },
+    touch: () => { lastPing = -Infinity; touch(); },
     lockNow: (shout = true) => { if (phase === 'locked') return; report('locked', 0); if (shout) tell({ t: 'lock' }); },
     unlocked: () => { const t = now(); last = t; lastPing = t; reported = ''; phase = 'active'; share(t); tell({ t: 'unlock', at: t }); check(); },
     signedOut: () => tell({ t: 'signout' }),
