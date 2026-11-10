@@ -1025,7 +1025,7 @@ const DayCol = memo(function DayCol({ col, nowTop, nowLabel, openKey, sel, drag,
         const why = timeWhy(t);
         const it: DragItem = { kind: 'time', key, day: d, start: sp.start, end: Math.max(sp.end, sp.start + .25), resizable: true, label: t.title, cls: 'lg' };
         return (
-          <button key={t.id} type="button" className={`wp-e lg${narrowOf(pk) && !pos.lifted ? ' narrow' : ''}${ov.length ? ' ovl' : ''}${t.running ? ' run' : ''}${t.approximated ? ' ap' : ''}${openKey === key ? ' open' : ''}${why ? '' : ' movable'}${pos.lifted ? ' lift' : ''}`}
+          <button key={t.id} type="button" className={`wp-e lg${t.itemType === 'work' ? ' lt-work' : ''}${narrowOf(pk) && !pos.lifted ? ' narrow' : ''}${ov.length ? ' ovl' : ''}${t.running ? ' run' : ''}${t.approximated ? ' ap' : ''}${openKey === key ? ' open' : ''}${why ? '' : ' movable'}${pos.lifted ? ' lift' : ''}`}
             aria-label={`Logged ${fmtMins(t.minutes ?? 0)} · ${t.title}${t.approximated ? ' (approximate time)' : ''}${ov.length ? ` · ${overlapText(ov[0])}` : ''}`} data-block={key} data-day={d} data-start={sp.start} data-type="time" data-id={t.id}
             data-overlaps={ov.length || undefined} aria-expanded={openKey === key} style={{ top: top(pos.start), height: Math.max(16, (pos.end - pos.start) * HR - 2), ...(pos.lifted ? {} : packStyle(pk)) }}
             title={`${t.approximated ? '≈ Typed in as minutes, placed on the day' : 'Logged'} · ${t.title} · ${hm(sp.start)}–${hm(sp.end)}${ov.length ? ` · ${overlapText(ov[0])}` : ''}${why ? ` · ${why}` : ' · drag to move, drag an edge to resize'}`}
