@@ -110,7 +110,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         Include(@"\b(task|overdue|status|progress|blockers|project)\b", FindWork, ProjectReport);
         Include(@"\b(portfolio|risk|forecast|completion)\b", PortfolioBrief, PortfolioScenario);
         Include(@"\b(workload|team|people|overloaded|assignee)\b", TeamWorkload, ListPeople, WorkloadBalance, SuggestAssignee);
-        Include(@"\b(load|capacity|room|free|busy|bandwidth|overbooked|who can take)\b", AiPowerTools.TeamLoad, AiPowerTools.WhoHasRoom, ListPeople);
+        Include(@"\b(load|capacity|room|free|busy|bandwidth|overbooked|who can take)\b", AiPowerTools.TeamLoad, AiPowerTools.WhoHasRoom, ListPeople, TeamWorkload, WorkloadBalance, SuggestAssignee);
         Include(@"\b(stage|stages|journey|phase|phases|current stage|next stage)\b", AiPowerTools.ProjectStagesRead);
         Include(@"\b(history|historical|pace|accuracy)\b", HistoryInsights);
         Include(@"\b(meeting|calendar|scrum|standup|stand-up)\b", ListMeetings);
