@@ -43,7 +43,7 @@ public sealed class AiToolException(string message) : Exception(message);
 public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, PermissionService permissions, ProjectAccess access,
     WorkItemService workItems, ProjectStatusService status, WorkloadService workload, ProjectGroupService groups, AiAnalysis analysis, AiPortfolio portfolio, ActionItemService actionItems, TaskService tasks, WorkTaskService workTasks, ProjectService projects, DocumentService documents, ReminderService reminders,
     ProjectManagement.Application.Features.ProjectMeetings.MeetingService meetings, ILogger<AiToolbox> log, AiKnowledgeService knowledge, ProjectManagement.Application.Features.Time.PlannedLeaveService leave,
-    AiHomeTools home, AiWorkdayTools workday, AiPowerTools power, Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Features.Calls.CallsOptions> callsOptions)
+    AiHomeTools home, AiWorkdayTools workday, AiPowerTools power, AiMemoryTools memory, Microsoft.Extensions.Options.IOptions<ProjectManagement.Application.Features.Calls.CallsOptions> callsOptions)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
     private const int ListCap = 40;
@@ -62,7 +62,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
 
     public const string ScheduleProject = "propose_schedule_project";
     public static readonly string[] WriteTools = [Watch, StopWatch, DeleteWork, PlanLeave, LogTime, SendMessage, ReviseReminder, UpdateReminder, CreateTask, CreateWork, CreateActionItem, CreateReminder, SendReport, CreateProject, InviteMember, UpdateWork, UpdateProject, UpdateStagePlan, ScheduleProject, CreateDocument, StartMeeting, StartCall, ScheduleMeeting,
-        .. AiHomeTools.WriteTools, .. AiWorkdayTools.WriteTools, .. AiPowerTools.WriteTools];
+        .. AiHomeTools.WriteTools, .. AiWorkdayTools.WriteTools, .. AiPowerTools.WriteTools, .. AiMemoryTools.WriteTools];
 
     /// <summary>
     /// Proposal kinds (<see cref="AiProposal.Kind"/>) that run the instant they are proposed, with no card to click: ordinary, reversible
@@ -90,6 +90,9 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
             && System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(time|hours?|minutes?|timesheet|calendar)\b")
             && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(create|assign|invite|email|mail|send|message|leave|delete|update|meeting|call|report|project|portfolio)\b"))
             return all.Where(t => new[] { LogTime, FindWork, ListPeople, AiWorkdayTools.MyTime, AiPowerTools.ListMyTimeEntries, AiPowerTools.ManualOnly }.Contains(t.Name)).ToList();
+        // "Remember that…", "what do you remember about me", "forget that": only the memory tools.
+        if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"^(?:(?:please|pls|aura|hey)[,\s]+)*(?:remember|forget)\b|\bwhat\b.{0,30}\b(?:remember|memor(?:y|ies))\b.{0,25}\b(?:about|of)\s+(?:me|us|my|our)\b|\b(?:your|aura'?s?|my) memor(?:y|ies)\b|\bforget (?:that|this|everything|it|what)\b") && !System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(and|then|also)\b"))
+            return all.Where(t => t.Name is AiMemoryTools.List or AiMemoryTools.Remember or AiMemoryTools.Forget).ToList();
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(leave|timesheet|absence|time off|log|logged|spent|hours)\b")) return all;
         // Running the day from Home: what needs the person, chat catch-up and threads, pages, portfolio options, the vault.
         if (System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(needs? (me|you)|waiting (on|for) me|my inbox|catch (me )?up|unread|thread|reply|replied|what did .{1,40} say|what was (said|agreed)|agreed|snooze|mark .{0,30}\bdone|submit (my|the|this|last) week|approve|dismiss|send (it |them )?back|proposals?|portfolio decision|decision option|section|comment on|vault|password|credential|api key|rotate|rotation)\b")) return all;
@@ -192,6 +195,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         tools.AddRange(home.Definitions(false));
         tools.AddRange(workday.Definitions(false));
         tools.AddRange(power.Definitions(false));
+        tools.AddRange(memory.Definitions(false));
         if (!actionsAllowed) return tools;
         tools.AddRange(
         [
@@ -299,6 +303,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         tools.AddRange(home.Definitions(true).Where(t => AiHomeTools.WriteTools.Contains(t.Name)));
         tools.AddRange(workday.Definitions(true).Where(t => AiWorkdayTools.WriteTools.Contains(t.Name)));
         tools.AddRange(power.Definitions(true).Where(t => AiPowerTools.WriteTools.Contains(t.Name)));
+        tools.AddRange(memory.Definitions(true).Where(t => AiMemoryTools.WriteTools.Contains(t.Name)));
         if (actionsAllowed) actionCatalog = tools; else readCatalog = tools;
         return tools;
     }
@@ -368,6 +373,7 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
                 ScheduleMeeting => await ProposeScheduleMeetingAsync(a, timeZone, ct),
                 _ => await home.ExecuteAsync(name, a, timeZone, HomePersonAsync, ct) ?? await workday.ExecuteAsync(name, a, timeZone, MemberEmailAsync, ct)
                     ?? await power.ExecuteAsync(name, a, timeZone, HomePersonAsync, PowerProjectAsync, ResolveWorkItemAsync, ct)
+                    ?? await memory.ExecuteAsync(name, a, ct)
                     ?? throw new AiToolException($"There is no tool called {name}."),
             };
         }

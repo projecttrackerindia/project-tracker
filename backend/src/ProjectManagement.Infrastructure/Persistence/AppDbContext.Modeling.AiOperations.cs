@@ -81,6 +81,14 @@ public partial class AppDbContext
             e.Property(x => x.Model).HasMaxLength(64);
             e.Property(x => x.ContentHash).HasMaxLength(32);
         });
+        b.Entity<AiMemory>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Scope, x.OwnerUserId });
+            e.HasIndex(x => new { x.TenantId, x.TeamId });
+            e.Property(x => x.Scope).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Source).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Text).HasMaxLength(300);
+        });
         b.Entity<AiWatch>(e =>
         {
             e.HasIndex(x => new { x.State, x.LastCheckedAt });
