@@ -100,7 +100,7 @@ export function StagesProject({ detail, canEdit, addWork, allowed, archived, mor
               catch (e) { toast(errText(e, 'Could not mark it done.'), 'error'); }
             }} />
         </>}
-        {tab === 'board' && <ProjectWorkTab projectId={p.id} />}
+        {tab === 'board' && <ProjectWorkTab projectId={p.id} onOpenTask={setTaskId} />}
         {tab === 'docs' && <ProjectDocs projectId={p.id} canEdit={canEdit} archived={archived} />}
         {tab === 'chat' && <CalmCard className="stg-chat"><ProjectChatInline projectId={p.id} name={p.name} onClose={() => setTab('plan')} /></CalmCard>}
         {tab === 'meet' && <MeetTab projectId={p.id} name={p.name} archived={archived} />}

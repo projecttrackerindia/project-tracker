@@ -29,13 +29,36 @@ public static class ErrorWriter
     }
 }
 
-/// <summary>Counts requests and server errors for the platform health page.</summary>
+/// <summary>
+/// Counts requests and server errors for the platform health page, and times every API request: the answer carries a Server-Timing header
+/// (visible in the browser's network panel, so the server's share of a slow save can be told from the network's), and a request slower than
+/// <see cref="SlowMs"/> is logged as a warning with its route, so slowness is measured and found rather than guessed.
+/// </summary>
 public class MetricsMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext http, ProjectManagement.Application.Common.SystemMetrics metrics)
+    public const int SlowMs = 800;
+
+    public async Task InvokeAsync(HttpContext http, ProjectManagement.Application.Common.SystemMetrics metrics, Microsoft.Extensions.Logging.ILogger<MetricsMiddleware> log)
     {
+        var api = http.Request.Path.StartsWithSegments("/api");
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (api)
+            http.Response.OnStarting(() =>
+            {
+                var ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                http.Response.Headers["Server-Timing"] = "app;dur=" + ms.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                return Task.CompletedTask;
+            });
         try { await next(http); }
-        finally { if (http.Request.Path.StartsWithSegments("/api")) metrics.Record(http.Response.StatusCode); }
+        finally
+        {
+            if (api)
+            {
+                metrics.Record(http.Response.StatusCode);
+                var took = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                if (took >= SlowMs) log.LogWarning("Slow request: {Method} {Path} took {Elapsed:0} ms (status {Status})", http.Request.Method, http.Request.Path.Value, took, http.Response.StatusCode);
+            }
+        }
     }
 }
 

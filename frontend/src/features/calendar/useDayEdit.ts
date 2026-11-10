@@ -43,8 +43,30 @@ export function useDayEdit({ from, to, enabled = true, today, nowH, plan, savePl
   const [moved, setMoved] = useState<Record<string, { day: string; start: number; end: number }>>({});
   const adjust = useRef(onAdjust); adjust.current = onAdjust;
 
-  const apply = useCallback((events: readonly TimelineEvent[]) => events.map((t) => (over[t.id] ? { ...t, ...over[t.id] } : t)), [over]);
-  const clearOver = useCallback(() => setOver({}), []);
+  /** What the server last said about each event, so an edit is dropped when the server agrees with it, not when any read lands. */
+  const server = useRef(new Map<string, TimelineEvent>());
+  const since = useRef(new Map<string, number>());
+  const apply = useCallback((events: readonly TimelineEvent[]) => {
+    for (const t of events) server.current.set(t.id, t);
+    return events.map((t) => (over[t.id] ? { ...t, ...over[t.id] } : t));
+  }, [over]);
+  /**
+   * Called when the timeline has been read again. An edit stays on screen until the answer shows it (a read that was already on its way when
+   * the edit was made still carries the OLD place; dropping everything then made the card jump back or vanish until the next read). It is
+   * given up on after 20 seconds, so an edit the server never shows (the item left the range) cannot stay forever.
+   */
+  const clearOver = useCallback(() => setOver((o) => {
+    const ids = Object.keys(o);
+    if (!ids.length) return o;
+    const now = Date.now(); const n = { ...o };
+    for (const id of ids) {
+      const first = since.current.get(id) ?? now; since.current.set(id, first);
+      const seen = server.current.get(id), patch = o[id] as Record<string, unknown>, now_ = seen as unknown as Record<string, unknown> | undefined;
+      const agrees = !!now_ && Object.keys(patch).every((k) => patch[k] === undefined || now_[k] === patch[k]);
+      if (agrees || now - first > 20_000) { delete n[id]; since.current.delete(id); }
+    }
+    return Object.keys(n).length === ids.length ? o : n;
+  }), []);
   /** Show other edits at once too (a due date moved by its flag). */
   const patch = useCallback((p: Record<string, Partial<TimelineEvent>>) => setOver((o) => ({ ...o, ...p })), []);
   const unpatch = useCallback((ids: readonly string[]) => setOver((o) => { const n = { ...o }; for (const id of ids) delete n[id]; return n; }), []);

@@ -219,7 +219,10 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
     void save({ dueTime: time });
   };
   // A ticket with no due time of its own is due at its SLA resolve-by.
-  const dueValue = w.dueDate ? dueWithTime(w.dueDate, w.dueTime, w.isOverdue) + (hm(w.dueTime) || (daysUntil(w.dueDate) ?? 0) > 1 ? '' : ` · ${formatDate(w.dueDate).slice(0, 6)}`)
+  const dueBase = w.dueDate ? dueWithTime(w.dueDate, w.dueTime, w.isOverdue) : '';
+  const dueDate6 = w.dueDate ? formatDate(w.dueDate).slice(0, 6) : '';
+  // "Today", "Tomorrow" and "2d late" get the date after them; a date that is already the text (a finished or older task) is not said twice.
+  const dueValue = w.dueDate ? dueBase + (hm(w.dueTime) || (daysUntil(w.dueDate) ?? 0) > 1 || dueBase.replace(/^0/, '') === dueDate6.replace(/^0/, '') ? '' : ` · ${dueDate6}`)
     : w.dueFromSla && w.dueAt ? `SLA · ${clock24(w.dueAt)}` : 'No date';
   const setStatus = (v: string) => void save(w.kind === 'task' ? { statusId: v } : { status: v });
 
