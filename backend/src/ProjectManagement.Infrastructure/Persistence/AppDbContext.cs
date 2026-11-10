@@ -10,7 +10,7 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContext current, TimeProvider clock, ProjectManagement.Application.Services.EntitlementCache? entitlementCache = null,
-    IChangeFeed? changeFeed = null, INotificationFeed? notificationFeed = null)
+    IChangeFeed? changeFeed = null, INotificationFeed? notificationFeed = null, ProjectManagement.Application.Services.SessionCache? sessionCache = null)
     : DbContext(options), IAppDbContext
 {
     public DbSet<PlannedLeave> PlannedLeaves => Set<PlannedLeave>();

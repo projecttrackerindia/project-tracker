@@ -123,6 +123,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Work/WorkTaskService.cs",
         "ProjectManagement.Application/Features/Workspaces/WorkspaceService.cs",
         "ProjectManagement.Application/Services/EntitlementService.cs",
+        "ProjectManagement.Application/Services/SessionCache.cs", // the sign-in lookup moved out of the request pipeline unchanged: one session by exact id+user, and the idle minutes of that session's own workspace settings row
         "ProjectManagement.Application/Services/WorkspaceExecutionPrincipal.cs", // reconstructs current membership and project scope for a saved principal; active tenant and exact user checks
         "ProjectManagement.Infrastructure/Workers/AiTraceRetentionWorker.cs", // background cleanup: only expired operational traces; no content or business writes
         "ProjectManagement.Infrastructure/Persistence/AppDbContext.Audit.cs",
