@@ -18,7 +18,6 @@ import { dayText } from '../work/workActions';
 import { refreshWork } from '../work/workUi';
 import type { DotsItem } from '../talk/DotsMenu';
 import { ProjectDocs } from './ProjectDocs';
-import { JourneyForecast } from './JourneyForecast';
 import { usePortfolioBrief } from './PortfolioInsights';
 import type { PortfolioRisk } from '../ai/aiApi';
 import { ProjectEditPanel, type EditTab } from './ProjectEditPanel';
@@ -85,7 +84,6 @@ export function StagesProject({ detail, canEdit, addWork, allowed, archived, mor
           {archived && <> · <b>Archived, read-only</b></>}
         </p>
       </header>
-      <JourneyForecast detail={detail} tasks={tasks} canEdit={canEdit && !archived} />
       <nav className="stg-tabbar" role="tablist" aria-label="Project sections">
         {tabs.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{LABEL[t]}</button>)}
       </nav>
