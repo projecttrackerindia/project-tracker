@@ -108,7 +108,9 @@ public class SessionApprovalTests(ApiFactory factory)
         var phone = NewDevice(laptop);
         var (id1, secret1, _) = await AskAsync(phone);
         Assert.True((await Decide(laptop, id1, S((await PromptOn(laptop, id1))["token"]), "allow")).Ok);
-        phone.Token = S((await StatusOf(phone, id1, secret1)).Data!["auth"]!["accessToken"]);
+        var phoneAuth = (await StatusOf(phone, id1, secret1)).Data!["auth"]!;
+        phone.Token = S(phoneAuth["accessToken"]);
+        phone.RefreshToken = S(phoneAuth["refreshToken"]);
         Assert.True((await phone.Get("/api/v1/me")).Ok);
 
         // The phone has been idle the longest.
