@@ -38,7 +38,7 @@ function onAnchor(e: ReactMouseEvent<HTMLAnchorElement>, after?: () => void) {
   scrollToId(href.slice(1) || 'lp-top');
 }
 
-const SECTIONS: [string, string][] = [['how', 'Overview'], ['places', 'Five places'], ['create', 'Create'], ['ai', 'AI'], ['portfolio', 'Portfolio'], ['trust', 'Privacy'], ['pricing', 'Pricing']];
+const SECTIONS: [string, string][] = [['how', 'Overview'], ['create', 'Create'], ['ai', 'AI'], ['portfolio', 'Portfolio'], ['trust', 'Privacy'], ['pricing', 'Pricing']];
 
 
 // ------------------------------------------------------------------ brand marks: the purple logo and the flag
@@ -125,7 +125,7 @@ const Hero = memo(function Hero() {
       <div className="lp-hero-stick">
         <div className="lp-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
         <div className="lp-wrap lp-hero-copy" data-lp="copy">
-          <span className="lp-in"><Flag className="lp-flag-s" />Built in India · Your data stays in Mumbai</span>
+          <span className="lp-in"><Flag className="lp-flag-s" />Proudly built in India</span>
           <p className="lp-eyebrow">Projects. Tickets. Conversations. One mind.</p>
           <h1>Work, <span>on autopilot.</span></h1>
           <p className="lp-lede">An assistant that reads everything your team is doing, tells you what matters, and handles the follow-up when you say yes.</p>
@@ -575,7 +575,7 @@ const Made = memo(function Made() {
   <div className="lp-wrap"><div className="lp-india lp-reveal">
     <Flag className="lp-flag-l" />
     <div className="lp-india-h"><p className="lp-eyebrow" style={{ color: '#138808' } as CSSProperties}>Made in India</p><h2>Built in India, for how India works.</h2></div>
-    <div className="lp-india-p"><b>Your data stays in Mumbai</b><span>Hosted on Google Cloud's India region, and the AI runs there too.</span></div>
+    <div className="lp-india-p"><b>Private by design</b><span>Private chats are end-to-end encrypted, and the vault keeps a full audit trail of who saw what.</span></div>
     <div className="lp-india-p"><b>Priced in rupees</b><span>Pay by UPI, card or netbanking, with GST invoices and team discounts that apply by themselves.</span></div>
   </div></div>
 </section>
