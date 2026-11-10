@@ -34,6 +34,7 @@ import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
 import { MemberSecurityPanel } from '../organization/MemberSecurityPanel';
 import { SignInHistory } from './SignInHistory';
 import { ApprovalHistory, SingleSessionRow, WorkspaceSessionPolicyRow, sessionLine } from '../auth/SessionApproval';
+import { IdlePolicyRow } from './IdlePolicyRow';
 import { ProjectVisibilityPanel } from '../organization/ProjectVisibilityPanel';
 import { ProjectGroupsPage } from '../projects/ProjectGroupsPage';
 import { TimelineTemplatesSettings } from '../projects/TimelineTemplates';
@@ -525,7 +526,7 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'members': return <MembersSection />;
     case 'access': return <Navigate to="/people/roles" replace />;
     case 'visibility': return <><PageHead title="Project visibility" sub="Whether everyone sees every project, or each team sees its own." /><div data-setting="access.projectVisibility"><ProjectVisibilityPanel /><LastChanged k="access.projectVisibility" section="visibility" /></div><SectionHistory section="visibility" /></>;
-    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><RolesMovedCard /><OrgSecurityPanel /><SGroup label="Sessions"><WorkspaceSessionPolicyRow /></SGroup><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
+    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><RolesMovedCard /><OrgSecurityPanel /><SGroup label="Sessions"><IdlePolicyRow /><WorkspaceSessionPolicyRow /></SGroup><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
     case 'sso': return <><SsoSettings /><SectionHistory section="sso" /></>;
     case 'billing': return <><BillingPage /><SectionHistory section="billing" /></>;
     case 'audit': return <AuditPage />;

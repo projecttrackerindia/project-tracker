@@ -3,6 +3,7 @@ import { saveFile } from '../lib/native';
 import { lensHeaders } from '../lib/lensState';
 import { mutationCommitted } from '../lib/mutationEffects';
 import { writeSucceeded } from '../lib/optimistic';
+import { isSessionLocked, markLocked, waitForUnlock } from './lockState';
 import { enqueue, isCreate, resolveIds, isNetworkFailure, isQueueable, newTempId, recordId, type OutboxEntry } from '../lib/outbox';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
@@ -41,6 +42,7 @@ export const setAuthLostHandler = (fn: () => void) => { onAuthLost = fn; };
 let tabWorkspaceId: string | null = null;
 let onWorkspaceMismatch: ((tokenWorkspace: string | null) => void) | null = null;
 export const setTabWorkspace = (id: string | null) => { tabWorkspaceId = id; };
+export const getTabWorkspace = () => tabWorkspaceId;
 export const setWorkspaceMismatchHandler = (fn: (tokenWorkspace: string | null) => void) => { onWorkspaceMismatch = fn; };
 
 // A 403 PERMISSION_DENIED / MODULE_ACCESS_DENIED means the app offered something the person may no longer do: the server marks it with
@@ -162,6 +164,8 @@ export function refreshSession(): Promise<AuthResponse | null> {
               lastRefreshRefused = true;
               // Signed out because the account signed in on another device ("Single active session"): the sign-in page says so once.
               if (error?.code === 'SESSION_REPLACED') { try { sessionStorage.setItem('pm_signed_out_reason', error.message); } catch { /* storage unavailable */ } }
+              // Locked after inactivity: not signed out. The lock screen takes over and waiting requests go out once it is unlocked.
+              if (error?.code === 'SESSION_IDLE_LOCKED') { lastRefreshRefused = false; markLocked(); }
               return null;
             }
             lastRefreshRefused = false;
@@ -218,6 +222,8 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   // Started before the session was confirmed (a warm start shows the page at once): wait for the refresh that is running instead of
   // being refused and sent again.
   if (auth && !accessToken && refreshing && !path.startsWith('/auth/')) await refreshing.catch(() => null);
+  // Locked after inactivity: the request waits for the unlock (the page and what was typed stay as they are) and fails on a sign-out.
+  if (auth && isSessionLocked() && !path.startsWith('/auth/') && !(await waitForUnlock())) throw new ApiError(401, 'Signed out.', [{ code: 'SESSION_IDLE_LOCKED', message: 'Signed out.' }]);
   const workspaceAtStart = tabWorkspaceId;
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -260,8 +266,14 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
     }
   }
 
+  if (error.status === 401 && auth && retry && !path.startsWith('/auth/') && (error.code === 'SESSION_IDLE_LOCKED' || isSessionLocked())) {
+    markLocked();
+    if (await waitForUnlock()) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey);
+    throw error;
+  }
   if (error.status === 401 && auth && retry && !path.startsWith('/auth/')) {
     const renewed = await refreshSession();
+    if (!renewed && isSessionLocked()) { if (await waitForUnlock()) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey); throw error; }
     if (renewed) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey);
     // Signed out only when the server refused the refresh; when it could not be reached the session stays and this request fails.
     if (lastRefreshRefused) { accessToken = null; onAuthLost?.(); }
@@ -308,6 +320,7 @@ export const del = <T = void>(path: string) => api<T>('DELETE', path);
 /** After a 401: renew the session and send again, or, when it cannot be renewed, end it in the app the same way api() does. */
 async function renewOrLose(refused: Response, send: () => Promise<Response>): Promise<Response> {
   if (await refreshSession()) return send();
+  if (isSessionLocked()) return (await waitForUnlock()) ? send() : refused;
   if (lastRefreshRefused) { accessToken = null; onAuthLost?.(); }
   return refused;
 }
