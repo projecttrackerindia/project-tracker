@@ -1,8 +1,8 @@
 import { Select } from '../../components/Select';
 import { useMemo, useState, type DragEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { ErrorState } from '../../components/ui';
+import { CalmWorkSheet } from '../tasks/CalmTaskSheet';
 import { useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { matchesAll } from './planSheetQuery';
@@ -39,7 +39,8 @@ export function PortfolioTaskBoard() {
   const { sheet, work, projects, active, url, colourOf, qctx, today, phone, tabPrefs } = usePortfolio();
   const colours = url.colours;
   const wid = useWorkspaceId();
-  const nav = useNavigate();
+  // A card opens the same editable sheet as the Plan view, right here: the board, its filters and scroll position stay exactly where they are.
+  const [openId, setOpenId] = useState<string | null>(null);
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<Col | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -99,7 +100,7 @@ export function PortfolioTaskBoard() {
               <div key={r.id} role="listitem" className={`pfb-card pc-${colourOf(r.projectId)} ${drag === r.id ? 'lift' : ''}`} draggable={!phone && r.canEdit}
                 onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', r.id); setDrag(r.id); }}
                 onDragEnd={() => { setDrag(null); setOver(null); }}>
-                <button type="button" className="pfb-t" onClick={() => nav(`/work/projects/${r.projectId}?tab=work&task=${r.id}`)}>{r.title}</button>
+                <button type="button" className="pfb-t" onClick={() => setOpenId(r.id)}>{r.title}</button>
                 <div className="pfb-m"><i aria-hidden="true" />{name(r.projectId)} · <span className={r.late && c.id !== 'done' ? 'late' : ''}>{when(r.due, today)}</span>
                   {saved === r.id && <span className="pfb-saved" role="status">✓ Saved</span>}</div>
                 {phone && r.canEdit && (
@@ -114,6 +115,7 @@ export function PortfolioTaskBoard() {
           </div>
         </div>
       ))}
+      <CalmWorkSheet id={openId} title={byId(openId)?.title} onClose={() => setOpenId(null)} />
     </section>
   );
 }

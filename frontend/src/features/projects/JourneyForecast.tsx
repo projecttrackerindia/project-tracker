@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { projectApi } from '../../api/endpoints';
 import type { ForecastConfidence, ProjectDetail, Stage, Task } from '../../api/types';
 import { CalmAv, CalmCard, CalmSheet } from '../../components/calm';
@@ -7,7 +7,6 @@ import { useIsMobile } from '../../lib/mobile';
 import { queryClient, useWorkspaceId } from '../../stores/auth';
 import { toast } from '../../stores/ui';
 import { StagesPane } from './ProjectEditPanel';
-import { labelWidth, layoutLabels } from './journeyLabels';
 import { currentIndex, dm, errText, isClosed, moveStageDate, ordered, StageOwnerSheet, stageBody, useStageLoad } from './stagesKit';
 
 const DAY = 86_400_000;
@@ -55,18 +54,6 @@ function ForecastLine({ detail, tasks, canEdit }: { detail: ProjectDetail; tasks
   const [owning, setOwning] = useState<Stage | null>(null);
   const [drag, setDrag] = useState<{ id: string; ms: number } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [lineW, setLineW] = useState(0);
-  // The line's width in pixels, so stage names can be placed without touching (see journeyLabels).
-  useEffect(() => {
-    const el = bar.current;
-    if (!el) return;
-    const read = () => setLineW(Math.round(el.getBoundingClientRect().width));
-    read();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const today = toMs(todayIso());
   const dates = [p.startDate, ...stages.flatMap((s) => [s.plannedStart, s.plannedEnd]), f?.promised, f?.forecast, p.dueDate].filter(Boolean) as string[];
@@ -75,10 +62,6 @@ function ForecastLine({ detail, tasks, canEdit }: { detail: ProjectDetail; tasks
   const x = (ms: number) => `${((ms - lo) / span) * 100}%`;
   const ends = stages.map((s, i) => (drag?.id === s.id ? drag.ms : s.plannedEnd ? toMs(s.plannedEnd) : lo + (span * (i + 1)) / stages.length));
   const starts = stages.map((s, i) => (i === 0 ? (s.plannedStart ? toMs(s.plannedStart) : lo) : ends[i - 1]));
-  const spots = useMemo(() => layoutLabels(stages.map((s, i) => ({
-    center: lineW * (((starts[i] + ends[i]) / 2 - lo) / span), width: labelWidth(`${isClosed(s) ? '✓ ' : ''}${s.name}`),
-  })), lineW), [stages, starts, ends, lo, span, lineW]);
-  const rows = lineW ? Math.max(...spots.map((s) => s.row)) + 1 : 1;
   const last = stages[stages.length - 1];
   const late = (f?.slipDays ?? 0) > 0;
   const curStage = cur >= 0 ? stages[cur] : null;
@@ -137,7 +120,24 @@ function ForecastLine({ detail, tasks, canEdit }: { detail: ProjectDetail; tasks
           </div>
         )}
       </div>
-      <div className="jf-line" ref={bar} style={{ height: 84 + (rows - 1) * 30 }} onDragStart={(e) => e.preventDefault()}>
+      <ol className="jf-steps" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }} aria-label="Stages">
+        {stages.map((s, i) => {
+          const state = isClosed(s) ? 'done' : i === cur ? 'current' : 'next';
+          const sub = state === 'current' && daysLeft != null ? (daysLeft >= 0 ? `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left` : `${-daysLeft} days over`) : s.plannedEnd ? dm(s.plannedEnd) : '';
+          return (
+            <li key={s.id} className={`jf-step ${state}${i === 0 ? ' first' : ''}${i === stages.length - 1 ? ' last' : ''}`} aria-current={state === 'current' ? 'step' : undefined}>
+              <button type="button" className="jf-lab" onClick={() => setPop(pop === s.id ? null : s.id)} aria-expanded={pop === s.id} data-stage={s.name} title={s.name}>
+                <span className="jf-dot" aria-hidden="true" />
+                <b>{s.name}</b>
+                {sub && <small className={state === 'current' && daysLeft != null && daysLeft < 0 ? 'late' : ''}>{sub}</small>}
+              </button>
+              {pop === s.id && <StagePopover stage={s} tasks={tasks} canEdit={canEdit} projectId={p.id} current={i === cur}
+                onOwner={() => { setPop(null); setOwning(s); }} onCurrent={() => void makeCurrent(s)} onSaved={(r) => { refresh(r); setPop(null); }} onClose={() => setPop(null)} />}
+            </li>
+          );
+        })}
+      </ol>
+      <div className="jf-line" ref={bar} onDragStart={(e) => e.preventDefault()}>
         <span className="jf-rail" />
         <span className="jf-done" style={{ width: x(Math.min(Math.max(today, lo), hi)) }} />
         <span className="jf-today" style={{ left: x(today) }}><em>Today</em></span>
@@ -150,15 +150,9 @@ function ForecastLine({ detail, tasks, canEdit }: { detail: ProjectDetail; tasks
           const state = isClosed(s) ? 'done' : i === cur ? 'current' : 'next';
           return (
             <div key={s.id} className={`jf-seg ${state}`} style={{ left: x(starts[i]), width: `${Math.max(0, ((ends[i] - starts[i]) / span) * 100)}%` }}>
-              <button type="button" className="jf-lab" style={lineW ? { top: 46 + spots[i].row * 30, left: `calc(50% + ${spots[i].shift}px)` } : undefined}
-                onClick={() => setPop(pop === s.id ? null : s.id)} aria-expanded={pop === s.id} data-stage={s.name} title={s.name}>
-                {state === 'done' ? '✓ ' : ''}{s.name}
-              </button>
               <span className={`jf-tick${canEdit && state !== 'done' ? ' can' : ''}`} onPointerDown={startDrag(s)} title={canEdit ? `Drag to move ${s.name}` : undefined}
                 aria-label={`Drag date of ${s.name}: ${dm(drag?.id === s.id ? toIso(drag.ms) : s.plannedEnd)}`} role="slider" aria-valuetext={dm(s.plannedEnd)} tabIndex={-1} />
               {drag?.id === s.id && <span className="jf-drag">{dm(toIso(drag.ms))}</span>}
-              {pop === s.id && <StagePopover stage={s} tasks={tasks} canEdit={canEdit} projectId={p.id} current={i === cur}
-                onOwner={() => { setPop(null); setOwning(s); }} onCurrent={() => void makeCurrent(s)} onSaved={(r) => { refresh(r); setPop(null); }} onClose={() => setPop(null)} />}
             </div>
           );
         })}

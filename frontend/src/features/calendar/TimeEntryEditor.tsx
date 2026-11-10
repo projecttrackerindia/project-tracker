@@ -1,4 +1,3 @@
-import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { timeApi } from '../../api/endpoints';
 import type { TimeEntry } from '../../api/types';
@@ -7,11 +6,11 @@ import { toast } from '../../stores/ui';
 import { undoToast } from '../talk/flyTask';
 import { editError, entryLock, isoAt, refreshAfterEdit, warnOverlap } from './calendarEdit';
 import { SNAP, fmtMins } from './plannerModel';
+import { WorkPicker } from './WorkPicker';
 
 /** Work time can be logged on: a project task or a work item (ticket, action item). */
 export interface WorkChoice { kind: 'task' | 'work'; id: string; key: string | null; title: string; projectName: string | null }
 const choiceId = (c: Pick<WorkChoice, 'kind' | 'id'>) => `${c.kind}:${c.id}`;
-const choiceLabel = (c: WorkChoice) => `${c.key ? `${c.key} · ` : ''}${c.title}${c.projectName ? ` — ${c.projectName}` : ''}`;
 
 const hhmm = (h: number) => { const m = Math.round(h * 60); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
 const hourOfInput = (v: string) => { const [h, m] = v.split(':').map(Number); return Number.isFinite(h) && Number.isFinite(m) ? h + m / 60 : NaN; };
@@ -30,7 +29,10 @@ export function TimeEntryEditor({ entry, day: day0, start: start0, end: end0, ap
   const wid = useWorkspaceId();
   const lock = entry ? entryLock(entry) : null;
   const current: WorkChoice | null = entry ? { kind: entry.kind, id: (entry.kind === 'work' ? entry.workTaskId : entry.taskId) ?? '', key: entry.taskKey, title: entry.taskTitle, projectName: null } : null;
-  const all = current && !choices.some((c) => choiceId(c) === choiceId(current)) ? [current, ...choices] : choices;
+  // Work picked from a search of every project is remembered here: it is not in the week's own list.
+  const [picked, setPicked] = useState<WorkChoice[]>([]);
+  const base = current && !choices.some((c) => choiceId(c) === choiceId(current)) ? [current, ...choices] : choices;
+  const all = [...base, ...picked.filter((p) => !base.some((c) => choiceId(c) === choiceId(p)))];
   const [day, setDay] = useState(day0);
   const [start, setStart] = useState(hhmm(snap(start0)));
   const [end, setEnd] = useState(hhmm(snap(Math.max(end0, start0 + SNAP))));
@@ -88,12 +90,10 @@ export function TimeEntryEditor({ entry, day: day0, start: start0, end: end0, ap
   return (
     <form className="ed-pick ed-time" data-testid="ed-time-form" onSubmit={(ev) => { ev.preventDefault(); void save(); }}>
       {approximated && entry && <p className="ed-note wide">Typed in as {fmtMins(entry.minutes)} without a time of day. Saving places it at the time below.</p>}
-      <label className="wide"><span>Work</span>
-        <Select className="ed-sel" aria-label="Work item" value={work} onChange={(ev) => setWork(ev.target.value)}>
-          {!work && <option value="">Choose work…</option>}
-          {all.map((c) => <option key={choiceId(c)} value={choiceId(c)}>{choiceLabel(c)}</option>)}
-        </Select>
-      </label>
+      <div className="wide ed-work"><span>Work</span>
+        <WorkPicker choices={base} value={all.find((c) => choiceId(c) === work) ?? null}
+          onPick={(c) => { setPicked((p) => (p.some((x) => choiceId(x) === choiceId(c)) ? p : [...p, c])); setWork(choiceId(c)); }} />
+      </div>
       <label><span>Day</span><input className="ed-sel" type="date" aria-label="Day" value={day} max={today} onChange={(ev) => setDay(ev.target.value)} /></label>
       <label><span>Duration</span><output className="ed-sel ed-dur" aria-label="Duration">{mins > 0 ? fmtMins(mins) : '–'}</output></label>
       <label><span>Start</span><input className="ed-sel" type="time" step={900} aria-label="Start" value={start} onChange={(ev) => setStart(ev.target.value)} /></label>
