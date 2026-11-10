@@ -28,7 +28,7 @@ public record AuraAnswerDto(string Question, string Answer, bool Ai, string? Sub
 /// owner has overdue, its latest activity and comments - and answers in a few sentences that cite those records. The model may shorten the
 /// answer; the facts and the evidence list are always the rules' own, so the answer works without AI keys.
 /// </summary>
-public partial class AuraWhyService(IAppDbContext db, AppClock clock, DocumentAiService ai)
+public partial class AuraWhyService(IAppDbContext db, AppClock clock, DocumentAiService ai, ProjectService projects)
 {
     [GeneratedRegex(@"\b([A-Za-z][A-Za-z0-9]{1,9})-(\d{1,6})\b")] private static partial Regex KeyPattern();
     private static readonly HashSet<string> Stop = new(StringComparer.OrdinalIgnoreCase)
@@ -151,6 +151,18 @@ public partial class AuraWhyService(IAppDbContext db, AppClock clock, DocumentAi
             if (overdue > 1) facts.Add($"{t.Owner} has {overdue} overdue items in all.");
         }
         else if (!done) facts.Add("Nobody owns it.");
+
+        // What it means for the project's finish, and how sure Aura is (a percentage only when forecasts could be checked against completed projects).
+        if (!done)
+        {
+            try
+            {
+                var fc = await projects.GetForecastAsync(t.ProjectId, ct);
+                if (fc.Confidence is { Band: not "none" } conf && fc.Forecast is not null)
+                    facts.Add($"For the project {t.ProjectName}: {ForecastConfidence.ToText(conf)}{(fc.Promised is { } promisedOn && fc.SlipDays > 0 ? $" It was promised for {D(promisedOn)}." : "")}");
+            }
+            catch (AppException) { /* no forecast for this project */ }
+        }
 
         // Latest activity and comments.
         var acts = await db.Activities.AsNoTracking().Where(x => x.EntityId == t.Id).OrderByDescending(x => x.CreatedAt)

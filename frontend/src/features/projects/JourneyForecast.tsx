@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { projectApi } from '../../api/endpoints';
-import type { ProjectDetail, Stage, Task } from '../../api/types';
+import type { ForecastConfidence, ProjectDetail, Stage, Task } from '../../api/types';
 import { CalmAv, CalmCard, CalmSheet } from '../../components/calm';
 import { invalidateWorkspace } from '../../lib/hooks';
 import { useIsMobile } from '../../lib/mobile';
@@ -14,6 +14,13 @@ const toMs = (iso: string) => Date.parse(`${iso.slice(0, 10)}T00:00:00Z`);
 const toIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const first = (n?: string | null) => (n ?? '').split(' ')[0];
+
+/** The words after "Likely <date> ·" in the server's label ("fairly sure", "early estimate"); with a percentage only when the server calibrated one. */
+function sureText(c?: ForecastConfidence | null): string {
+  if (!c || c.band === 'none') return '';
+  const words = c.label.includes(' · ') ? c.label.split(' · ').slice(1).join(' · ') : '';
+  return c.confidencePct != null && words ? `${words} (${c.confidencePct}%)` : words;
+}
 
 /** The journey: a forecast line on the web (concept A), rings on a phone (concept C). */
 export function JourneyForecast({ detail, tasks, canEdit }: { detail: ProjectDetail; tasks: Task[] | undefined; canEdit: boolean }) {
@@ -102,7 +109,7 @@ function ForecastLine({ detail, tasks, canEdit }: { detail: ProjectDetail; tasks
       <div className="jf-top">
         <div className="jf-head">
           <span className="jf-cap">{last?.name ?? 'Finish'}</span>
-          <h2>{f?.forecast ? <>Likely <span className={late ? 'late' : ''}>{dm(f.forecast)}</span></> : 'No date yet'}</h2>
+          <h2>{f?.forecast ? <>Likely <span className={late ? 'late' : ''}>{dm(f.forecast)}</span>{sureText(f.confidence) && <small className="jf-sure" data-testid="forecast-confidence" title="How sure Aura is, from past slips, load and finished projects"> · {sureText(f.confidence)}</small>}</> : 'No date yet'}</h2>
           <p>{f?.promised ? <>Promised {dm(f.promised)}{late ? <> · <span className="late">{f.slipDays} {f.slipDays === 1 ? 'day' : 'days'} late</span>{f.reason ? ` because ${f.reason}` : ''}</> : ' · on time'}</> : 'Set a due date or stage dates to get a forecast.'}</p>
         </div>
         {curStage && (
@@ -205,7 +212,7 @@ function JourneyRings({ detail, tasks, canEdit }: { detail: ProjectDetail; tasks
           <span className="jr-l t">Time used {f?.timeUsedPct ?? 0}%</span>
           <span className="jr-l w">Work done {f?.workDonePct ?? detail.project.progress}%</span>
           {curStage && <span className="jr-now"><b>{curStage.name}</b> · {owner ? first(owner) : 'No owner'}{f?.daysLeft != null ? ` · ${f.daysLeft >= 0 ? `${f.daysLeft}d left` : `${-f.daysLeft}d over`}` : ''}</span>}
-          {f?.forecast && <span className="jr-f">Likely <span className={late ? 'late' : ''}>{dm(f.forecast)}</span>{late && f.promised ? ` · promised ${dm(f.promised)}` : ''}</span>}
+          {f?.forecast && <span className="jr-f">Likely <span className={late ? 'late' : ''}>{dm(f.forecast)}</span>{sureText(f.confidence) ? ` · ${sureText(f.confidence)}` : ''}{late && f.promised ? ` · promised ${dm(f.promised)}` : ''}</span>}
         </span>
       </button>
       <CalmSheet open={open} onClose={() => setOpen(false)} kind="bottom" title={detail.project.name} label="Stages">

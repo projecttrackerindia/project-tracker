@@ -532,9 +532,23 @@ public class AiToolbox(IAppDbContext db, ICurrentContext ctx, AppClock clock, Pe
         var p = report.Project;
         var stages = await projects.GetStagesAsync(project.Id, ct);
         var insight = (await portfolio.BriefAsync(ct: ct)).Ranked.FirstOrDefault(x => x.ProjectId == project.Id);   // risk, forecast, action items: worked out, not guessed
+        // The project page's own forecast of the finish, with how sure it is. A percentage is present only when enough completed projects exist to check forecasts against.
+        object? finish = null;
+        try
+        {
+            var f = await projects.GetForecastAsync(project.Id, ct);
+            finish = new
+            {
+                f.Promised, likelyFinish = f.Forecast, f.SlipDays, f.Reason, currentStage = f.CurrentStage, owner = f.CurrentOwner?.Name,
+                confidence = f.Confidence?.Label, confidencePct = f.Confidence?.ConfidencePct, because = f.Confidence?.Evidence,
+                howToSayIt = "Say the confidence line as given. If confidencePct is null it is an early estimate: do not state any percentage or odds.",
+            };
+        }
+        catch (AppException) { /* no forecast for this project */ }
         var data = new
         {
             insight,
+            finish,
             today = clock.Today,
             project = new { p.Key, p.Name, status = p.Status, health = p.Health, p.Progress, p.StartDate, p.DueDate, p.StageScheduleMode, p.OriginalDueDate, p.DelayedDays, owner = p.Owner?.Name, p.Stats },
             scheduleNote = p.StageScheduleMode == StageScheduleMode.Manual ? "Manual stage dates are independent. Enable automatic scheduling in Schedule studio to connect the timeline." : "Automatic calendar-day schedule: project changes and stage edits recalculate downstream stages while preserving allocated durations. FollowSchedule aligns the project end; extensions need a reason. Task deadlines and actual dates stay separate.",

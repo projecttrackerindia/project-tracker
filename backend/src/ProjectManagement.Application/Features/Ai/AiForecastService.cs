@@ -12,7 +12,9 @@ public record AiForecastOutcome(Guid Id, Guid ProjectId, string Project, string 
 public record AiForecastEvaluation(int Forecasts, int VerifiedCompletions, int ComparableProjects, double? MeanAbsoluteErrorDays,
     double? MeanSignedErrorDays, bool Calibrated, IReadOnlyList<AiForecastOutcome> Items, string Methodology);
 
-public class AiForecastService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, PermissionService permissions)
+public record ForecastScoreboard(bool Visible, int Verified, int MinimumVerified, int WithinDays, double? MeanAbsoluteErrorDays, int? PercentWithinDays, string Note);
+
+public class AiForecastService(IAppDbContext db, ICurrentContext ctx, AppClock clock, ProjectAccess access, PermissionService permissions, ForecastCalibrationService calibration)
 {
     internal async Task CaptureAsync(AiJob job, PortfolioBriefDto brief, DateTime evidenceAt, CancellationToken ct)
     {
@@ -25,6 +27,24 @@ public class AiForecastService(IAppDbContext db, ICurrentContext ctx, AppClock c
                 EvidenceAt = evidenceAt, AsOf = brief.AsOf, DueDate = p.DueDate, ProjectedFinish = p.ProjectedFinish,
                 ProjectVersion = versions.GetValueOrDefault(p.ProjectId), TotalTasks = counts.GetValueOrDefault(p.ProjectId), OpenTasks = p.OpenTasks,
                 FinishedLast28Days = p.FinishedLast28Days, InputComplete = !brief.Truncated, Confidence = p.Confidence });
+    }
+
+    /// <summary>How often past finish forecasts were right, over the projects the person can see. Hidden (Visible false) until enough completions are verified.</summary>
+    public async Task<ForecastScoreboard> ScoreboardAsync(CancellationToken ct)
+    {
+        var tenant = ctx.RequireTenantId();
+        await permissions.RequireModuleAsync(Modules.Projects, AccessLevel.View, ct);
+        var scored = await calibration.ScoredAsync(tenant, ct);
+        var ids = scored.Select(s => s.ProjectId).Distinct().ToList();
+        var visibleIds = new List<Guid>();
+        if (ids.Count > 0) visibleIds = await access.VisibleProjects().AsNoTracking().Where(p => ids.Contains(p.Id)).Select(p => p.Id).ToListAsync(ct);
+        var mine = scored.Where(s => visibleIds.Contains(s.ProjectId)).ToList();
+        var shown = mine.Count >= ForecastConfidence.MinComparable;
+        return new(shown, mine.Count, ForecastConfidence.MinComparable, ForecastConfidence.WithinDays,
+            shown ? mine.Average(s => Math.Abs((double)s.ErrorDays)) : null,
+            shown ? (int)Math.Round(100.0 * mine.Count(s => Math.Abs(s.ErrorDays) <= ForecastConfidence.WithinDays) / mine.Count) : null,
+            "Heuristic. Each project is marked once, on its audited completion, against the finish forecast recorded at least " + ForecastScoring.LeadDays +
+            " days earlier (last " + ForecastCalibrationService.WindowDays + " days). Scope changes are included. This describes past accuracy; it is not a promise about future forecasts.");
     }
 
     public async Task<AiForecastEvaluation> EvaluateAsync(CancellationToken ct)

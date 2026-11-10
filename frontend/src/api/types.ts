@@ -200,6 +200,15 @@ export interface ProjectForecast {
   promised: string | null; forecast: string | null; slipDays: number; reason: string | null; currentStageId: string | null; currentStage: string | null;
   currentOwner: UserRef | null; daysLeft: number | null; journeyPct: number; timeUsedPct: number; workDonePct: number; stageIndex: number; stageCount: number;
   suggestedOwner: UserRef | null; suggestedOwnerOpenTasks: number; suggestedForecast: string | null;
+  confidence?: ForecastConfidence | null;
+}
+/** How sure the finish forecast is. `confidencePct` is set only when enough finished projects exist to calibrate it; otherwise it is an early estimate. */
+export interface ForecastConfidence {
+  band: 'high' | 'medium' | 'low' | 'early' | 'none'; label: string; confidencePct: number | null; calibrated: boolean; comparableProjects: number; withinDays: number;
+}
+/** How often past finish forecasts were right (heuristic). Hidden by the server until enough completions are verified. */
+export interface ForecastScoreboard {
+  visible: boolean; verified: number; minimumVerified: number; withinDays: number; meanAbsoluteErrorDays: number | null; percentWithinDays: number | null; note: string;
 }
 export interface ProjectDetail { project: Project; statuses: WorkflowStatus[]; stages: Stage[]; members: ProjectMember[]; forecast?: ProjectForecast | null }
 export interface Label { id: string; name: string; color: string }

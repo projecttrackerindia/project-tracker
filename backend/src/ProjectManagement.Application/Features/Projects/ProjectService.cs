@@ -141,7 +141,8 @@ public static partial class ProjectMetrics
 public partial class ProjectService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
     EntitlementService entitlements, ProjectAccess access, TaskCompletionService completion, TimelineTemplateService timelines, DueDateHistory dueHistory,
-    ProjectGroupService groupService, NotificationService notifications, ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices notices)
+    ProjectGroupService groupService, NotificationService notifications, ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices notices,
+    ProjectManagement.Application.Features.Ai.ForecastCalibrationService calibration)
 {
     private static readonly (string Name, StatusCategory Category, string Color)[] DefaultStatuses =
     [

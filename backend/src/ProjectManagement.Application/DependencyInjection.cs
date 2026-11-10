@@ -305,6 +305,10 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiCreditBudgetService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiKnowledgeService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiForecastService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.ForecastCalibrationService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.SlipFixService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.SlipFixActions>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.SlipFixOwnerRun>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiOperationsService>();
         services.AddSingleton<ProjectManagement.Application.Features.Ai.AiOperationsProcessor>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AgentTrackerService>();
