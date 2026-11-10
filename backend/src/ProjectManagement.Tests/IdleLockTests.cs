@@ -121,6 +121,7 @@ public class IdleLockTests(ApiFactory factory)
     {
         var owner = await TestClient.RegisterAsync(factory, "Olga Owner");
         var orgA = await owner.CreateOrgAsync();
+        await owner.UpgradeAsync("PRO");
         var member = await owner.AddMemberAsync(factory, TenantRole.Member, "Mo Member");
 
         var denied = await member.Put("/api/v1/workspace/idle-policy", new { minutes = 0 });
