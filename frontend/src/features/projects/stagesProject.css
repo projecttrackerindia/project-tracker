@@ -213,7 +213,7 @@ html body .stg-title h1 { margin: 0; font-size: 26px; font-weight: 700; letter-s
 .jf-step.done .jf-dot { background: var(--calm-p3); border-color: var(--calm-p3); }
 .jf-step.done .jf-dot::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(40deg); }
 .jf-step.current .jf-dot { border-color: var(--calm-p3); box-shadow: 0 0 0 5px color-mix(in srgb, var(--calm-p3) 20%, transparent); }
-.jf-lab b { display: block; max-width: 100%; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jf-lab b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 100%; font-size: 14px; font-weight: 500; line-height: 1.25; overflow: hidden; overflow-wrap: anywhere; }
 .jf-step.current .jf-lab b { color: var(--calm-ink); font-weight: 700; }
 .jf-step.done .jf-lab b { color: var(--calm-ink); }
 .jf-lab small { display: block; margin-top: 2px; font-size: 12px; color: var(--calm-ink3); }
