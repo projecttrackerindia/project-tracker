@@ -1715,6 +1715,60 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.ToTable("AiJobs");
                 });
 
+            modelBuilder.Entity("ProjectManagement.Domain.Entities.AiMemory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("TeamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Scope", "OwnerUserId");
+
+                    b.HasIndex("TenantId", "TeamId");
+
+                    b.ToTable("AiMemories");
+                });
+
             modelBuilder.Entity("ProjectManagement.Domain.Entities.AiMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -13596,6 +13650,12 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("AiInstructions")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
+
+                    b.Property<bool>("AiMemoryEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AiWorkspaceMemoryEnabled")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("BillingAddress")
                         .HasColumnType("text");

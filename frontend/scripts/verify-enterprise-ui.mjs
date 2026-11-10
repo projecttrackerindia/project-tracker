@@ -107,7 +107,7 @@ try {
   }
   await capture('account-navigation-'+(section.slice(1)||'profile'),'/account'+section,'.set-place-head',1440,1000);
   const tabs=page.getByRole('tablist',{name:'Profile & sign-in sections'});
-  assert.equal(await tabs.getByRole('tab').count(),4);   // Profile, Mobile app, Connected accounts, Assistant (sign-in security is its own section now)
+  assert.equal(await tabs.getByRole('tab').count(),5);   // Profile, Mobile app, Connected accounts, Assistant, Aura memory (sign-in security is its own section now)
   assert.equal(await tabs.getByRole('tab',{name:tab,exact:true}).getAttribute('aria-selected'),'true',`/account${section} opens ${tab}`);
   assert.ok(!/Resume/.test(await tabs.innerText()),'Resume studio is gone');
  }
