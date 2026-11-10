@@ -6,7 +6,7 @@ import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
 // Stages project (designs load/project-web, project-phone, stages, stage-owners-phone, project-settings-web, task-edit-web, task-edit):
-// (the journey bar was removed) (no broken words, current stage centred, owner + date, late "+Nd"), Edit by the title (no ⋯ menu) opening the side panel
+// the journey bar (no broken words, current stage centred, owner + date, late "+Nd"), Edit by the title (no ⋯ menu) opening the side panel
 // with Stages · Details · People · Statuses · Automation (rename, owner sheet with move-open-tasks, later date asks why, Move to next →),
 // the Plan · Board · Docs · Chat · Meet · Time · Activity tabs and the task panel (Details · Activity · Comments). Light and dark at 1440,
 // 1920 and a 390 phone. Built frontend only; fictional fixtures; only the writes each check makes.
@@ -46,7 +46,7 @@ const task = (n, title, stage, owner, due, done = false, extra = {}) => ({ id: g
   estimatedHours: 0.83, actualHours: 0.2, position: n, parentTaskId: null, subtaskTotal: 0, subtaskDone: 0, commentCount: 2, labels: [], completedAt: done ? ago(30) : null, createdAt: ago(60), updatedAt: ago(1), version: 1,
   isOverdue: !done && due < today, milestoneId: null, milestoneName: null, dependsOnCount: 0, blocksCount: 1, isBlocked: false, sprintId: null, sprintName: null, checklistTotal: 4, checklistDone: 2, canEdit: true,
   stageId: g(200 + Math.min(stage, 4)), stageName: stages[Math.min(stage, 4)].name, ...extra });
-const tasks = [task(8, 'Posting service split', 2, 1, day(-3), true), task(6, 'Idempotency keys', 2, 1, day(-2), true), task(2, 'Refund webhook retries', 3, 1, today), task(3, 'Staging API keys', 3, 13, day(-2)),
+const tasks = [task(8, 'Posting service split', 2, 1, day(-3), true), task(6, 'Idempotency keys', 2, 1, day(-2), true), task(2, 'Refund webhook retries', 1, 1, today), task(3, 'Staging API keys', 1, 13, day(-2)),
   task(4, 'Load test 2k tps', 3, 14, day(2)), task(10, 'Release checklist', 4, 15, day(3)), task(11, 'Rollback drill', 4, 14, day(2)), task(12, 'Status page notice', 4, 15, day(3)), task(20, 'Metrics review', 5, 1, day(10)), task(21, 'Retro with Contoso', 5, 11, day(13))];
 
 // My work (work items).
@@ -193,11 +193,48 @@ try {
     await page.getByText('+12 days').waitFor();
     await page.getByRole('button', { name: 'Refund webhook retries', exact: true }).waitFor();
     await page.getByTestId('project-aura').getByRole('button', { name: /What if/ }).waitFor();
-    // The Journey line (forecast on the web, rings on a phone) is gone from the project page; stages are changed in the Edit panel below.
-    assert.equal(await page.getByTestId('journey-forecast').count() + await page.getByTestId('journey-rings').count() + await page.getByTestId('journey-aura').count(), 0, 'no Journey line');
+    // Journey: the forecast line on the web, the rings on a phone.
+    if (phone) {
+      await page.getByTestId('journey-rings').getByText('Journey 46%').waitFor();
+    } else {
+      const jf = page.getByTestId('journey-forecast');
+      await jf.getByText('Likely').waitFor();
+      await jf.getByText(/4 days late/).waitFor();
+      assert.equal(await jf.locator('.jf-line').count(), 0, 'the thin forecast line is gone');
+      await jf.getByRole('list', { name: 'Stages' }).waitFor();
+      await page.getByTestId('journey-aura').getByText(/Give Development to/).waitFor();
+    }
     if (phone) await fitsPhone(page, `project ${tag}`, assert);
     await shot(page, `project-${tag}.png`);
-    checks.push('Journey line removed from the project page');
+    if (theme === 'light' && (width === 1440 || width === 390)) {
+      assert.ok(await page.locator('.stg-sh').count() >= 2 && await page.locator('.stg-elbow').count() >= 3, 'tasks sit under their stage with a curved connector');
+      await page.locator('.stg-plan .stg-sh').first().scrollIntoViewIfNeeded(); await page.evaluate(() => { const e = document.querySelector('.stg-plan'); e?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -90); }); await page.waitForTimeout(250);
+      await shot(page, `plan-rail-${tag}.png`);
+      await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(150);
+    }
+    if (phone) {
+      await page.getByTestId('journey-rings').click();
+      await page.getByTestId('edit-stages').waitFor();
+      await fitsPhone(page, `rings sheet ${tag}`, assert);
+      await shot(page, `rings-sheet-${tag}.png`);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+    } else {
+      await page.getByTestId('journey-forecast').locator('[data-stage="Development"]').click();
+      const pop = page.getByTestId('stage-popover');
+      await pop.getByRole('button', { name: 'Change owner' }).waitFor();
+      await shot(page, `journey-popover-${tag}.png`);
+      if (theme === 'light' && width === 1440) {
+        await pop.getByRole('button', { name: 'Change owner' }).click();
+        await page.getByTestId('stage-owner-sheet').waitFor();
+        await page.keyboard.press('Escape'); await page.locator('.calm-scrim').waitFor({ state: 'detached' });
+        await page.getByTestId('journey-aura').getByRole('button', { name: 'Do it' }).click();
+        await page.waitForTimeout(400);
+        const doIt = writes.filter((x) => x.w.endsWith(`/stages/${g(201)}/owner`)).pop();
+        assert.equal(doIt?.body?.ownerId, g(14)); assert.equal(doIt?.body?.moveOpenTasks, true);
+        checks.push('Stage bar: popover, Change owner, Aura Do it');
+        writes.length = 0;
+      } else { await page.getByTestId('journey-forecast').locator('[data-stage="Development"]').click(); await pop.waitFor({ state: 'detached' }); }
+    }
 
     // ---------------------------------------------------------------- Edit panel
     await page.getByTestId('project-edit').click();
