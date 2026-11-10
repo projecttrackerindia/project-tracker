@@ -24,6 +24,7 @@ const ReminderAlerts = lazy(() => import('../features/reminders/ReminderAlerts')
 const AlertsSetup = lazy(() => import('../features/notifications/AlertsSetup').then((m) => ({ default: m.AlertsSetup })));
 const IncomingCallHost = lazy(() => import('../features/calls/IncomingCall').then((m) => ({ default: m.IncomingCallHost })));
 const ChangeUndoPrompt = lazy(() => import('../features/projects/ChangeUndoPrompt').then((m) => ({ default: m.ChangeUndoPrompt })));
+const IdleLockHost = lazy(() => import('../features/auth/IdleLock').then((m) => ({ default: m.IdleLockHost })));
 const SessionApprovalHost = lazy(() => import('../features/auth/SessionApproval').then((m) => ({ default: m.SessionApprovalHost })));
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
 import { firstTime, kindForType } from '../lib/attention';
@@ -224,6 +225,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <OfflineSync phone={phone} />
       <SignInIsland />
       <AfterFirstPaint><SessionApprovalHost /></AfterFirstPaint>
+      <AfterFirstPaint><IdleLockHost /></AfterFirstPaint>
       <CallHost />
       {!admin && <AfterFirstPaint><IncomingCallHost /></AfterFirstPaint>}
       <ToastRoot />

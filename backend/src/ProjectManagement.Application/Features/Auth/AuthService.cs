@@ -40,6 +40,11 @@ public record ResetPasswordRequest(string Token, string Password);
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public record UpdateProfileRequest(string DisplayName, string? TimeZone);
 public record RefreshRequest(string? RefreshToken);
+/// <summary>The workspace's "Sign out after inactivity" time in minutes (0 = never) and whether the caller may change it.</summary>
+public record IdlePolicyDto(int Minutes, bool CanManage, IReadOnlyList<int> Choices);
+public record SetIdlePolicyRequest(int Minutes);
+/// <summary>What the lock screen shows: whose session it is, which ways of unlocking it has, and how many tries are left.</summary>
+public record LockStateDto(bool Locked, Guid UserId, string DisplayName, bool HasAvatar, bool HasPassword, bool HasPasskey, int AttemptsLeft, int IdleMinutes);
 
 public record UserDto(Guid Id, string Email, string DisplayName, bool EmailVerified, bool IsPlatformAdmin, string TimeZone, bool MfaEnabled = false, bool MustChangePassword = false, bool HasAvatar = false);
 public record SessionDto(Guid Id, DateTime CreatedAt, DateTime LastSeenAt, string? IpAddress, string? UserAgent, bool IsCurrent, string? AuthMethod = null, string? Device = null, string? Location = null);
@@ -347,7 +352,7 @@ public class AuthService(
         var session = new UserSession
         {
             UserId = user.Id, WorkspaceId = workspaceId, CreatedAt = now, LastSeenAt = now,
-            ExpiresAt = now.AddDays(_opt.RefreshTokenDays), IpAddress = ctx.IpAddress, UserAgent = agent,
+            ExpiresAt = now.AddDays(_opt.RefreshTokenDays), IpAddress = ctx.IpAddress, UserAgent = agent, LastActivityAt = now,
             AuthMethod = method, SsoTenantId = ssoTenantId, NewDevice = newDevice,
         };
         db.UserSessions.Add(session);
@@ -450,6 +455,10 @@ public class AuthService(
         if (session is null || session.RevokedAt is not null || stored.ExpiresAt <= now)
             throw new UnauthorizedException("Session expired. Please sign in again.", "SESSION_EXPIRED");
 
+        // "Sign out after inactivity": a session nobody has really used for longer than its workspace allows is locked, and stays locked until
+        // the person unlocks it (passkey or password). The token is left untouched, so unlocking can still rotate it.
+        await EnsureNotIdleAsync(session, now, ct);
+
         // Claim the token in one statement: of two simultaneous requests exactly one sees "unused" and rotates it.
         var storedId = stored.Id;
         var claimed = stored.UsedAt is null
@@ -520,6 +529,9 @@ public class AuthService(
     {
         var userId = ctx.RequireUserId();
         await RevokeSessionsAsync(userId, exceptSessionId: null, ct);
+        // Every refresh token of the account is spent too, not only its sessions ended: none of them can be presented again.
+        var spentAt = clock.Now;
+        await db.RefreshTokens.Where(t => t.UserId == userId && t.UsedAt == null).ExecuteUpdateAsync(u => u.SetProperty(t => t.UsedAt, (DateTime?)spentAt), ct);
         recorder.Audit("user.logout_all", "User", userId);
         await db.SaveChangesAsync(ct);
     }
@@ -555,6 +567,184 @@ public class AuthService(
         session.RevokedAt ??= clock.Now;
         recorder.Audit("session.revoked", "UserSession", sessionId);
         await db.SaveChangesAsync(ct);
+    }
+
+    // ---------------------------------------------------------------- sign out after inactivity (idle lock)
+
+    public const int DefaultIdleMinutes = 30;
+    public const int MaxUnlockAttempts = 5;
+    /// <summary>The choices an Owner or Admin has: 15, 30 (the default), 60 minutes, 4 hours, or 0 = never.</summary>
+    public static readonly int[] IdleChoices = [15, 30, 60, 240, 0];
+
+    /// <summary>When the person last really used the app: the activity ping's time, or for an older session its last refresh (never before it opened).</summary>
+    public static DateTime LastActivity(DateTime? lastActivityAt, DateTime lastSeenAt, DateTime createdAt) =>
+        lastActivityAt ?? (lastSeenAt > createdAt ? lastSeenAt : createdAt);
+
+    /// <summary>Whether a session last used at <paramref name="lastActivity"/> has been idle for longer than the workspace's <paramref name="minutes"/> (0 = never).</summary>
+    public static bool IsIdle(DateTime lastActivity, int minutes, DateTime now) => minutes > 0 && now - lastActivity > TimeSpan.FromMinutes(minutes);
+
+    /// <summary>
+    /// The idle time of a workspace. Read before any workspace is chosen for the request (refresh, unlock), so the tenant filter is bypassed for
+    /// exactly that workspace's own settings row and nothing else.
+    /// </summary>
+    public async Task<int> IdleMinutesAsync(Guid? workspaceId, CancellationToken ct = default)
+    {
+        if (workspaceId is not { } wid) return DefaultIdleMinutes;
+        var stored = await db.TenantSecuritySettings.IgnoreQueryFilters().AsNoTracking().Where(s => s.TenantId == wid).Select(s => (int?)s.IdleTimeoutMinutes).FirstOrDefaultAsync(ct);
+        return stored ?? DefaultIdleMinutes;
+    }
+
+    private async Task EnsureNotIdleAsync(UserSession session, DateTime now, CancellationToken ct)
+    {
+        if (session.LockedAt is null && IsIdle(LastActivity(session.LastActivityAt, session.LastSeenAt, session.CreatedAt), await IdleMinutesAsync(session.WorkspaceId, ct), now))
+        {
+            session.LockedAt = now;
+            session.UnlockFailures = 0;
+            recorder.Audit("session.auto_locked", "UserSession", session.Id, newValue: new { Reason = "idle" }, tenantId: session.WorkspaceId, userId: session.UserId);
+            await db.SaveChangesAsync(ct);
+        }
+        if (session.LockedAt is not null)
+            throw new UnauthorizedException("You were away for a while. Unlock to carry on.", "SESSION_IDLE_LOCKED");
+    }
+
+    /// <summary>The idle time of the caller's workspace, for the app's timer and for Settings › Security.</summary>
+    public async Task<IdlePolicyDto> IdlePolicyAsync(CancellationToken ct = default)
+    {
+        var tenantId = ctx.RequireTenantId();
+        return new IdlePolicyDto(await IdleMinutesAsync(tenantId, ct), CanManageIdle, IdleChoices);
+    }
+
+    private bool CanManageIdle => !ctx.ViaApiKey && ctx.Role is TenantRole.Owner or TenantRole.Admin;
+
+    /// <summary>Owners and admins only: how long the app may sit unused before it locks, for everyone in this workspace. Audited.</summary>
+    public async Task<IdlePolicyDto> SetIdlePolicyAsync(SetIdlePolicyRequest req, CancellationToken ct = default)
+    {
+        var tenantId = ctx.RequireTenantId();
+        if (!CanManageIdle) throw new ForbiddenException("Only owners and admins can change when people are signed out.", "PERMISSION_DENIED");
+        if (!IdleChoices.Contains(req.Minutes)) throw new ValidationException("minutes", "Choose 15, 30 or 60 minutes, 4 hours, or never.");
+        var row = await db.TenantSecuritySettings.FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
+        var isNew = row is null;
+        if (row is null) { row = new TenantSecuritySettings { TenantId = tenantId }; db.TenantSecuritySettings.Add(row); }
+        if (row.IdleTimeoutMinutes != req.Minutes || isNew)
+        {
+            recorder.Audit("org.idle_timeout_changed", "Tenant", tenantId, oldValue: new { Minutes = row.IdleTimeoutMinutes }, newValue: new { req.Minutes }, tenantId: tenantId);
+            row.IdleTimeoutMinutes = req.Minutes;
+        }
+        await db.SaveChangesAsync(ct);
+        return new IdlePolicyDto(row.IdleTimeoutMinutes, true, IdleChoices);
+    }
+
+    /// <summary>
+    /// The app's activity ping, sent only on real use (keyboard, pointer, touch; at most about once a minute). It moves the session's last activity;
+    /// background polling and realtime never call it. A session that is already idle or locked never gets here (CurrentContextMiddleware).
+    /// </summary>
+    public async Task<IdlePolicyDto> ActivityAsync(CancellationToken ct = default)
+    {
+        var sessionId = ctx.SessionId ?? throw new UnauthorizedException("Sign in first.", "UNAUTHORIZED");
+        var session = await db.UserSessions.FirstOrDefaultAsync(s => s.Id == sessionId && s.RevokedAt == null, ct)
+            ?? throw new UnauthorizedException("Your session has ended. Please sign in again.", "SESSION_REVOKED");
+        var now = clock.Now;
+        // Already idle or locked: the ping cannot reopen it, only unlocking can.
+        await EnsureNotIdleAsync(session, now, ct);
+        // Many tabs pinging together write at most once in a while.
+        if (session.LastActivityAt is not { } last || now - last > TimeSpan.FromSeconds(20))
+        {
+            session.LastActivityAt = now;
+            await db.SaveChangesAsync(ct);
+        }
+        return new IdlePolicyDto(await IdleMinutesAsync(session.WorkspaceId, ct), CanManageIdle, IdleChoices);
+    }
+
+    /// <summary>The session a refresh token belongs to, while it is still open (locked or not).</summary>
+    private async Task<(RefreshToken Token, UserSession Session, User User)> OpenSessionAsync(string? rawToken, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken)) throw new UnauthorizedException("Refresh token missing.", "INVALID_REFRESH_TOKEN");
+        var hash = tokens.Hash(rawToken);
+        var stored = await db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == hash, ct)
+            ?? throw new UnauthorizedException("Invalid refresh token.", "INVALID_REFRESH_TOKEN");
+        var session = await db.UserSessions.FirstOrDefaultAsync(s => s.Id == stored.SessionId, ct);
+        var now = clock.Now;
+        if (session?.RevokedAt is not null && session.EndedReason is { Length: > 0 } reason) throw new UnauthorizedException(reason, "SESSION_REPLACED");
+        if (session is null || session.RevokedAt is not null || stored.ExpiresAt <= now || stored.UsedAt is not null)
+            throw new UnauthorizedException("Session expired. Please sign in again.", "SESSION_EXPIRED");
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == stored.UserId, ct);
+        if (user is null || !user.IsActive) throw new UnauthorizedException("Account is disabled.", "ACCOUNT_DISABLED");
+        return (stored, session, user);
+    }
+
+    /// <summary>Locks the session now (the app's timer ran out). Works with the access token or, once that has expired, the refresh cookie.</summary>
+    public async Task LockAsync(string? rawToken, CancellationToken ct = default)
+    {
+        UserSession? session = null;
+        if (ctx.SessionId is { } sid) session = await db.UserSessions.FirstOrDefaultAsync(s => s.Id == sid && s.RevokedAt == null, ct);
+        if (session is null && !string.IsNullOrWhiteSpace(rawToken)) session = (await OpenSessionAsync(rawToken, ct)).Session;
+        if (session is null) throw new UnauthorizedException("Session expired. Please sign in again.", "SESSION_EXPIRED");
+        if (session.LockedAt is not null) return;
+        session.LockedAt = clock.Now;
+        session.UnlockFailures = 0;
+        recorder.Audit("session.auto_locked", "UserSession", session.Id, newValue: new { Reason = "timer" }, tenantId: session.WorkspaceId, userId: session.UserId);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>What the lock screen shows for the session behind this refresh token.</summary>
+    public async Task<LockStateDto> LockStateAsync(string? rawToken, CancellationToken ct = default)
+    {
+        var (_, session, user) = await OpenSessionAsync(rawToken, ct);
+        var hasPasskey = await db.PasskeyCredentials.AsNoTracking().AnyAsync(p => p.UserId == user.Id, ct);
+        return new LockStateDto(session.LockedAt is not null, user.Id, user.DisplayName, user.AvatarKey is not null, !string.IsNullOrEmpty(user.PasswordHash), hasPasskey,
+            Math.Max(0, MaxUnlockAttempts - session.UnlockFailures), await IdleMinutesAsync(session.WorkspaceId, ct));
+    }
+
+    /// <summary>The person whose session this refresh token opens (for a passkey challenge only they can answer).</summary>
+    public async Task<Guid> LockedUserIdAsync(string? rawToken, CancellationToken ct = default) => (await OpenSessionAsync(rawToken, ct)).User.Id;
+
+    /// <summary>Whether this is the account's password (an account without one, signed in another way, has none to match).</summary>
+    public bool PasswordMatches(User user, string? password) =>
+        user.IsActive && !string.IsNullOrEmpty(user.PasswordHash) && !string.IsNullOrEmpty(password) && hasher.Verify(user.PasswordHash, password);
+
+    /// <summary>
+    /// Unlocks a locked session with a fresh proof that it is still the same person (<paramref name="verify"/>: their password or one of their own
+    /// passkeys). The session already passed its sign-in rules (two-step included) when it opened, so this proof is enough to carry on; a passkey is two
+    /// factors by itself. Wrong answers count: after five in a row the session is signed out for good. The refresh token is rotated as on a refresh.
+    /// </summary>
+    public async Task<AuthResult> UnlockAsync(string? rawToken, string method, Func<User, Task<bool>> verify, Guid? requestedWorkspace, CancellationToken ct = default)
+    {
+        var (stored, session, user) = await OpenSessionAsync(rawToken, ct);
+        var now = clock.Now;
+        if (user.LockoutEnd is { } lockEnd && lockEnd > now)
+            throw new TooManyRequestsException("Too many failed attempts. Try again later.", "ACCOUNT_LOCKED");
+        if (!await verify(user))
+        {
+            session.UnlockFailures++;
+            recorder.Audit("session.unlock_failed", "UserSession", session.Id, newValue: new { Method = method, Attempt = session.UnlockFailures }, tenantId: session.WorkspaceId, userId: user.Id);
+            if (session.UnlockFailures >= MaxUnlockAttempts)
+            {
+                session.RevokedAt = now;
+                session.EndedReason = "Signed out after too many wrong unlock attempts. Sign in again.";
+                stored.UsedAt = now;
+                recorder.Audit("session.unlock_signed_out", "UserSession", session.Id, tenantId: session.WorkspaceId, userId: user.Id);
+                await db.SaveChangesAsync(ct);
+                throw new UnauthorizedException(session.EndedReason, "SESSION_UNLOCK_SIGNED_OUT");
+            }
+            await db.SaveChangesAsync(ct);
+            var left = MaxUnlockAttempts - session.UnlockFailures;
+            throw new UnauthorizedException(method == "passkey" ? $"That passkey didn't work. {left} {(left == 1 ? "try" : "tries")} left." : $"Wrong password. {left} {(left == 1 ? "try" : "tries")} left.", "UNLOCK_FAILED");
+        }
+
+        var wasLocked = session.LockedAt is not null;
+        session.LockedAt = null;
+        session.UnlockFailures = 0;
+        session.LastActivityAt = now;
+        session.LastSeenAt = now;
+        var workspaceId = await RefreshWorkspaceAsync(user.Id, requestedWorkspace, session.WorkspaceId, ct);
+        session.WorkspaceId = workspaceId;
+        stored.UsedAt = now;
+        var (raw, next) = NewRefreshToken(session, user.Id);
+        stored.ReplacedByTokenId = next.Id;
+        var access = tokens.CreateAccessToken(user, session.Id, workspaceId);
+        recorder.Audit("session.unlocked", "UserSession", session.Id, newValue: new { Method = method, WasLocked = wasLocked }, tenantId: workspaceId, userId: user.Id);
+        await db.SaveChangesAsync(ct);
+        return new AuthResult(access.Token, access.ExpiresAt, ToDto(user), raw, next.ExpiresAt);
     }
 
     // ---------------------------------------------------------------- password management

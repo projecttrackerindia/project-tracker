@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { optimisticMutationCache } from '../lib/optimistic';
 import { create } from 'zustand';
+import { isSessionLocked, markUnlocked } from '../api/lockState';
 import { get as apiGet, refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkDeletedHandler, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
 import { isApprovalStart, type ApprovalStart } from '../api/endpoints.sessionApproval';
@@ -89,6 +90,9 @@ export const useAuth = create<AuthState>((set, get) => ({
     const auth = await refresh;
     if (!auth) {
       // No connection (not a refused session): keep showing the saved copy, readable and editable through the outbox, until it is back.
+      // Locked after inactivity: the saved copy stays on the screen behind the lock screen, which takes it from here.
+      if (warm && sameAddress && isSessionLocked() && get().status === 'authenticated') return;
+      if (isSessionLocked()) markUnlocked(false);
       if (warm && sameAddress && !refreshWasRefused() && get().status === 'authenticated') { set({ offlineSession: true }); return; }
       if (warm) { clearWarmStart(); queryClient.clear(); }
       // Not answered (a release restarting, a blip) is not "signed out": with saved work the offline view shows, and it is tried again.

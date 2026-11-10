@@ -190,6 +190,46 @@ public class PasskeyService(IAppDbContext db, ICurrentContext ctx, AppClock cloc
         await db.SaveChangesAsync(ct);
     }
 
+    // ------------------------------------------------------------------ unlocking a locked session (idle lock)
+
+    /// <summary>A challenge only the locked session's own person can answer, with this device's fingerprint, face or PIN first.</summary>
+    public async Task<PasskeyOptionsDto> BeginUnlockAsync(Guid userId, CancellationToken ct = default)
+    {
+        var creds = await db.PasskeyCredentials.AsNoTracking().Where(p => p.UserId == userId).Select(p => p.CredentialId).ToListAsync(ct);
+        if (creds.Count == 0) throw new ConflictException("There is no passkey on this account. Unlock with your password.", "NO_PASSKEY");
+        var options = Relying().GetAssertionOptions(new GetAssertionOptionsParams
+        {
+            AllowedCredentials = creds.Select(c => new PublicKeyCredentialDescriptor(B64.Decode(c))).ToList(), UserVerification = UserVerificationRequirement.Required,
+        });
+        return await StoreAsync(userId, "unlock", options.ToJson(), ct);
+    }
+
+    /// <summary>Whether the answer is a valid, user-verified signature by one of this person's own passkeys (false counts as a wrong attempt).</summary>
+    public async Task<bool> VerifyUnlockAsync(Guid userId, PasskeyFinishRequest req, CancellationToken ct = default)
+    {
+        var challenge = await TakeAsync(req.ChallengeId, "unlock", userId, ct);
+        var options = AssertionOptions.FromJson(challenge.OptionsJson);
+        AuthenticatorAssertionRawResponse? assertion;
+        try { assertion = JsonSerializer.Deserialize<AuthenticatorAssertionRawResponse>(req.Response.GetRawText()); }
+        catch (JsonException) { return false; }
+        if (assertion is null) return false;
+        var credentialId = B64.Encode(assertion.RawId);
+        var stored = await db.PasskeyCredentials.FirstOrDefaultAsync(p => p.CredentialId == credentialId && p.UserId == userId, ct);
+        if (stored is null) return false;
+        try
+        {
+            var result = await Relying().MakeAssertionAsync(new MakeAssertionParams
+            {
+                AssertionResponse = assertion, OriginalOptions = options, StoredPublicKey = stored.PublicKey, StoredSignatureCounter = (uint)stored.SignCount,
+                IsUserHandleOwnerOfCredentialIdCallback = (args, token) => Task.FromResult(args.UserHandle is null || args.UserHandle.AsSpan().SequenceEqual(stored.UserHandle)),
+            }, ct);
+            stored.SignCount = result.SignCount;
+        }
+        catch (Fido2VerificationException) { return false; }
+        stored.LastUsedAt = clock.Now;
+        return true;
+    }
+
     // ------------------------------------------------------------------ challenges
 
     private async Task<PasskeyOptionsDto> StoreAsync(Guid? userId, string purpose, string json, CancellationToken ct)
