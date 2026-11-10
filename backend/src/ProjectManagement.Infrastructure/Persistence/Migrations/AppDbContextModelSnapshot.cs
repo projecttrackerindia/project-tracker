@@ -1941,6 +1941,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ContentHash")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -2003,6 +2006,8 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("SourceId");
+
+                    b.HasIndex("TenantId", "ConversationId");
 
                     b.HasIndex("TenantId", "IndexedAt");
 

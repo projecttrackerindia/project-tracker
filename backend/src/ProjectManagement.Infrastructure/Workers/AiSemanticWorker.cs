@@ -12,11 +12,11 @@ public class AiSearchOptions
     public const string Section = "Ai:Search";
     public bool WorkerEnabled { get; set; } = true;
     public int IntervalSeconds { get; set; } = 120;
-    /// <summary>Pages and work items embedded per pass (all workspaces together).</summary>
+    /// <summary>Sources (pages, work, chat messages, meeting notes, project mail) embedded per pass (all workspaces together), shared between the kinds.</summary>
     public int Budget { get; set; } = 200;
 }
 
-/// <summary>Keeps meaning-based search up to date: embeds what changed since the last pass and drops what was deleted. Idle when no embedding model is set.</summary>
+/// <summary>Keeps meaning-based search up to date: embeds what changed since the last pass (unchanged text is not embedded again) and drops what was deleted or is no longer allowed. Idle when no embedding model is set.</summary>
 public class AiSemanticWorker(IServiceScopeFactory scopes, IOptions<AiSearchOptions> options, WorkerHeartbeats beats, ILogger<AiSemanticWorker> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -35,7 +35,7 @@ public class AiSemanticWorker(IServiceScopeFactory scopes, IOptions<AiSearchOpti
                     var index = scope.ServiceProvider.GetRequiredService<AiSemanticIndex>();
                     if (!index.Enabled) { beats.Beat("Meaning search", interval); continue; }
                     var n = await index.IndexPendingAsync(Math.Clamp(options.Value.Budget, 10, 2000), stoppingToken);
-                    if (n > 0) log.LogInformation("Indexed {Count} page(s) and work item(s) for meaning search", n);
+                    if (n > 0) log.LogInformation("Indexed {Count} source(s) for meaning search", n);
                     beats.Beat("Meaning search", interval);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
