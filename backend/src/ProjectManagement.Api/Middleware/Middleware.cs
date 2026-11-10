@@ -42,11 +42,14 @@ public class MetricsMiddleware(RequestDelegate next)
     {
         var api = http.Request.Path.StartsWithSegments("/api");
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var db = api ? ProjectManagement.Application.Common.RequestDbStats.Begin() : null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        // app = the server's whole time; db = the part spent in the database and how many commands it took (many small ones is the usual cause of a slow save).
         if (api)
             http.Response.OnStarting(() =>
             {
                 var ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-                http.Response.Headers["Server-Timing"] = "app;dur=" + ms.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                http.Response.Headers["Server-Timing"] = "app;dur=" + ms.ToString("0.#", inv) + ", db;dur=" + db!.Milliseconds.ToString("0.#", inv) + ";desc=\"" + db.Queries + " queries\"";
                 return Task.CompletedTask;
             });
         try { await next(http); }
@@ -56,7 +59,7 @@ public class MetricsMiddleware(RequestDelegate next)
             {
                 metrics.Record(http.Response.StatusCode);
                 var took = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-                if (took >= SlowMs) log.LogWarning("Slow request: {Method} {Path} took {Elapsed:0} ms (status {Status})", http.Request.Method, http.Request.Path.Value, took, http.Response.StatusCode);
+                if (took >= SlowMs) log.LogWarning("Slow request: {Method} {Path} took {Elapsed:0} ms (status {Status}); database {DbMs:0} ms in {Queries} commands", http.Request.Method, http.Request.Path.Value, took, http.Response.StatusCode, db!.Milliseconds, db.Queries);
             }
         }
     }
