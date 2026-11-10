@@ -171,3 +171,13 @@ html body .stg-title h1 { margin: 0; font-size: 26px; font-weight: 700; letter-s
   .stg-chat { height: calc(100vh - 300px); }
 }
 
+
+/* Task links: curved arrows in a gutter beside the Plan list, from the task that comes first to the task that waits for it. */
+.stg-plan.has-links { position: relative; padding-right: 58px; }
+.tl-arrows { position: absolute; right: 4px; top: 6px; pointer-events: none; overflow: visible; }
+.tl-arrow { transition: opacity var(--motion-standard, .2s); }
+.tl-arrow path { fill: none; stroke-width: 1.8; stroke-linecap: round; }
+.tl-arrow.open path { stroke: var(--calm-orange, #ff9500); } .tl-arrow.open circle { fill: var(--calm-orange, #ff9500); }
+.tl-arrow.done path { stroke: var(--calm-green, #28cd41); stroke-dasharray: 4 3; } .tl-arrow.done circle { fill: var(--calm-green, #28cd41); }
+.tl-arrow.dim { opacity: .2; }
+@media (max-width: 760px) { .tl-arrows { top: 4px; } .stg-plan.has-links { padding-right: 52px; } }

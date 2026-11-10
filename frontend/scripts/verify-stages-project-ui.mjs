@@ -49,6 +49,13 @@ const task = (n, title, stage, owner, due, done = false, extra = {}) => ({ id: g
 const tasks = [task(8, 'Posting service split', 2, 1, day(-3), true), task(6, 'Idempotency keys', 2, 1, day(-2), true), task(2, 'Refund webhook retries', 3, 1, today), task(3, 'Staging API keys', 3, 13, day(-2)),
   task(4, 'Load test 2k tps', 3, 14, day(2)), task(10, 'Release checklist', 4, 15, day(3)), task(11, 'Rollback drill', 4, 14, day(2)), task(12, 'Status page notice', 4, 15, day(3)), task(20, 'Metrics review', 5, 1, day(10)), task(21, 'Retro with Contoso', 5, 11, day(13))];
 
+// Task links (from → to): the task that comes first holds the next one back until it is done.
+const LINKS = [[3, 2, false], [3, 4, false], [4, 10, false], [6, 3, true]];
+const byNum = (n) => tasks.find((t) => t.number === 480 + n);
+for (const t of tasks) { const n = t.number - 480; t.dependsOnCount = LINKS.filter((l) => l[1] === n).length; t.blocksCount = LINKS.filter((l) => l[0] === n).length; t.isBlocked = LINKS.some((l) => l[1] === n && !l[2]); }
+const depLink = (a, b, sat, from, to) => { const o = byNum(a); return { id: g(700 + from * 20 + to), type: 'FinishToStart', satisfied: sat, task: { id: o.id, key: o.key, title: o.title, category: o.statusCategory, statusName: o.statusName, dueDate: o.dueDate } }; };
+const depsOf = (id) => { const n = tasks.find((t) => t.id === id)?.number - 480; return { blockedBy: LINKS.filter((l) => l[1] === n).map((l) => depLink(l[0], n, l[2], l[0], n)), blocks: LINKS.filter((l) => l[0] === n).map((l) => depLink(l[1], n, l[2], n, l[1])), enforced: false, blockedReason: null }; };
+
 // My work (work items).
 const wi = (n, kind, key, title, pi, due, extra = {}) => ({ kind, id: g(500 + n), key, title, projectId: projects[pi].id, projectKey: projects[pi].key, projectName: projects[pi].name, status: 'In progress', category: 'Active', priority: 'High',
   dueDate: due, isOverdue: due < today, assignee: ref(1), typeName: null, updatedAt: ago(n), version: 1, completedAt: null, reporterId: g(1), dueTime: null, ...extra });
@@ -137,6 +144,7 @@ const make = async (theme, writes, opts = {}) => {
     else if (ep === '/api/v1/teams') data = [{ id: g(91), name: 'QA team', description: null, memberCount: 4, projectCount: 2, lead: ref(12) }];
     else if (/^\/api\/v1\/projects\/[^/]+$/.test(ep)) { const p = projects.find((x) => ep.endsWith(x.id)) ?? atlas; data = { project: p, statuses, stages: p.id === atlas.id ? stages : [], forecast: p.id === atlas.id ? forecast : null, members: members.slice(0, 5).map((m) => ({ userId: m.userId, name: m.displayName, email: m.email, role: m.role })) }; }
     else if (/^\/api\/v1\/projects\/[^/]+\/tasks$/.test(ep)) data = { items: ep.includes(atlas.id) ? tasks : [], page: 1, pageSize: 500, totalItems: tasks.length, totalPages: 1 };
+    else if (/^\/api\/v1\/tasks\/[^/]+\/dependencies$/.test(ep)) data = depsOf(ep.split('/')[4]);
     else if (/^\/api\/v1\/projects\/[^/]+\/activity$/.test(ep)) data = activity;
     else if (/^\/api\/v1\/projects\/[^/]+\/health$/.test(ep)) data = { health: 'AtRisk', byHand: false, note: null, until: null, reasons: [] };
     else if (/^\/api\/v1\/work-items\/[^/]+$/.test(ep)) { const t = tasks.find((x) => ep.endsWith(x.id)) ?? tasks[2]; data = { kind: 'task', id: t.id, key: t.key, title: t.title, description: 'Retries with backoff.', projectId: t.projectId, projectKey: 'ATL', projectName: 'Atlas Payments',
@@ -197,6 +205,13 @@ try {
     assert.equal(await page.getByTestId('journey-forecast').count() + await page.getByTestId('journey-rings').count() + await page.getByTestId('journey-aura').count(), 0, 'no Journey line');
     if (phone) await fitsPhone(page, `project ${tag}`, assert);
     await shot(page, `project-${tag}.png`);
+    if (!phone && theme === 'light' && width === 1440) {
+      assert.ok(await page.getByTestId('task-links').locator('.tl-arrow.open').count() === 3, 'arrows between linked tasks');
+      await page.getByRole('button', { name: 'Load test 2k tps', exact: true }).hover(); await page.waitForTimeout(350);
+      assert.ok(await page.getByTestId('task-links').locator('.tl-arrow.dim').count() >= 1, 'other arrows dim on hover');
+      await shot(page, 'links-hover-1440.png'); await page.mouse.move(5, 5);
+      checks.push('Task links: curved arrows between linked tasks, dim on hover');
+    }
     checks.push('Journey line removed from the project page');
 
     // ---------------------------------------------------------------- Edit panel

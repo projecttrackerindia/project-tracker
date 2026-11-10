@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { insightApi, taskApi } from '../../api/endpoints';
 import type { ProjectDetail, Task } from '../../api/types';
@@ -20,6 +20,7 @@ import type { DotsItem } from '../talk/DotsMenu';
 import { ProjectDocs } from './ProjectDocs';
 import { usePortfolioBrief } from './PortfolioInsights';
 import type { PortfolioRisk } from '../ai/aiApi';
+import { TaskLinkArrows, useTaskEdges } from './TaskLinks';
 import { ProjectEditPanel, type EditTab } from './ProjectEditPanel';
 import { dm, errText, sizeOf } from './stagesKit';
 import './stagesProject.css';
@@ -130,19 +131,23 @@ function PlanList({ tasks, loading, detail, onOpen, onTick, addWork }: {
   tasks: Task[] | undefined; loading: boolean; detail: ProjectDetail; onOpen: (id: string) => void; onTick: (t: Task) => Promise<void>; addWork: boolean;
 }) {
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [hot, setHot] = useState<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const order = useMemo(() => new Map(detail.stages.map((s) => [s.id, s.order])), [detail.stages]);
   const rows = useMemo(() => (tasks ?? []).filter((t) => !t.parentTaskId && t.statusCategory !== 'Cancelled').sort((a, b) =>
     Number(isDone(a)) - Number(isDone(b)) || (order.get(a.stageId ?? '') ?? 99) - (order.get(b.stageId ?? '') ?? 99) || (a.dueDate ?? '9').localeCompare(b.dueDate ?? '9')), [tasks, order]);
+  const edges = useTaskEdges(rows);
   if (loading) return <CalmCard className="stg-plan"><p className="stg-empty">Loading tasks…</p></CalmCard>;
   if (!rows.length) return <CalmCard className="stg-plan"><p className="stg-empty">No tasks yet.{addWork && ' Add one with the + button.'}</p></CalmCard>;
   return (
-    <CalmCard className="stg-plan" aria-label="Plan">
-      <ul>
+    <CalmCard className={`stg-plan${edges.length ? ' has-links' : ''}`} aria-label="Plan">
+      <TaskLinkArrows list={listRef} edges={edges} active={hot} />
+      <ul ref={listRef}>
         {rows.map((t) => {
           const off = isDone(t) || ticked.has(t.id);
           const right = off ? 'Done' : [t.assignee?.name.split(' ')[0], dayText(t.dueDate), sizeOf(t.estimatedHours)].filter(Boolean).join(' · ');
           return (
-            <li key={t.id} className={`stg-task${off ? ' done' : ''}`}>
+            <li key={t.id} data-task={t.id} className={`stg-task${off ? ' done' : ''}`} onPointerEnter={() => setHot(t.id)} onPointerLeave={() => setHot(null)} onFocus={() => setHot(t.id)} onBlur={() => setHot(null)}>
               <button type="button" className={`stg-ring${off ? ' done' : ''}`} aria-pressed={off} aria-label={`Done: ${t.title}`} disabled={off || !t.canEdit}
                 onClick={() => { setTicked((s) => new Set(s).add(t.id)); void onTick(t).catch(() => setTicked((s) => { const x = new Set(s); x.delete(t.id); return x; })); }} />
               <button type="button" className="stg-task-t" onClick={() => onOpen(t.id)}>{t.title}</button>
