@@ -171,3 +171,58 @@ html body .stg-title h1 { margin: 0; font-size: 26px; font-weight: 700; letter-s
   .stg-chat { height: calc(100vh - 300px); }
 }
 
+/* ---------------------------------------------------------------- journey: forecast line (web) and rings (phone) */
+.jf { padding: 22px 26px 18px; display: flex; flex-direction: column; gap: 14px; }
+.jf-top { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
+.jf-cap { color: var(--calm-ink2); font-size: 15px; }
+.jf-head h2 { margin: 2px 0 4px; font-size: 34px; font-weight: 800; letter-spacing: -.02em; color: var(--calm-ink); }
+.jf-head p { margin: 0; color: var(--calm-ink2); font-size: 16px; }
+.jf .late, .jr .late { color: var(--calm-late); }
+.jf .good { color: var(--calm-green); }
+.jf-now { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.jf-now b { font-size: 20px; font-weight: 700; }
+.jf-who { display: inline-flex; align-items: center; gap: 8px; color: var(--calm-ink); font-size: 15px; margin-top: 4px; }
+/* Stages as a stepper: equal columns, so names can never touch however close their dates are; the dated time bar sits below it. */
+.jf-steps { list-style: none; margin: 18px 0 0; padding: 0; display: grid; }
+.jf-step { position: relative; min-width: 0; }
+.jf-step::before { content: ''; position: absolute; top: 15px; left: 0; right: 0; height: 3px; background: var(--calm-fill-2); }
+.jf-step.first::before { left: 50%; } .jf-step.last::before { right: 50%; }
+.jf-step.done::before { background: var(--calm-p3); }
+.jf-step.current::before { background: linear-gradient(90deg, var(--calm-p3) 50%, var(--calm-fill-2) 50%); }
+.jf-step.current.last::before { background: var(--calm-p3); }
+.jf-lab { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; border: 0; background: none; padding: 0 4px 6px; font: inherit; color: var(--calm-ink2); cursor: pointer; text-align: center; border-radius: 12px; }
+.jf-lab:hover { background: var(--calm-fill); }
+.jf-dot { position: relative; z-index: 1; width: 16px; height: 16px; margin: 8px 0 8px; border-radius: 50%; background: var(--calm-solid, #fff); border: 2px solid var(--calm-ink3); box-sizing: border-box; }
+.jf-step.done .jf-dot { background: var(--calm-p3); border-color: var(--calm-p3); }
+.jf-step.done .jf-dot::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(40deg); }
+.jf-step.current .jf-dot { border-color: var(--calm-p3); box-shadow: 0 0 0 5px color-mix(in srgb, var(--calm-p3) 20%, transparent); }
+.jf-lab b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 100%; font-size: 14px; font-weight: 500; line-height: 1.25; overflow: hidden; overflow-wrap: anywhere; }
+.jf-step.current .jf-lab b { color: var(--calm-ink); font-weight: 700; }
+.jf-step.done .jf-lab b { color: var(--calm-ink); }
+.jf-lab small { display: block; margin-top: 2px; font-size: 12px; color: var(--calm-ink3); }
+.jf-lab small.late { color: var(--calm-late); }
+@media (max-width: 1100px) { .jf-lab b { font-size: 13px; } }
+.jf-pop { position: absolute; top: 100%; left: 50%; translate: -50% 6px; z-index: 20; min-width: 250px; padding: 14px 16px; border-radius: 16px; background: var(--calm-solid);
+  box-shadow: var(--calm-sh-sheet), 0 0 0 .5px color-mix(in srgb, var(--calm-ink) 12%, transparent); display: flex; flex-direction: column; gap: 8px; animation: cpk-in var(--motion-micro, 160ms) var(--ease-standard, ease) both; }
+.jf-pop b { font-size: 16px; }
+.jf-pop-row { display: flex; align-items: center; gap: 8px; font-size: 14.5px; }
+.jf-pop-row.quiet { color: var(--calm-ink2); }
+.jf-pop-row em { font-style: normal; }
+.jf-pop-acts { display: flex; flex-wrap: wrap; gap: 6px; position: relative; }
+.jf-pop-acts button { border: 0; border-radius: 99px; padding: 0 12px; min-height: 34px; background: var(--calm-fill); color: var(--calm-ink); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.jf-pop-acts button:hover { background: var(--calm-accent-soft); color: var(--calm-accent-text); }
+.jf-date { position: absolute; width: 1px; height: 1px; opacity: 0; bottom: 0; left: 0; }
+.jf-aura { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 16px; color: var(--calm-ink); }
+.jr { display: flex; align-items: center; gap: 18px; width: 100%; padding: 16px 18px; border: 0; border-radius: 22px; background: var(--calm-card); box-shadow: var(--calm-sh-card, none); text-align: left; font: inherit; color: var(--calm-ink); cursor: pointer; }
+.jr-svg { width: 112px; height: 112px; flex: none; }
+.jr-track, .jr-arc { fill: none; stroke-width: 10; }
+.jr-arc { stroke-linecap: round; transition: stroke-dasharray var(--motion-emphasised) var(--ease-standard); }
+.jr-track.j { stroke: color-mix(in srgb, var(--calm-p3) 16%, transparent); } .jr-arc.j { stroke: var(--calm-p3); }
+.jr-track.t { stroke: color-mix(in srgb, var(--calm-orange) 18%, transparent); } .jr-arc.t { stroke: var(--calm-orange); }
+.jr-track.w { stroke: color-mix(in srgb, var(--calm-green) 18%, transparent); } .jr-arc.w { stroke: var(--calm-green); }
+.jr-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 14.5px; }
+.jr-l { font-weight: 700; } .jr-l small { font-weight: 400; color: var(--calm-ink2); font-size: 13px; }
+.jr-l.j { color: var(--calm-p3); } .jr-l.t { color: var(--calm-late); } .jr-l.w { color: var(--calm-green); }
+.jr-now { margin-top: 4px; color: var(--calm-ink2); } .jr-now b { color: var(--calm-ink); }
+.jr-f { color: var(--calm-ink2); }
+@media (prefers-reduced-motion: reduce) { .jr-arc { transition: none; } .jf-pop { animation: none; } }
