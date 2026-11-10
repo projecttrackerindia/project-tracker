@@ -6,7 +6,7 @@ import { fitsPhone } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
 
 // Stages project (designs load/project-web, project-phone, stages, stage-owners-phone, project-settings-web, task-edit-web, task-edit):
-// the journey bar (no broken words, current stage centred, owner + date, late "+Nd"), Edit by the title (no ⋯ menu) opening the side panel
+// (the journey bar was removed) (no broken words, current stage centred, owner + date, late "+Nd"), Edit by the title (no ⋯ menu) opening the side panel
 // with Stages · Details · People · Statuses · Automation (rename, owner sheet with move-open-tasks, later date asks why, Move to next →),
 // the Plan · Board · Docs · Chat · Meet · Time · Activity tabs and the task panel (Details · Activity · Comments). Light and dark at 1440,
 // 1920 and a 390 phone. Built frontend only; fictional fixtures; only the writes each check makes.
@@ -193,50 +193,11 @@ try {
     await page.getByText('+12 days').waitFor();
     await page.getByRole('button', { name: 'Refund webhook retries', exact: true }).waitFor();
     await page.getByTestId('project-aura').getByRole('button', { name: /What if/ }).waitFor();
-    // Journey: the forecast line on the web, the rings on a phone.
-    if (phone) {
-      await page.getByTestId('journey-rings').getByText('Journey 46%').waitFor();
-    } else {
-      const jf = page.getByTestId('journey-forecast');
-      await jf.getByText('Likely').waitFor();
-      await jf.getByText(/4 days late/).waitFor();
-      await jf.getByText('Today', { exact: true }).waitFor();
-      await page.getByTestId('journey-aura').getByText(/Give Development to/).waitFor();
-    }
+    // The Journey line (forecast on the web, rings on a phone) is gone from the project page; stages are changed in the Edit panel below.
+    assert.equal(await page.getByTestId('journey-forecast').count() + await page.getByTestId('journey-rings').count() + await page.getByTestId('journey-aura').count(), 0, 'no Journey line');
     if (phone) await fitsPhone(page, `project ${tag}`, assert);
     await shot(page, `project-${tag}.png`);
-    if (phone) {
-      await page.getByTestId('journey-rings').click();
-      await page.getByTestId('edit-stages').waitFor();
-      await fitsPhone(page, `rings sheet ${tag}`, assert);
-      await shot(page, `rings-sheet-${tag}.png`);
-      await page.keyboard.press('Escape'); await page.waitForTimeout(400);
-    } else {
-      await page.getByTestId('journey-forecast').locator('[data-stage="Development"]').click();
-      const pop = page.getByTestId('stage-popover');
-      await pop.getByRole('button', { name: 'Change owner' }).waitFor();
-      await shot(page, `journey-popover-${tag}.png`);
-      if (theme === 'light' && width === 1440) {
-        await pop.getByRole('button', { name: 'Change owner' }).click();
-        await page.getByTestId('stage-owner-sheet').waitFor();
-        await page.keyboard.press('Escape'); await page.locator('.calm-scrim').waitFor({ state: 'detached' });
-        // drag Code review's end tick later → the reason sheet
-        const tick = page.getByRole('slider', { name: /^Drag date of Code review/ });
-        const tb = await tick.boundingBox();
-        await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2); await page.mouse.down();
-        await page.mouse.move(tb.x + 90, tb.y + tb.height / 2, { steps: 6 }); await page.mouse.up();
-        const reason = page.getByTestId('extension-reason'); await reason.waitFor();
-        await reason.getByRole('button', { name: 'Scope changed' }).click(); await reason.getByRole('button', { name: 'Extend date' }).click();
-        await page.waitForTimeout(400);
-        assert.equal(writes.filter((x) => x.w.endsWith(g(202))).pop()?.body?.extensionReason, 'Scope changed');
-        await page.getByTestId('journey-aura').getByRole('button', { name: 'Do it' }).click();
-        await page.waitForTimeout(400);
-        const doIt = writes.filter((x) => x.w.endsWith(`/stages/${g(201)}/owner`)).pop();
-        assert.equal(doIt?.body?.ownerId, g(14)); assert.equal(doIt?.body?.moveOpenTasks, true);
-        checks.push('Forecast line: popover, Change owner, drag a tick (later asks why), Aura Do it');
-        writes.length = 0;
-      } else { await page.getByTestId('journey-forecast').locator('[data-stage="Development"]').click(); await pop.waitFor({ state: 'detached' }); }
-    }
+    checks.push('Journey line removed from the project page');
 
     // ---------------------------------------------------------------- Edit panel
     await page.getByTestId('project-edit').click();
