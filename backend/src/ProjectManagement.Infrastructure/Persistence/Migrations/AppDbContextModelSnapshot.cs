@@ -13949,6 +13949,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("IdleTimeoutMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IpAllowlistEnabled")
                         .HasColumnType("boolean");
 
@@ -14683,7 +14686,13 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
                     b.Property<string>("IpAddress")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("LastActivityAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LockedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("NewDevice")
@@ -14697,6 +14706,9 @@ namespace ProjectManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("SsoTenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("UnlockFailures")
+                        .HasColumnType("integer");
 
                     b.Property<string>("UserAgent")
                         .HasColumnType("text");

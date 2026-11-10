@@ -32,6 +32,9 @@ public class TenantSecuritySettings : TenantEntity, ITenantScoped
     /// <summary>Single active session: a member signing in on a new device must allow it from the device already signed in, which is then signed out.</summary>
     public bool SingleActiveSession { get; set; }
 
+    /// <summary>"Sign out after inactivity": the app locks after this many minutes without real use (15, 30, 60 or 240; 0 = never). Owners and admins choose it.</summary>
+    public int IdleTimeoutMinutes { get; set; } = 30;
+
     // The password vault's workspace rules.
     /// <summary>Every reveal, copy or one-time code from the vault needs a two-step check made in the last few minutes.</summary>
     public bool VaultStepUpAlways { get; set; }

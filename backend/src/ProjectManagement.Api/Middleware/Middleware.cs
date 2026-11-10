@@ -285,10 +285,23 @@ public class CurrentContextMiddleware(RequestDelegate next)
                                  join u in db.Users on s.UserId equals u.Id
                                  where s.Id == sessionId && s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now
                                  select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, u.TimeZone, s.SsoTenantId, s.AuthMethod, s.CreatedAt, u.PasswordLength,
+                                     s.LockedAt, s.LastActivityAt, s.LastSeenAt,
+                                     // "Sign out after inactivity" of the session's own workspace (its settings row only; read before any workspace is resolved).
+                                     IdleMinutes = db.TenantSecuritySettings.IgnoreQueryFilters().Where(t => t.TenantId == s.WorkspaceId).Select(t => (int?)t.IdleTimeoutMinutes).FirstOrDefault(),
                                      ZoneChosen = db.ReminderSettings.Any(r => r.UserId == u.Id && !r.FollowDeviceTimeZone) }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
             if (session is null || !session.IsActive)
             {
                 await ErrorWriter.WriteAsync(http, 401, "Your session has ended. Please sign in again.", [new ApiError("SESSION_REVOKED", "Your session has ended. Please sign in again.")]);
+                return;
+            }
+            // A locked session (or one left unused for longer than its workspace allows) can only unlock or sign out: everything else is refused
+            // until the person proves it is still them. Background polling with a still-valid access token gets the same answer.
+            var idleMinutes = session.IdleMinutes ?? ProjectManagement.Application.Features.Auth.AuthService.DefaultIdleMinutes;
+            if ((session.LockedAt is not null || ProjectManagement.Application.Features.Auth.AuthService.IsIdle(
+                    ProjectManagement.Application.Features.Auth.AuthService.LastActivity(session.LastActivityAt, session.LastSeenAt, session.CreatedAt), idleMinutes, now))
+                && !http.Request.Path.StartsWithSegments("/api/v1/auth"))
+            {
+                await ErrorWriter.WriteAsync(http, 401, "You were away for a while. Unlock to carry on.", [new ApiError("SESSION_IDLE_LOCKED", "You were away for a while. Unlock to carry on.")]);
                 return;
             }
 

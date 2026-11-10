@@ -85,6 +85,12 @@ public class UserSession : Entity
     public DateTime? ReportedAt { get; set; }
     /// <summary>Why the session ended, in words for the person ("Signed out because you signed in on Chrome on Windows"). Null = signed out normally.</summary>
     public string? EndedReason { get; set; }
+    /// <summary>The last time the person really used the app (keyboard, pointer, touch), from the app's throttled activity ping. Background polling and realtime never move it. Null = an older session: LastSeenAt stands in.</summary>
+    public DateTime? LastActivityAt { get; set; }
+    /// <summary>Locked after the workspace's "Sign out after inactivity" time: only unlocking (passkey or password) or signing out work until it is cleared.</summary>
+    public DateTime? LockedAt { get; set; }
+    /// <summary>Wrong unlock attempts in a row on this lock; the fifth signs the session out.</summary>
+    public int UnlockFailures { get; set; }
 }
 
 public class RefreshToken : Entity
