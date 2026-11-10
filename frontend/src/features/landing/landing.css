@@ -435,3 +435,77 @@ section.lp-band{padding-block:130px}
   .lp-slots .lp-pick{background:#0A84FF;color:#fff}
   .lp-lv-todo .lp-ck{background:#30D158;box-shadow:none}
 }
+
+/* =====================================================================================================================
+   Purple brand, the Aura ring, the flag, Aura's powers and the Made-in-India band (added with the purple redesign).
+   ===================================================================================================================== */
+.lp-root{--blue:#7c5cf0;--violet:#a78bfa}
+.lp-logo{gap:9px}
+.lp-lg{display:block;flex:none;filter:drop-shadow(0 3px 8px rgba(139,108,246,.45))}
+/* The Aura mark is the thin gradient ring everywhere (the same artwork as styles/calm.css), turning with transform only. */
+.lp-orb{background:var(--aura-ring,conic-gradient(from 30deg,#5b8cff,#a06bff,#ff5fa2,#ff9a4d,#ffd25a,#3ee0a1,#5b8cff))!important;-webkit-mask:var(--aura-ring-mask,radial-gradient(circle,transparent 52%,#000 54%));mask:var(--aura-ring-mask,radial-gradient(circle,transparent 52%,#000 54%));filter:drop-shadow(0 0 5px rgba(160,107,255,.5))}
+
+/* ---- the flag: thirty-two slices, each a beat behind its neighbour (transform and opacity only) ---- */
+.lp-flag{position:relative;display:inline-block;flex:none;--fw:96px;--fh:64px;width:calc(var(--fw) + 6px);height:calc(var(--fh) * 1.7)}
+.lp-pole{position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:2px;background:linear-gradient(90deg,#d6dae2,#7d8492);box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.lp-cloth{position:absolute;left:3px;top:2px;width:var(--fw);height:var(--fh);display:flex;filter:drop-shadow(0 8px 9px rgba(0,0,0,.3))}
+.lp-fs{position:relative;flex:0 0 calc(var(--fw) / 32 + .5px);margin-right:-.5px;height:100%;overflow:hidden;--a:calc(var(--i) * var(--fh) * .0019);animation:lp-wave 2.6s ease-in-out infinite;animation-delay:calc(var(--i) * -90ms)}
+.lp-fs::after{content:"";position:absolute;inset:0;background:rgba(0,0,30,.10);opacity:0;animation:lp-fold 2.6s ease-in-out infinite;animation-delay:calc(var(--i) * -90ms)}
+.lp-fo{position:absolute;top:0;left:calc(var(--i) * var(--fw) / -32);width:var(--fw);height:100%}
+.lp-fi{display:block;position:relative;width:100%;height:100%}
+.lp-fi>i{position:absolute;left:0;right:0;height:33.4%}
+.lp-fi>i:nth-of-type(1){top:0}.lp-fi>i:nth-of-type(2){top:33.3%}.lp-fi>i:nth-of-type(3){top:66.6%}
+.lp-fi svg{position:absolute;left:50%;top:50%;width:calc(var(--fh) * .31);height:calc(var(--fh) * .31);transform:translate(-50%,-50%)}
+@keyframes lp-wave{0%,100%{transform:translateY(calc(var(--a) * -1))}50%{transform:translateY(var(--a))}}
+@keyframes lp-fold{0%,100%{opacity:0}50%{opacity:1}}
+.lp-flag-s{--fw:26px;--fh:17px;height:calc(var(--fh) + 6px);vertical-align:middle}
+.lp-flag-s .lp-pole{width:2px;bottom:0}.lp-flag-s .lp-cloth{left:2px;top:1px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}.lp-flag-s{width:calc(var(--fw) + 3px)}
+.lp-flag-l{--fw:150px;--fh:100px}
+
+.lp-in{display:inline-flex;align-items:center;gap:10px;margin-bottom:18px;padding:6px 16px 6px 12px;border-radius:999px;font-size:13.5px;font-weight:550;background:rgba(255,255,255,.09);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);backdrop-filter:blur(14px)}
+.lp-foot-l,.lp-foot-in{display:inline-flex;align-items:center;gap:9px}.lp-foot-in{font-weight:550}
+
+/* ---- Aura's powers ---- */
+.lp-pw{position:relative;overflow:hidden}
+.lp-pw::before{content:"";position:absolute;inset:0;background:radial-gradient(50% 45% at 85% 0,rgba(139,108,246,.32),transparent 70%),radial-gradient(40% 40% at 5% 100%,rgba(91,140,255,.16),transparent 70%);pointer-events:none}
+.lp-pw .lp-wrap{position:relative}
+.lp-pw-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.lp-pw-c{grid-column:span 4;display:flex;flex-direction:column;gap:12px;padding:28px;border-radius:28px;background:linear-gradient(160deg,#17142e,#0e0c1c);box-shadow:inset 0 0 0 1px rgba(167,139,250,.18);transition-delay:calc(var(--i,0) * 60ms)}
+.lp-pw-wide{grid-column:span 8}
+.lp-pw-c h3{font-size:24px;font-weight:700;letter-spacing:-.025em}
+.lp-pw-c>p{font-size:15.5px;line-height:1.5;color:#b9b6d8}
+.lp-pw-c>div{margin-top:auto;padding-top:6px}
+.lp-pw-chat{display:flex;flex-direction:column;gap:10px}
+.lp-pw-me{align-self:flex-end;max-width:86%;padding:11px 15px;border-radius:18px 18px 6px 18px;background:linear-gradient(135deg,#7c5cf0,#9b7bff);font-size:14px;line-height:1.4}
+.lp-pw-ai{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:16px;background:rgba(255,255,255,.07);font-size:14px}.lp-pw-ai b{color:#c9b8ff}
+.lp-pw-fcl{position:relative;height:30px}
+.lp-pw-fcl::before{content:"";position:absolute;left:0;right:0;top:12px;height:6px;border-radius:3px;background:rgba(255,255,255,.1)}
+.lp-pw-fdn{position:absolute;left:0;top:12px;height:6px;width:48%;border-radius:3px;background:linear-gradient(90deg,#7c5cf0,#b996fb)}
+.lp-pw-ftd{position:absolute;left:48%;top:5px;width:2px;height:20px;background:#fff;border-radius:1px}
+.lp-pw-fgap{position:absolute;left:78%;top:12px;width:16%;height:6px;background:repeating-linear-gradient(90deg,#f59e0b 0 5px,transparent 5px 9px)}
+.lp-pw-fcx{display:flex;justify-content:space-between;font-size:13px;color:#b9b6d8}.lp-pw-late b{color:#fbbf24}
+.lp-pw-heat{display:flex;flex-direction:column;gap:6px}.lp-pw-heat>div{display:flex;gap:6px}
+.lp-pw-heat i{flex:1;height:26px;border-radius:8px;background:#2a2450}
+.lp-pw-heat i.r2{background:#3b3178}.lp-pw-heat i.r3{background:#5a47b8}.lp-pw-heat i.r4{background:#d99a2b}.lp-pw-heat i.r5{background:#e0574a;animation:lp-breathe 2.8s ease-in-out infinite;animation-delay:calc(var(--i) * -300ms)}
+@keyframes lp-breathe{50%{opacity:.62}}
+.lp-pw-src{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.lp-pw-src span{padding:7px 13px;border-radius:999px;background:rgba(255,255,255,.08);font-size:13px;font-weight:600}
+.lp-pw-src em{flex-basis:100%;margin-top:4px;font-style:normal;font-size:14px;color:#c9b8ff}
+.lp-pw-watch,.lp-pw-voice{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.07);font-size:14px}.lp-pw-voice{font-size:15px}
+.lp-pw-states{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+.lp-pw-states>div{display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 18px;border-radius:28px;text-align:center;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.lp-pw-states .siri-orb{margin-bottom:6px}.lp-pw-states b{font-size:17px}.lp-pw-states span:not(.siri-orb){font-size:13.5px;color:#a7a3cc;max-width:26ch}
+
+/* ---- Made in India ---- */
+section.lp-in-sec{padding-block:70px}
+.lp-india{position:relative;overflow:hidden;display:grid;grid-template-columns:190px 1.15fr 1fr 1fr;gap:30px;align-items:center;padding:36px 40px 36px 52px;border-radius:32px;background:#fff;color:var(--ink);box-shadow:0 2px 24px rgba(40,30,80,.08)}
+.lp-india::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:linear-gradient(#FF9933 0 33.3%,#fff 33.3% 66.6%,#138808 66.6%);box-shadow:inset -1px 0 0 rgba(0,0,0,.06)}
+.lp-india .lp-flag-l{margin-top:-6px}
+.lp-india h2{font-size:clamp(26px,3vw,38px);line-height:1.1;font-weight:800}
+.lp-india .lp-eyebrow{font-size:14px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:8px}
+.lp-india-p{display:flex;flex-direction:column;gap:5px;font-size:15px;line-height:1.5;color:var(--ink-2)}.lp-india-p b{font-size:17px;color:var(--ink)}
+@media(max-width:900px){
+  .lp-pw-c,.lp-pw-wide{grid-column:span 12}.lp-pw-states{grid-template-columns:1fr}
+  .lp-india{grid-template-columns:1fr;gap:16px;padding:28px 24px 28px 34px}.lp-india .lp-flag-l{--fw:120px;--fh:80px}
+}
+@media (prefers-reduced-motion: reduce){.lp-pw-c{transition-delay:0s}}

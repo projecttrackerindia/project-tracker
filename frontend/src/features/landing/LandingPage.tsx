@@ -5,6 +5,7 @@ import { apiUrl } from '../../api/client';
 import { authApi } from '../../api/endpoints';
 import { startOutsideSignIn } from '../../lib/native';
 import { SUPPORT_EMAIL, supportMailto } from '../../lib/support';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { PROVIDER_ICON } from '../auth/AuthPages';
 import '../../styles/brand-fonts.css';
 import './landing.css';
@@ -39,6 +40,44 @@ function onAnchor(e: ReactMouseEvent<HTMLAnchorElement>, after?: () => void) {
 
 const SECTIONS: [string, string][] = [['how', 'Overview'], ['places', 'Five places'], ['create', 'Create'], ['ai', 'AI'], ['portfolio', 'Portfolio'], ['trust', 'Privacy'], ['pricing', 'Pricing']];
 
+
+// ------------------------------------------------------------------ brand marks: the purple logo and the flag
+/** The product's own purple tile (the same artwork as public/favicon.svg). */
+function LogoMark({ size = 24 }: { size?: number }) {
+  return (
+    <svg className="lp-lg" viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
+      <defs>
+        <linearGradient id="lpg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#8b6cf6" /><stop offset=".55" stopColor="#a27cf8" /><stop offset="1" stopColor="#b996fb" /></linearGradient>
+        <linearGradient id="lph" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#fff" stopOpacity=".28" /><stop offset=".5" stopColor="#fff" stopOpacity="0" /></linearGradient>
+      </defs>
+      <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lpg)" /><rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lph)" />
+      <rect x="2.5" y="2.5" width="59" height="59" rx="15.5" fill="none" stroke="#fff" strokeOpacity=".35" />
+      <path d="M20 34l8 8L43 24" fill="none" stroke="#fff" strokeWidth="5.6" strokeLinecap="round" strokeLinejoin="round" /><circle cx="44.5" cy="22.5" r="4.4" fill="#fff" />
+    </svg>
+  );
+}
+
+const SPOKES = Array.from({ length: 24 }, (_, i) => { const a = (i * 15 * Math.PI) / 180; return [Math.cos(a) * 9.4, Math.sin(a) * 9.4] as const; });
+const SLICES = Array.from({ length: 32 }, (_, i) => i);
+/** The national flag, waving: thirty-two thin slices of one drawing, each moving a little up and down a beat after its neighbour (transform only,
+ *  so it is cheap), with soft light and shade across them. Size is set with --fw / --fh on the element; still under Reduce Motion. */
+function Flag({ className = '' }: { className?: string }) {
+  const art = (
+    <span className="lp-fi">
+      <i style={{ background: '#FF9933' }} /><i style={{ background: '#fff' }} /><i style={{ background: '#138808' }} />
+      <svg viewBox="-12 -12 24 24" aria-hidden="true"><g stroke="#000080" strokeWidth=".55" fill="none"><circle r="9.6" /><circle r="1.4" fill="#000080" />{SPOKES.map(([x, y], i) => <line key={i} x1="0" y1="0" x2={x} y2={y} />)}</g></svg>
+    </span>
+  );
+  return (
+    <span className={`lp-flag ${className}`.trim()} role="img" aria-label="Flag of India">
+      <span className="lp-pole" aria-hidden="true" />
+      <span className="lp-cloth" aria-hidden="true">
+        {SLICES.map((i) => <span key={i} className="lp-fs" style={{ '--i': i } as CSSProperties}><span className="lp-fo" style={{ '--i': i } as CSSProperties}>{art}</span></span>)}
+      </span>
+    </span>
+  );
+}
+
 // ------------------------------------------------------------------ nav
 function Nav() {
   const [open, setOpen] = useState(false);
@@ -51,7 +90,7 @@ function Nav() {
   // The sheet sits outside the header: the header's blur would otherwise make it the sheet's frame instead of the screen.
   return (<>
     <header className="lp-nav"><div className="lp-wrap">
-      <a className="lp-logo" href="#lp-top" onClick={(e) => onAnchor(e)}><i aria-hidden="true">✓</i>ProjectTracker</a>
+      <a className="lp-logo" href="#lp-top" onClick={(e) => onAnchor(e)}><LogoMark size={24} />ProjectTracker</a>
       <nav aria-label="Sections">{SECTIONS.map(([id, label]) => <a key={id} href={`#${id}`} onClick={(e) => onAnchor(e)}>{label}</a>)}</nav>
       <div className="lp-nav-end">
         <Link className="lp-signin" to="/login">Sign in</Link>
@@ -86,6 +125,7 @@ const Hero = memo(function Hero() {
       <div className="lp-hero-stick">
         <div className="lp-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
         <div className="lp-wrap lp-hero-copy" data-lp="copy">
+          <span className="lp-in"><Flag className="lp-flag-s" />Built in India · Your data stays in Mumbai</span>
           <p className="lp-eyebrow">Projects. Tickets. Conversations. One mind.</p>
           <h1>Work, <span>on autopilot.</span></h1>
           <p className="lp-lede">An assistant that reads everything your team is doing, tells you what matters, and handles the follow-up when you say yes.</p>
@@ -490,6 +530,58 @@ const Faq = memo(function Faq() {
   );
 });
 
+
+// ------------------------------------------------------------------ Aura, the advanced AI (only what is built and live)
+const POWERS: { h: string; p: string; demo: ReactNode; wide?: boolean }[] = [
+  { h: 'Does it for you', wide: true, p: 'More than 50 actions: create and move work, log time, reschedule meetings, send reports, change dates and stage owners. Each one arrives as a card you confirm, can undo for ten minutes, and is recorded under your name.',
+    demo: <div className="lp-pw-chat"><div className="lp-pw-me">Move Anita's review to Friday, tell the client, and add the risk to the weekly report.</div><div className="lp-pw-ai"><SiriOrb size={20} state="idle" /><span>Three cards ready. <b>Run all</b> · undo any within 10 minutes</span></div></div> },
+  { h: 'Sees it coming', p: 'Forecasts every project from real progress, load and slipped dates. Ask “why is this late?” and get the reason, with the fix prepared.',
+    demo: <div className="lp-pw-fc"><div className="lp-pw-fcl"><span className="lp-pw-fdn" /><span className="lp-pw-ftd" /><span className="lp-pw-fgap" /></div><div className="lp-pw-fcx"><span>Promised <b>18 Dec</b></span><span className="lp-pw-late">Likely <b>22 Dec</b></span></div></div> },
+  { h: 'Knows who has room', p: 'Load shows every person, team and project: assigned work spread to its due date, plus meetings, minus leave. Aura picks the person who can carry it.',
+    demo: <div className="lp-pw-heat" aria-hidden="true">{['r5 r5 r4 r4 r1', 'r2 r1 r1 r2 r1', 'r3 r3 r3 r2 r3'].map((row, y) => <div key={y}>{row.split(' ').map((c, x) => <i key={x} className={c} style={{ '--i': y * 5 + x } as CSSProperties} />)}</div>)}</div> },
+  { h: 'Reads your inbox, chat and meetings', wide: true, p: 'Copy it on a client thread, link a Slack channel, or let its bot join the call. It finds the new tasks, delays and unanswered questions, each with the words it came from. Nothing changes until someone approves.',
+    demo: <div className="lp-pw-src"><span>Gmail</span><span>Outlook</span><span>Slack</span><span>WhatsApp</span><span>Google Meet</span><em>→ 3 proposals, each with its source</em></div> },
+  { h: 'Tells you when', p: 'Say “tell me when the API doc is approved” and it watches for you. A morning briefing and a Friday report arrive on their own.',
+    demo: <div className="lp-pw-watch"><SiriOrb size={18} state="listening" /><span>Watching <b>API doc</b> · approval</span></div> },
+  { h: 'Speaks your language of work', p: 'Ask or dictate by voice. Log time, set reminders and answer check-ins without touching the screen.',
+    demo: <div className="lp-pw-voice"><SiriOrb size={34} state="listening" /><span>“Log three hours on KYC‑8”</span></div> },
+];
+const Powers = memo(function Powers() {
+  return (
+<section className="lp-band lp-night lp-pw" id="aura" aria-label="Aura, the assistant">
+  <div className="lp-wrap">
+    <div className="lp-head lp-center lp-reveal"><p className="lp-eyebrow">Aura · advanced AI</p><h2>It does the work,<br />not just the talking.</h2><p>Everything it changes is a card you can read first, undo afterwards, and find in the audit log.</p></div>
+    <div className="lp-pw-grid">
+      {POWERS.map((c, i) => (
+        <article key={c.h} className={`lp-pw-c lp-reveal${c.wide ? ' lp-pw-wide' : ''}`} style={{ '--i': i } as CSSProperties}>
+          <h3>{c.h}</h3><p>{c.p}</p>{c.demo}
+        </article>
+      ))}
+    </div>
+    <div className="lp-pw-states lp-reveal" aria-label="Aura's three states">
+      <div><SiriOrb size={56} state="idle" /><b>Resting</b><span>Slow and quiet while nothing is happening</span></div>
+      <div><SiriOrb size={56} state="listening" /><b>Listening</b><span>Quickens and pulses while you talk or type</span></div>
+      <div><SiriOrb size={56} state="thinking" /><b>Thinking</b><span>Spins fast while it plans and works</span></div>
+    </div>
+  </div>
+</section>
+  );
+});
+
+// ------------------------------------------------------------------ made in India
+const Made = memo(function Made() {
+  return (
+<section className="lp-band lp-paper lp-in-sec" id="india" aria-label="Made in India">
+  <div className="lp-wrap"><div className="lp-india lp-reveal">
+    <Flag className="lp-flag-l" />
+    <div className="lp-india-h"><p className="lp-eyebrow" style={{ color: '#138808' } as CSSProperties}>Made in India</p><h2>Built in India, for how India works.</h2></div>
+    <div className="lp-india-p"><b>Your data stays in Mumbai</b><span>Hosted on Google Cloud's India region, and the AI runs there too.</span></div>
+    <div className="lp-india-p"><b>Priced in rupees</b><span>Pay by UPI, card or netbanking, with GST invoices and team discounts that apply by themselves.</span></div>
+  </div></div>
+</section>
+  );
+});
+
 // ------------------------------------------------------------------ final call to action: the existing sign-in and sign-up flows
 function Final() {
   const navigate = useNavigate();
@@ -523,7 +615,8 @@ function Final() {
 function Footer() {
   return (
     <footer className="lp-foot"><div className="lp-wrap">
-      <span>© 2026 ProjectTracker · All names and data shown are examples.</span>
+      <span className="lp-foot-l"><LogoMark size={18} />© 2026 ProjectTracker · All names and data shown are examples.</span>
+      <span className="lp-foot-in"><Flag className="lp-flag-s" />Made in India, for the world</span>
       <nav aria-label="Legal and help"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security/">Security</a><a href={supportMailto('Hello from the website')}>Contact {SUPPORT_EMAIL}</a></nav>
     </div></footer>
   );
@@ -679,6 +772,7 @@ export default function LandingPage() {
         <Five />
         <Create />
         <Gallery />
+        <Powers />
         <Moments />
         <Portfolio />
         <Counts />
@@ -686,6 +780,7 @@ export default function LandingPage() {
         <Tools />
         <Pricing />
         <Faq />
+        <Made />
         <Final />
       </main>
       <Footer />
