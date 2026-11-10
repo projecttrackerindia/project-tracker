@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { documentApi } from '../../api/endpoints';
@@ -67,8 +68,12 @@ export function useNewPage() {
   const navigate = useNavigate();
   const types = useWsQuery(['document-types'], documentApi.types, { staleTime: 300_000 });
   const pageType = types.data?.find((t) => t.code === PAGE_CODE);
+  const busy = useRef(false);
   const create = async (o: { projectId?: string | null; parentId?: string | null; template?: DocumentType; title?: string; teamId?: string | null;
     /** Editor JSON to start with (an AI draft). */ body?: string } = {}) => {
+    if (busy.current) return;   // a double click must not make two pages
+    busy.current = true;
+    try {
     const t = pageType ?? (await documentApi.types()).find((x) => x.code === PAGE_CODE);
     if (!t) { toast('Pages are not available in this workspace yet.', 'error'); return; }
     try {
@@ -80,6 +85,7 @@ export function useNewPage() {
       invalidateWorkspace(wid, 'documents');
       navigate(`/documents/${d.item.id}`, { state: { fresh: true } });
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not create the page.', 'error'); }
+    } finally { window.setTimeout(() => { busy.current = false; }, 1200); }
   };
   return { ready: !!pageType, create };
 }

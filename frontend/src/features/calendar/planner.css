@@ -613,3 +613,14 @@ html[data-theme='dark'] .wp-task { background: color-mix(in srgb, var(--calm-p2)
 .wp-up-t { min-width: 0; flex: 1; }
 .wp-fr > span { flex: 1; }
 .wp-fr > em { flex: none; }
+
+/* Logged time and typed-in time were drawn as a 8–16% tint with no solid fill: on a dark day they all but vanished.
+   They are solid cards now, in both themes, with a colour bar, readable text and a visible edge. A typed-in block (≈) keeps a dashed edge. */
+html .wp .wp-col .wp-e.lg { opacity: 1; background: color-mix(in srgb, #28cd41 20%, var(--calm-solid, #fff)); color: #0b5a1c;
+  box-shadow: inset 3px 0 0 #28cd41, 0 0 0 .5px color-mix(in srgb, #28cd41 45%, transparent); }
+html .wp .wp-col .wp-e.lg.run { background: repeating-linear-gradient(135deg, color-mix(in srgb, #28cd41 30%, var(--calm-solid, #fff)) 0 6px, color-mix(in srgb, #28cd41 18%, var(--calm-solid, #fff)) 6px 12px); }
+html .wp .wp-col .wp-e.lg.ap { background: color-mix(in srgb, #28cd41 14%, var(--calm-solid, #fff)); box-shadow: inset 3px 0 0 #28cd41, 0 0 0 1px color-mix(in srgb, #28cd41 55%, transparent); outline: 1px dashed color-mix(in srgb, #28cd41 55%, transparent); outline-offset: -3px; }
+html[data-theme='dark'] .wp .wp-col .wp-e.lg { background: color-mix(in srgb, #30d158 30%, var(--calm-solid, #1c1c1e)); color: #d4f8dc; }
+html[data-theme='dark'] .wp .wp-col .wp-e.lg.run { background: repeating-linear-gradient(135deg, color-mix(in srgb, #30d158 40%, var(--calm-solid, #1c1c1e)) 0 6px, color-mix(in srgb, #30d158 28%, var(--calm-solid, #1c1c1e)) 6px 12px); }
+html[data-theme='dark'] .wp .wp-col .wp-e.lg.ap { background: color-mix(in srgb, #30d158 20%, var(--calm-solid, #1c1c1e)); }
+html .wp .wp-col .wp-e.lg small { opacity: .85; }

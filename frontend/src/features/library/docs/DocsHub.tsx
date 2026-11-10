@@ -26,6 +26,7 @@ import { CalmAvatar, CalmCard, CalmGo, CalmHero, CalmRailCard, CalmRailRow } fro
 import '../calm-library.css';
 import { chipOf, inFilter, KIND_FILTERS, type KindFilter } from '../libraryKinds';
 import { docsPath } from './nav';
+import { DocTrash, useCanDeleteDoc, useDeleteDoc } from './DeleteDoc';
 import { avgScore, MethodPill, pidOf, plural, PopMenu, ProjectMark } from './shared';
 import { TextHits } from './TextHits';
 import { useCoverage } from '../../quality/coverage';
@@ -72,6 +73,8 @@ export function DocsHub() {
   const onAsking = useCallback((on: boolean) => setAsking(on), []);
   const canCreate = c?.canCreate ?? false;
   const newPage = useNewPage();
+  const canDelete = useCanDeleteDoc();
+  const deleteDoc = useDeleteDoc();
   const tpl = useWsQuery(['document-types'], documentApi.types, { staleTime: 300_000 });
   const starters = (tpl.data ?? []).filter((t) => t.code !== PAGE_CODE && t.code !== 'ARTIFACT').sort((a, b) => a.sortOrder - b.sortOrder).slice(0, 4);
   const dash = useWsQuery(['documents', 'dashboard'], documentApi.dashboard, { staleTime: 60_000 });
@@ -140,7 +143,8 @@ export function DocsHub() {
                 <div className="dx-sect-h"><h2>Recently edited</h2><button type="button" className="dx-link" onClick={() => setFinding(true)}>All docs ›</button></div>
                 <ul className="lib-dgrid">
                   {recentDocs.map((d) => (
-                    <li key={d.id}>
+                    <li key={d.id} className="dx-del-host">
+                      {canDelete(d.owner?.id) && <DocTrash title={d.title} onDelete={() => void deleteDoc(d)} />}
                       <Link className="lib-dcard" to={d.projectId ? docsPath.guide(d.projectId, d.id) : docsPath.doc(d.id)}>
                         <span className="lib-cov"><span className="lib-cov-ty"><i style={{ background: d.typeColor ?? 'var(--calm-accent)' }} />{chipOf(d.typeCode)} · {d.projectName ?? d.teamName ?? 'General'}</span><b>{d.title}</b></span>
                         <span className="lib-dmeta">{d.owner && <CalmAvatar userId={d.owner.id} name={d.owner.name} />}<span className="lib-dm-t">{[d.owner?.name.split(' ')[0], updated(d.updatedAt)].filter(Boolean).join(' · ')}</span><span className="lib-dm-r">{STATUS[d.status].label}</span></span>
@@ -178,7 +182,7 @@ export function DocsHub() {
               ) : (
                 <ul className="dx-list" data-testid="doc-list">
                   {shown.map((d) => (
-                    <li key={d.id}>
+                    <li key={d.id} className="dx-del-host">
                       <Link className="dx-li" data-doc={d.title} to={d.projectId ? docsPath.guide(d.projectId, d.id) : docsPath.doc(d.id)}>
                         <span className="dx-kc">{chipOf(d.typeCode)}</span>
                         <b>{d.title}</b>
@@ -186,6 +190,7 @@ export function DocsHub() {
                         <span className={`dx-st t-${STATUS[d.status].tone}`}>{STATUS[d.status].label}</span>
                         <time dateTime={d.updatedAt}>{updated(d.updatedAt)}</time>
                       </Link>
+                      {canDelete(d.owner?.id) && <DocTrash title={d.title} onDelete={() => void deleteDoc(d)} />}
                     </li>
                   ))}
                 </ul>
