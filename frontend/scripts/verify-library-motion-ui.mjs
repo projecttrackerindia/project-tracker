@@ -357,7 +357,8 @@ try {
     await shot(page, 'library-settings-1440.png');
     assert.equal(design.sandboxEmbeds, false);
     await open(page);
-    await page.locator('.mo-sandbox').scrollIntoViewIfNeeded();
+    // The embed re-renders when the setting lands, so wait for the new text instead of scrolling to an element that may be replaced mid-scroll.
+    await page.waitForFunction(() => /turned off in this workspace/.test(document.querySelector('.mo-sandbox .mo-stage')?.textContent ?? ''));
     assert.match(await page.locator('.mo-sandbox .mo-stage').innerText(), /turned off in this workspace/);
     assert.equal(await page.locator('.mo-sandbox iframe').count(), 0);
     checks.push('workspace-switch');
