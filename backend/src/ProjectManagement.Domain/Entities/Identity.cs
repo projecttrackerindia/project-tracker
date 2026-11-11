@@ -85,6 +85,12 @@ public class UserSession : Entity
     public DateTime? ReportedAt { get; set; }
     /// <summary>Why the session ended, in words for the person ("Signed out because you signed in on Chrome on Windows"). Null = signed out normally.</summary>
     public string? EndedReason { get; set; }
+    /// <summary>The last time the person really used the app (keyboard, pointer, touch), from the app's throttled activity ping. Background polling and realtime never move it. Null = an older session: LastSeenAt stands in.</summary>
+    public DateTime? LastActivityAt { get; set; }
+    /// <summary>Locked after the workspace's "Sign out after inactivity" time: only unlocking (passkey or password) or signing out work until it is cleared.</summary>
+    public DateTime? LockedAt { get; set; }
+    /// <summary>Wrong unlock attempts in a row on this lock; the fifth signs the session out.</summary>
+    public int UnlockFailures { get; set; }
 }
 
 public class RefreshToken : Entity
@@ -115,6 +121,10 @@ public class Tenant : AuditableEntity, ISoftDelete
     public bool AiDisabled { get; set; }
     /// <summary>What the organization tells the assistant about itself and how it works (written by an Owner or Admin, shared with every answer).</summary>
     public string? AiInstructions { get; set; }
+    /// <summary>Aura's memory is on (the default): people's own and their teams' memories are used. An admin can switch it off for everyone.</summary>
+    public bool AiMemoryEnabled { get; set; } = true;
+    /// <summary>Workspace-wide memories ("we always write release notes in British English") are used only once an admin turns them on. Off by default.</summary>
+    public bool AiWorkspaceMemoryEnabled { get; set; }
     /// <summary>What each AI agent may do here (AI control centre), as JSON {"project":1,...}: 0 Off, 1 Suggest, 2 Ask first, 3 Auto. Null = each agent's default.</summary>
     public string? AiAgentLevels { get; set; }
     /// <summary>Whether every member sees every project (the default) or only the projects of their own teams and the ones they were added to.</summary>

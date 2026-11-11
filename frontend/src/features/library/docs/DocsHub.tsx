@@ -1,4 +1,6 @@
+import { Select } from '../../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { SiriOrb } from '../../../components/aura/SiriOrb';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../../api/client';
 import { apiDocApi, docTrackerApi, documentApi } from '../../../api/endpoints';
@@ -24,6 +26,7 @@ import { CalmAvatar, CalmCard, CalmGo, CalmHero, CalmRailCard, CalmRailRow } fro
 import '../calm-library.css';
 import { chipOf, inFilter, KIND_FILTERS, type KindFilter } from '../libraryKinds';
 import { docsPath } from './nav';
+import { DocTrash, useCanDeleteDoc, useDeleteDoc } from './DeleteDoc';
 import { avgScore, MethodPill, pidOf, plural, PopMenu, ProjectMark } from './shared';
 import { TextHits } from './TextHits';
 import { useCoverage } from '../../quality/coverage';
@@ -70,6 +73,8 @@ export function DocsHub() {
   const onAsking = useCallback((on: boolean) => setAsking(on), []);
   const canCreate = c?.canCreate ?? false;
   const newPage = useNewPage();
+  const canDelete = useCanDeleteDoc();
+  const deleteDoc = useDeleteDoc();
   const tpl = useWsQuery(['document-types'], documentApi.types, { staleTime: 300_000 });
   const starters = (tpl.data ?? []).filter((t) => t.code !== PAGE_CODE && t.code !== 'ARTIFACT').sort((a, b) => a.sortOrder - b.sortOrder).slice(0, 4);
   const dash = useWsQuery(['documents', 'dashboard'], documentApi.dashboard, { staleTime: 60_000 });
@@ -138,7 +143,8 @@ export function DocsHub() {
                 <div className="dx-sect-h"><h2>Recently edited</h2><button type="button" className="dx-link" onClick={() => setFinding(true)}>All docs ›</button></div>
                 <ul className="lib-dgrid">
                   {recentDocs.map((d) => (
-                    <li key={d.id}>
+                    <li key={d.id} className="dx-del-host">
+                      {canDelete(d.owner?.id) && <DocTrash title={d.title} onDelete={() => void deleteDoc(d)} />}
                       <Link className="lib-dcard" to={d.projectId ? docsPath.guide(d.projectId, d.id) : docsPath.doc(d.id)}>
                         <span className="lib-cov"><span className="lib-cov-ty"><i style={{ background: d.typeColor ?? 'var(--calm-accent)' }} />{chipOf(d.typeCode)} · {d.projectName ?? d.teamName ?? 'General'}</span><b>{d.title}</b></span>
                         <span className="lib-dmeta">{d.owner && <CalmAvatar userId={d.owner.id} name={d.owner.name} />}<span className="lib-dm-t">{[d.owner?.name.split(' ')[0], updated(d.updatedAt)].filter(Boolean).join(' · ')}</span><span className="lib-dm-r">{STATUS[d.status].label}</span></span>
@@ -158,7 +164,7 @@ export function DocsHub() {
               <section aria-label="Start a document" className="dx-sect">
                 <div className="dx-sect-h"><h2>Start something</h2><button type="button" className="dx-link" onClick={() => setModal('wizard')}>All templates</button></div>
                 <div className="dx-starts">
-                  <button type="button" className="dx-start ai" onClick={() => setModal('ai')}><span className="dx-orb" aria-hidden="true" /><b>Write with AI</b><small>From a line, a meeting, project work or files</small></button>
+                  <button type="button" className="dx-start ai" onClick={() => setModal('ai')}><SiriOrb className="dx-orb" /><b>Write with AI</b><small>From a line, a meeting, project work or files</small></button>
                   <button type="button" className="dx-start" onClick={() => void newPage.create()}><span className="dx-start-i" aria-hidden="true">＋</span><b>Blank page</b><small>Type / for blocks</small></button>
                   {starters.map((t) => (
                     <button key={t.id} type="button" className="dx-start" style={{ '--dc': t.color } as CSSProperties} onClick={() => void newPage.create({ template: t })} title="Starts a page with this template's headings">
@@ -176,7 +182,7 @@ export function DocsHub() {
               ) : (
                 <ul className="dx-list" data-testid="doc-list">
                   {shown.map((d) => (
-                    <li key={d.id}>
+                    <li key={d.id} className="dx-del-host">
                       <Link className="dx-li" data-doc={d.title} to={d.projectId ? docsPath.guide(d.projectId, d.id) : docsPath.doc(d.id)}>
                         <span className="dx-kc">{chipOf(d.typeCode)}</span>
                         <b>{d.title}</b>
@@ -184,6 +190,7 @@ export function DocsHub() {
                         <span className={`dx-st t-${STATUS[d.status].tone}`}>{STATUS[d.status].label}</span>
                         <time dateTime={d.updatedAt}>{updated(d.updatedAt)}</time>
                       </Link>
+                      {canDelete(d.owner?.id) && <DocTrash title={d.title} onDelete={() => void deleteDoc(d)} />}
                     </li>
                   ))}
                 </ul>
@@ -321,11 +328,11 @@ function NeedsReview({ onChanged, canCreate, projects }: { onChanged: () => void
         {canCreate && projects.length > 0 && !make && <button type="button" className="dx-link" onClick={() => setMake({ kind: 'release-notes', projectId: projects[0].id })}>Make a draft</button>}</div>
       {make && (
         <form className="dx-make" onSubmit={(e) => { e.preventDefault(); void generate(); }}>
-          <select className="input" aria-label="What to write" value={make.kind} onChange={(e) => setMake({ ...make, kind: e.target.value as DocProposal['kind'] })}>
+          <Select className="input" aria-label="What to write" value={make.kind} onChange={(e) => setMake({ ...make, kind: e.target.value as DocProposal['kind'] })}>
             <option value="release-notes">Release notes from the last finished sprint</option>
             <option value="decision-log">Decision log from the last meeting with decisions</option>
-          </select>
-          <select className="input" aria-label="Project" value={make.projectId} onChange={(e) => setMake({ ...make, projectId: e.target.value })}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          </Select>
+          <Select className="input" aria-label="Project" value={make.projectId} onChange={(e) => setMake({ ...make, projectId: e.target.value })}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
           <div className="dx-row"><button type="submit" className="dx-btn pri sm" disabled={busy === 'make'}>{busy === 'make' && <Spinner />}Write it</button><button type="button" className="dx-btn sm" onClick={() => setMake(null)}>Cancel</button></div>
         </form>
       )}
@@ -342,7 +349,7 @@ function NeedsReview({ onChanged, canCreate, projects }: { onChanged: () => void
           ))}
           {items.map((p, i) => (
             <li key={p.id} className="dx-rv">
-              <span className="dx-av ai" aria-hidden="true"><span className="dx-orb" /></span>
+              <span className="dx-av ai" aria-hidden="true"><SiriOrb className="dx-orb" /></span>
               <span className="dx-rv-main"><b>{p.title}</b><small>{kindLabel(p.kind)} · AI draft{p.projectKey ? ` · ${p.projectKey}` : ''}</small></span>
               <button type="button" className={`dx-btn sm${reviews.length === 0 && i === 0 && open !== p.id ? ' tint' : ''}`} aria-expanded={open === p.id} onClick={() => setOpen(open === p.id ? null : p.id)}>{open === p.id ? 'Close' : 'Review'}</button>
               {open === p.id && (

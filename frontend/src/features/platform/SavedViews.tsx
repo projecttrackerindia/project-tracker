@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useMemo, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { teamApi } from '../../api/endpoints';
@@ -104,10 +105,10 @@ function SaveViewModal({ scope, config, onClose }: { scope: ViewScope; config: R
       )}
       {sharing === 'team' && (
         <Field label="Team">
-          <select className="input" aria-label="Team" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+          <Select className="input" aria-label="Team" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
             <option value="">Choose a team…</option>
             {teams.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          </Select>
         </Field>
       )}
     </Modal>

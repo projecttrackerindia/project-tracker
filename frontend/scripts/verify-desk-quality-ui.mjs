@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { appCsp } from './lib/csp.mjs';
+import { darkPopups } from './lib/popups.mjs';
+import { fitsPhone } from './lib/phone.mjs';
 import { assertFills, assertFillsMain, assertInToolbar } from './lib/fit.mjs';
 
 // Release 1 Desk (/desk) and Quality (/quality). Desk: the red incident strip for an open Critical ticket (timer, War room), the live queue
@@ -410,5 +412,36 @@ try {
     await ctx.close();
   }
   assert.deepEqual(errors, []);
+  // Round 4 (demo 07): Mine / Team / Unassigned tabs with counts, the SLA chip, Aura's summary box; the incident card stays in the flow
+  // (the desktop page never scrolls, so it cannot slide under the header); no white popups in dark. 1440, 1920 and 390, light and dark.
+  {
+    const r4 = path.resolve('test-results/calm-round4b'); await fs.mkdir(r4, { recursive: true });
+    for (const theme of ['light', 'dark']) for (const [w, h] of [[1440, 900], [1920, 1080], [390, 844]]) {
+      const state = { tickets: tickets(), q: quality(false), writes: [], lists: [] }; const ctx = await make(theme, state); const page = await ctx.newPage(); watch(page); await page.setViewportSize({ width: w, height: h });
+      await page.goto(`${origin}/preview-org/desk?view=queue`); await page.locator('.cdq-work .dq-cols').waitFor(); await page.waitForTimeout(600);
+      for (const t of ['mine', 'team', 'unassigned']) assert.match(await page.getByTestId(`dq-tab-${t}`).innerText(), /^(Mine|Team|Unassigned)\s*\d+$/, `${t} tab with a count`);
+      const mineN = Number((await page.getByTestId('dq-tab-mine').innerText()).match(/\d+/)[0]);
+      assert.equal(await page.getByTestId(mineN ? 'dq-tab-mine' : 'dq-tab-team').getAttribute('aria-selected'), 'true', 'opens on Mine (Team when nothing is yours)');
+      await page.getByTestId('dq-tab-team').click(); await page.waitForTimeout(300);
+      const team = Number((await page.getByTestId('dq-tab-team').innerText()).match(/\d+/)[0]);
+      assert.equal(await page.locator('.dq-qlist .dq-t').count(), team, 'Team lists every open ticket');
+      await page.getByTestId('dq-tab-unassigned').click(); await page.waitForTimeout(300);
+      assert.equal(await page.locator('.dq-qlist .dq-t').count(), Number((await page.getByTestId('dq-tab-unassigned').innerText()).match(/\d+/)[0]), 'Unassigned count matches');
+      await page.getByTestId('dq-tab-team').click(); await page.locator('.dq-qlist .dq-t').first().click(); await page.waitForTimeout(400);
+      await page.getByTestId('dq-sla-chip').waitFor(); await page.getByTestId('dq-aura-summary').waitFor();
+      if (w > 1180) {
+        const sh = await page.evaluate(() => ({ sh: document.scrollingElement.scrollHeight, ih: innerHeight, cols: document.querySelector('.dq-cols').getBoundingClientRect().toJSON(), tb: document.querySelector('.dq-tb').getBoundingClientRect().top, inc: document.querySelector('.dq-inc')?.getBoundingClientRect().top, main: [...document.querySelectorAll('main, .dq-page')].map((e) => [e.className, getComputedStyle(e).paddingBottom, e.getBoundingClientRect().bottom]) }));
+        assert.ok(sh.sh <= sh.ih + 2, `desk ${w}: the page itself does not scroll ${JSON.stringify(sh)}`);
+        await page.locator('.dq-qlist').evaluate((e) => e.scrollTo(0, 9999)); await page.mouse.wheel(0, 1200); await page.waitForTimeout(300);
+        const g2 = await page.evaluate(() => { const i = document.querySelector('.dq-inc')?.getBoundingClientRect(); const hd = document.querySelector('.v2-tb, header')?.getBoundingClientRect(); return i && hd ? { inc: i.top, hd: hd.bottom } : null; });
+        if (g2) assert.ok(g2.inc >= g2.hd - 1, `desk ${w}: incident card below the header after scrolling (${g2.inc} vs ${g2.hd})`);
+      } else await fitsPhone(page, `desk ${w} ${theme}`, assert);
+      await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(400);
+      await page.screenshot({ path: path.join(r4, `desk-queue-${w}-${theme}.png`) });
+      if (theme === 'dark' && w === 1440) checks.push(`desk dark: ${await darkPopups(page, 'desk dark', assert)} popups, none white`);
+      checks.push(`desk round4 ${w} ${theme}`);
+      await ctx.close();
+    }
+  }
   console.log(JSON.stringify({ checks, errors }));
 } finally { await browser.close(); }

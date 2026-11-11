@@ -300,3 +300,21 @@ html body .calm-row.sel, html body .calm-row[aria-selected='true'], html body .c
 html body .calm-link.accent, html body .calm-rc-aside a, html body .calm-rc-aside button, html body .calm-page a.more, html body .pfo-more { color: var(--calm-accent-text); }
 html body .v2-badge:not(.calm):not(.blue) { background: var(--calm-red); color: #fff; }
 html body .calm-go:hover { opacity: 1; background: var(--ds-accent-hover); }
+
+/* ------------------------------------------------------------------------------------------------ the Aura mark: a thin gradient ring */
+/* One mark everywhere (SiriOrb / AuraRing; older orb classes below take the same look). The ring turns with transform only: slow at rest,
+   faster while listening (with a soft pulse), fast while thinking. Under Reduce Motion it stands still. */
+:root { --aura-ring: conic-gradient(from 30deg, #5b8cff, #a06bff, #ff5fa2, #ff9a4d, #ffd25a, #3ee0a1, #5b8cff);
+  --aura-ring-mask: radial-gradient(circle, transparent 52%, #000 54%); }
+span.siri-orb.siri-orb { position: relative; display: inline-block; flex: none; width: 16px; height: 16px; border-radius: 50%;
+  background: none !important; box-shadow: none !important; font-size: 0; color: transparent; vertical-align: middle; transform: none; }
+span.siri-orb > i { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; background: var(--aura-ring);
+  -webkit-mask: var(--aura-ring-mask); mask: var(--aura-ring-mask); filter: drop-shadow(0 0 4px rgba(160, 107, 255, .45)); animation: aura-ring-turn 9s linear infinite; }
+span.siri-orb[data-state="listening"] > i { animation: aura-ring-turn 2.6s linear infinite, aura-ring-pulse 1.3s ease-in-out infinite; }
+span.siri-orb[data-state="thinking"] > i { animation-duration: 1.1s; }
+@keyframes aura-ring-turn { to { transform: rotate(360deg); } }
+@keyframes aura-ring-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+/* Older orb classes painted a ball: they are the ring now. */
+html body .ps3-orb, html body .rv-orb, html body .wp-orb, html body .v2-orb, html body .aura-hint .aura-hint-spark {
+  background: var(--aura-ring) !important; -webkit-mask: var(--aura-ring-mask); mask: var(--aura-ring-mask); box-shadow: none !important; }
+@media (prefers-reduced-motion: reduce) { span.siri-orb > i { animation: none !important; } }

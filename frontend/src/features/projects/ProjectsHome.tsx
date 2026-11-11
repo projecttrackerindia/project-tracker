@@ -1,9 +1,10 @@
 import { coverageText, useCoverage } from '../quality/coverage';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import type { ProjectCoverage } from '../../api/qualityApi';
 import { Term } from '../../components/Term';
 import { pinItem, useContextMenu, usePins } from '../../components/v2/pins';
 import { Face } from '../../components/Face';
-import { motion, useReducedMotion } from 'framer-motion';
+import { m as motion, useReducedMotion } from 'framer-motion';
 import { sharedLayout } from '../../lib/motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
@@ -26,6 +27,8 @@ import { useClassic } from '../calm/classic';
 import { dayMonth, errText, HEALTH, HealthPill, isFinished, passGradient, passStatus, useAllProjects } from './projectParts';
 import './projects.css';
 import './projectsHome.css';
+import { deleteWithUndo } from '../../lib/undoDelete';
+import { restoreApi } from '../../api/endpoints.history';
 
 type Place = 'projects' | 'portfolio';
 
@@ -158,9 +161,9 @@ function ProjectsView() {
     void Promise.race([ready, new Promise((r) => setTimeout(r, 900))]).finally(() => open(id));
   };
   const remove = async (p: Project) => {
-    if (!(await confirmDialog({ title: 'Delete project?', message: `Deleting “${p.name}” will also remove all of its tasks.` }))) return;
-    try { await projectApi.remove(p.id); toast('Project deleted.', 'warning'); void invalidateWorkspace(wid, 'projects'); }
-    catch (e) { toast(errText(e, 'Could not delete the project.'), 'error'); }
+    // Undo for 10 s instead of a confirm: the project and its tasks come back with Restore.
+    await deleteWithUndo({ what: 'Project', remove: () => projectApi.remove(p.id), restore: () => restoreApi.project(p.id),
+      onRemoved: () => void invalidateWorkspace(wid, 'projects'), onRestored: () => void invalidateWorkspace(wid) });
   };
 
   return (
@@ -349,7 +352,7 @@ function DuplicateLine({ projects }: { projects: Project[] }) {
   };
   return (
     <div className="pa-ai" role="note" aria-label="Likely duplicate" data-testid="duplicate-line">
-      <span className="pa-orb" aria-hidden="true" />
+      <SiriOrb className="pa-orb" />
       <span className="pa-ai-text">
         {g.slice(0, -1).map((p, i) => <span key={p.id}>{i > 0 ? ', ' : ''}<b>{p.name}</b></span>)} and <b>{g[g.length - 1].name}</b> look like the same project — {owners ? 'same owner, ' : ''}same name apart from case and spacing.
       </span>

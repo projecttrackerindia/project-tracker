@@ -5,12 +5,12 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright-core');
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5173';
-const password = 'Zephyr!8472';
+const password = 'Zephyr!8472-Qx'; // the 12-character password rule
 async function api(path, body, token) {
   const r = await fetch(`${BASE}/api/v1${path}`, { method: body === undefined ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body) });
-  assert.ok(r.ok, `${path}: HTTP ${r.status}`);
+  assert.ok(r.ok, `${path}: HTTP ${r.status} ${r.ok ? '' : await r.clone().text()}`);
   return r.status === 204 ? undefined : (await r.json()).data;
 }
 async function emailLink(email, path) {
@@ -19,7 +19,10 @@ async function emailLink(email, path) {
   return mail.text.match(/https?:\/\/[^\s"<>]+/)[0];
 }
 const ownerEmail = `invite-owner-${randomUUID()}@example.com`;
-await api('/auth/register', { email: ownerEmail, displayName: 'Nora Owner', password, acceptedTerms: true });
+// Sign-up needs a form token from the sign-up form, submitted no faster than a person could (the signup guard).
+const form = await api('/auth/signup-form');
+await new Promise((r) => setTimeout(r, (form.minSubmitSeconds + 0.5) * 1000));
+await api('/auth/register', { email: ownerEmail, displayName: 'Nora Owner', password, acceptedTerms: true, formToken: form.formToken });
 await api('/auth/verify-email', { token: new URL(await emailLink(ownerEmail, '/verify-email?')).searchParams.get('token') });
 let owner = (await api('/auth/login', { email: ownerEmail, password })).accessToken;
 const org = await api('/workspaces', { name: `Invitation test ${randomUUID()}` }, owner);
@@ -40,6 +43,7 @@ try {
   await page.locator('input[name=password]').fill(password);
   await page.locator('input[name=confirm]').fill(password);
   await page.locator('input[name=acceptedTerms]').check();
+  await page.waitForTimeout((form.minSubmitSeconds + 0.5) * 1000); // a person-speed submit, as the signup guard requires
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await page.getByRole('heading', { name: 'Check your email' }).waitFor({ timeout: 20000 });
   // The email must carry the return path even when verification opens on another device.

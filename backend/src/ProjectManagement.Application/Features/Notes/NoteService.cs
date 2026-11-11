@@ -105,8 +105,13 @@ public class NoteService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var mine = n.OwnerId == ctx.RequireUserId();
         if (!mine && (req.ProjectId is not null || req.ClearProject)) throw new ForbiddenException("Only the note's owner can move it to another project.");
         var before = MentionIds(n.ContentJson);
+        var (oldTitle, oldFolder, oldTags, oldPinned, oldProject, oldText) = (n.Title, n.Folder, n.Tags, n.Pinned, n.ProjectId, n.PlainText);
         await ApplyAsync(n, req, false, ct);
         await MentionAsync(n, before, ct);
+        // History: what this save changed, old → new (the text as its first words).
+        new ProjectManagement.Application.Features.Platform.FieldDiff().Add("Title", oldTitle, n.Title).Add("Folder", oldFolder, n.Folder).Add("Tags", oldTags, n.Tags)
+            .Add("Pinned", oldPinned ? "yes" : "no", n.Pinned ? "yes" : "no").Add("Project", oldProject?.ToString(), n.ProjectId?.ToString()).Add("Text", oldText, n.PlainText, 60)
+            .Record(recorder, "note", nameof(Note), n.Id);
         await db.SaveChangesAsync(ct);
         return await DtoAsync(n, ct);
     }
@@ -141,6 +146,18 @@ public class NoteService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         n.IsDeleted = true; n.DeletedAt = clock.Now; n.DeletedBy = me;
         recorder.Activity("note.deleted", nameof(Note), n.Id, $"Deleted a note: {n.Title}", n.ProjectId);
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Undo of a delete: the owner's note comes back as it was (its sharing, links and project).</summary>
+    public async Task<NoteDto> RestoreAsync(Guid id, CancellationToken ct = default)
+    {
+        var me = ctx.RequireUserId(); var tid = ctx.RequireTenantId();
+        var n = await db.Notes.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tid && x.OwnerId == me && x.IsDeleted, ct)
+            ?? throw new NotFoundException("Note not found.");
+        n.IsDeleted = false; n.DeletedAt = null; n.DeletedBy = null; n.UpdatedAt = clock.Now; n.UpdatedBy = me;
+        recorder.Activity("note.restored", nameof(Note), n.Id, $"Restored a note: {n.Title}", n.ProjectId);
+        await db.SaveChangesAsync(ct);
+        return await DtoAsync(n, ct);
     }
 
     // ------------------------------------------------------------------ helpers

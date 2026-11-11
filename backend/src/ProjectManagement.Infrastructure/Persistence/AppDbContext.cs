@@ -10,11 +10,16 @@ using ProjectManagement.Domain.Enums;
 namespace ProjectManagement.Infrastructure.Persistence;
 
 public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentContext current, TimeProvider clock, ProjectManagement.Application.Services.EntitlementCache? entitlementCache = null,
-    IChangeFeed? changeFeed = null, INotificationFeed? notificationFeed = null, IHotReadInvalidator? hotReads = null)
+    IChangeFeed? changeFeed = null, INotificationFeed? notificationFeed = null, IHotReadInvalidator? hotReads = null,
+    ProjectManagement.Application.Services.SessionCache? sessionCache = null)
     : DbContext(options), IAppDbContext
 {
     public DbSet<PlannedLeave> PlannedLeaves => Set<PlannedLeave>();
     public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+    public DbSet<NotificationTuning> NotificationTunings => Set<NotificationTuning>();
+    public DbSet<NotificationMute> NotificationMutes => Set<NotificationMute>();
+    public DbSet<ProblemReport> ProblemReports => Set<ProblemReport>();
+    public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<ApprovalRequestStep> ApprovalRequestSteps => Set<ApprovalRequestStep>();
     public DbSet<ApprovalRequestEvent> ApprovalRequestEvents => Set<ApprovalRequestEvent>();
     public DbSet<ApprovalPolicy> ApprovalPolicies => Set<ApprovalPolicy>();
@@ -200,6 +205,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<AiSchedule> AiSchedules => Set<AiSchedule>();
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<AiWatch> AiWatches => Set<AiWatch>();
+    public DbSet<AiMemory> AiMemories => Set<AiMemory>();
     public DbSet<AiAgentAction> AiAgentActions => Set<AiAgentAction>();
     public DbSet<TestCase> TestCases => Set<TestCase>();
     public DbSet<TestRun> TestRuns => Set<TestRun>();
@@ -227,8 +233,17 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
     public DbSet<ChatScheduledMessage> ChatScheduledMessages => Set<ChatScheduledMessage>();
     public DbSet<ChatPoll> ChatPolls => Set<ChatPoll>();
     public DbSet<ChatPollVote> ChatPollVotes => Set<ChatPollVote>();
+    public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<LoadSignal> LoadSignals => Set<LoadSignal>();
+    public DbSet<ClientPortalLink> ClientPortalLinks => Set<ClientPortalLink>();
+    public DbSet<ProjectInbox> ProjectInboxes => Set<ProjectInbox>();
+    public DbSet<CalendarSyncLink> CalendarSyncLinks => Set<CalendarSyncLink>();
+    public DbSet<CalendarSyncItem> CalendarSyncItems => Set<CalendarSyncItem>();
     public DbSet<ChatDeviceKey> ChatDeviceKeys => Set<ChatDeviceKey>();
     public DbSet<ChatKeyBackup> ChatKeyBackups => Set<ChatKeyBackup>();
+    public DbSet<TaskRecurrence> TaskRecurrences => Set<TaskRecurrence>();
+    public DbSet<TaskOccurrence> TaskOccurrences => Set<TaskOccurrence>();
+    public DbSet<WorkTemplate> WorkTemplates => Set<WorkTemplate>();
     public DbSet<ChatUserStatus> ChatUserStatuses => Set<ChatUserStatus>();
     public DbSet<AiUserProfile> AiUserProfiles => Set<AiUserProfile>();
     public DbSet<ReminderSettings> ReminderSettings => Set<ReminderSettings>();
@@ -371,6 +386,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options, ICurre
         ConfigurePlatformViews(b);
         ConfigureAttendance(b);
         ConfigureApprovalsAndNotes(b);
+        ConfigureAdoption(b);
+        ConfigureNotifySmart(b);
+        ConfigureLoad(b);
         ApplyQueryFilters(b);
     }
 }

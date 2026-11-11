@@ -21,13 +21,16 @@ public record ProjectListItemDto(Guid Id, string Key, string Name, string? Descr
     UserRefDto? Owner, Guid? TeamId, string? TeamName, DateOnly? StartDate, DateOnly? DueDate, int Progress, ProjectHealth Health,
     ProjectStatsDto Stats, int MemberCount, int Version, double Position, bool EnforceDependencies, Guid? ProjectGroupId = null, string? ProjectGroupName = null, ProjectType ProjectType = ProjectType.Other,
     DeliveryMethod DeliveryMethod = DeliveryMethod.Hybrid, StageScheduleMode StageScheduleMode = StageScheduleMode.Manual,
-    int StageCount = 0, int PendingSignOffs = 0, DateTime? UpdatedAt = null, bool HealthByHand = false);
+    int StageCount = 0, int PendingSignOffs = 0, DateTime? UpdatedAt = null, bool HealthByHand = false,
+    DateOnly? OriginalDate = null, int ExtensionCount = 0, int TotalSlipDays = 0);
 public record StatusDto(Guid Id, string Name, int Order, StatusCategory Category, string Color);
 public record StageDto(Guid Id, string Name, int Order, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
     StageStatus Status, StageStatus EffectiveStatus, UserRefDto? Owner, UserRefDto? Assignee, string? Description,
-    int TaskTotal = 0, int TaskDone = 0, bool Locked = false, string? LockedBy = null, int OpenIssues = 0, int TotalIssues = 0, int? DurationDays = null);
+    int TaskTotal = 0, int TaskDone = 0, bool Locked = false, string? LockedBy = null, int OpenIssues = 0, int TotalIssues = 0, int? DurationDays = null,
+    Guid? OwnerTeamId = null, string? OwnerTeamName = null);
 public record ProjectMemberDto(Guid UserId, string Name, string Email, TenantRole? Role);
-public record ProjectDetailDto(ProjectListItemDto Project, IReadOnlyList<StatusDto> Statuses, IReadOnlyList<StageDto> Stages, IReadOnlyList<ProjectMemberDto> Members);
+public record ProjectDetailDto(ProjectListItemDto Project, IReadOnlyList<StatusDto> Statuses, IReadOnlyList<StageDto> Stages, IReadOnlyList<ProjectMemberDto> Members,
+    ProjectForecastDto? Forecast = null);
 public record LabelDto(Guid Id, string Name, string Color);
 
 public record CreateProjectRequest(string Name, string? Key, string? Description, Priority Priority, ProjectStatus? Status, Guid? OwnerId,
@@ -35,7 +38,8 @@ public record CreateProjectRequest(string Name, string? Key, string? Description
     DeliveryMethod? DeliveryMethod = null, StageScheduleMode? StageScheduleMode = null);
 public record UpdateProjectRequest(string Name, string? Description, Priority Priority, ProjectStatus Status, Guid? OwnerId,
     Guid? TeamId, DateOnly? StartDate, DateOnly? DueDate, int Version, bool? EnforceDependencies = null, Guid? ProjectGroupId = null,
-    string? DueDateReason = null, string? DueDateDependency = null, ProjectType? ProjectType = null, DeliveryMethod? DeliveryMethod = null, StageScheduleMode? StageScheduleMode = null);
+    string? DueDateReason = null, string? DueDateDependency = null, ProjectType? ProjectType = null, DeliveryMethod? DeliveryMethod = null, StageScheduleMode? StageScheduleMode = null,
+    string? ExtensionReason = null);
 public record ProjectQuery(string? Q, ProjectStatus? Status, Priority? Priority, Guid? OwnerId, Guid? TeamId, bool IncludeArchived = false,
     string? Sort = null, int Page = 1, int PageSize = 25, bool MineOnly = false, Guid? ProjectGroupId = null, ProjectType? ProjectType = null);
 public record AddProjectMemberRequest(Guid UserId);
@@ -51,7 +55,13 @@ public record ReorderStatusesRequest(IReadOnlyList<Guid> StatusIds);
 /// <summary>The whole timeline in its new order: every stage of the project exactly once.</summary>
 public record ReorderStagesRequest(IReadOnlyList<Guid> StageIds, string? ScheduleReason = null, int? ProjectVersion = null);
 public record UpsertStageRequest(string Name, DateOnly? PlannedStart, DateOnly? PlannedEnd, DateOnly? ActualStart, DateOnly? ActualEnd,
-    StageStatus Status, Guid? OwnerId, Guid? AssigneeId, string? Description, int? Order, int? DurationDays = null, string? ScheduleReason = null, int? ProjectVersion = null);
+    StageStatus Status, Guid? OwnerId, Guid? AssigneeId, string? Description, int? Order, int? DurationDays = null, string? ScheduleReason = null, int? ProjectVersion = null,
+    string? ExtensionReason = null, Guid? OwnerTeamId = null);
+/// <summary>Finish the current stage and start the next. CarryOpenTasks moves the current stage's unfinished tasks along instead of blocking.</summary>
+public record AdvanceStageRequest(bool CarryOpenTasks = false, int? ProjectVersion = null);
+/// <summary>A new owner for a stage: a person, a team, or both. MoveOpenTasks hands the previous owner's unfinished tasks in the stage to the new person.</summary>
+public record ReassignStageRequest(Guid? OwnerId, Guid? TeamId, bool MoveOpenTasks = false);
+public record StageChangeResultDto(IReadOnlyList<StageDto> Stages, int MovedTasks, string? Message);
 public record UpsertLabelRequest(string Name, string? Color);
 
 public static partial class ProjectMetrics
@@ -131,7 +141,8 @@ public static partial class ProjectMetrics
 public partial class ProjectService(
     IAppDbContext db, ICurrentContext ctx, AppClock clock, Recorder recorder, PermissionService permissions,
     EntitlementService entitlements, ProjectAccess access, TaskCompletionService completion, TimelineTemplateService timelines, DueDateHistory dueHistory,
-    ProjectGroupService groupService, NotificationService notifications)
+    ProjectGroupService groupService, NotificationService notifications, ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices notices,
+    ProjectManagement.Application.Features.Ai.ForecastCalibrationService calibration)
 {
     private static readonly (string Name, StatusCategory Category, string Color)[] DefaultStatuses =
     [
@@ -189,6 +200,9 @@ public partial class ProjectService(
             ProjectMetrics.Progress(stats), ProjectMetrics.Health(p, stats, clock.Today), stats, memberCount, p.Version, p.Position, p.EnforceDependencies, p.ProjectGroupId, groupName, p.ProjectType,
             p.DeliveryMethod, p.StageScheduleMode, signOffs.Total, signOffs.Pending, p.UpdatedAt ?? p.CreatedAt, ProjectMetrics.HealthByHand(p, clock.Today));
 
+    private static ProjectListItemDto WithSlip(ProjectListItemDto item, Dictionary<Guid, DateSlip> slips) =>
+        slips.TryGetValue(item.Id, out var s) ? item with { OriginalDate = s.OriginalDate, ExtensionCount = s.ExtensionCount, TotalSlipDays = s.TotalSlipDays } : item;
+
     // ---------------------------------------------------------------- queries
 
     public async Task<PagedResult<ProjectListItemDto>> ListAsync(ProjectQuery query, CancellationToken ct = default)
@@ -232,7 +246,8 @@ public partial class ProjectService(
             .ToListAsync(ct);
         var stats = await GetStatsAsync(rows.Select(r => r.Project.Id).ToList(), ct);
         var signOffs = await GetSignOffsAsync(rows.Select(r => r.Project.Id).ToList(), ct);
-        var items = rows.Select(r => ToItem(r.Project, r.OwnerName, r.TeamName, r.MemberCount, stats[r.Project.Id], r.GroupName, signOffs[r.Project.Id])).ToList();
+        var slips = await DateSlips.ProjectsAsync(db, rows.Select(r => r.Project.Id).ToList(), ct);
+        var items = rows.Select(r => WithSlip(ToItem(r.Project, r.OwnerName, r.TeamName, r.MemberCount, stats[r.Project.Id], r.GroupName, signOffs[r.Project.Id]), slips)).ToList();
         return new PagedResult<ProjectListItemDto>(items, page.SafePage, page.SafeSize(), total);
     }
 
@@ -260,8 +275,10 @@ public partial class ProjectService(
         var stats = (await GetStatsAsync([project.Id], ct))[project.Id];
         var groupName = project.ProjectGroupId is { } gid ? await db.ProjectGroups.AsNoTracking().Where(g => g.Id == gid).Select(g => g.Name).FirstOrDefaultAsync(ct) : null;
         var signOffs = (await GetSignOffsAsync([project.Id], ct))[project.Id];
-        return new ProjectDetailDto(ToItem(project, owner, teamName, members.Count, stats, groupName, signOffs),
-            await GetStatusesAsync(project.Id, ct), await GetStagesAsync(project.Id, ct), members);
+        var slips = await DateSlips.ProjectsAsync(db, [project.Id], ct);
+        return new ProjectDetailDto(WithSlip(ToItem(project, owner, teamName, members.Count, stats, groupName, signOffs), slips),
+            await GetStatusesAsync(project.Id, ct), await GetStagesAsync(project.Id, ct), members,
+            await ForecastAsync(project, await db.ProjectStages.AsNoTracking().Where(s => s.ProjectId == project.Id).OrderBy(s => s.Order).ToListAsync(ct), ProjectMetrics.Progress(stats), ct));
     }
 
     // ---------------------------------------------------------------- create / update / delete
@@ -462,7 +479,9 @@ public partial class ProjectService(
             ApplyCalculatedSchedule(project, stageRows, originStart: oldStart,
                 alignFinish: project.StageScheduleMode == StageScheduleMode.FollowSchedule && oldDue != req.DueDate && oldStart == req.StartDate);
         }
-        var dueNote = DueDateHistory.Prepare(oldDue, project.DueDate, req.DueDateReason, req.DueDateDependency);
+        var extensionReason = DueDateHistory.ReasonOf(req.ExtensionReason, req.DueDateReason);
+        var dueNote = DueDateHistory.Prepare(oldDue, project.DueDate, extensionReason, req.DueDateDependency);
+        var startReason = dueHistory.Require("start date", oldStartDate, project.StartDate, extensionReason);
         if (req.EnforceDependencies is { } enforce) project.EnforceDependencies = enforce;
         SetStatus(project, req.Status);
         project.Version++;
@@ -493,6 +512,19 @@ public partial class ProjectService(
             dueHistory.Record(project.TenantId, id, null, oldDue, project.DueDate, dueNote);
             recorder.Activity("project.due_changed", "Project", id, $"\"{project.Name}\": {DueDateHistory.Describe(oldDue, project.DueDate, dueNote.Reason)}", id,
                 oldDue?.ToString("yyyy-MM-dd"), project.DueDate?.ToString("yyyy-MM-dd"));
+        }
+        if (oldStartDate != project.StartDate)
+            dueHistory.RecordDate(project.TenantId, id, DateKinds.Project, id, DateKinds.Start, oldStartDate, project.StartDate, startReason);
+        {
+            // The owner (and the previous owner) hear about dates moved later, with the reason; never the person who moved them.
+            var notice = new ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget(id, $"Project {project.Name}", $"/projects/{id}", NotificationType.ProjectUpdated);
+            Guid?[] owners = [project.OwnerId, oldOwner];
+            if (dueNote is not null && DueDateHistory.NeedsReason(oldDue, project.DueDate))
+                await notices.ExtendedAsync(notice, id, "Due date", oldDue, project.DueDate, dueNote.Reason, owners, ct);
+            if (DueDateHistory.IsLater(oldStartDate, project.StartDate))
+                await notices.ExtendedAsync(notice, id, "Start date", oldStartDate, project.StartDate, startReason, owners, ct);
+            if (oldOwner != project.OwnerId)
+                await notices.TellAsync(notice, "owner changed", owners, ct);
         }
         if (oldStatus == req.Status && dueNote is null)
             recorder.Activity("project.updated", "Project", id, $"Updated project \"{project.Name}\"", id);
@@ -611,6 +643,39 @@ public partial class ProjectService(
 
         recorder.Audit("project.deleted", "Project", id, new { project.Name, project.Key });
         recorder.Activity("project.deleted", "Project", id, $"Deleted project \"{project.Name}\"");
+        await notices.TellAsync(new ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget(id, $"Project {project.Name}", "/projects", NotificationType.ProjectUpdated),
+            "deleted", [project.OwnerId], ct);
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Undo of a delete: the project comes back with the tasks and action items deleted with it (the same moment), the reminders the delete
+    /// stopped run again, and the notifications it archived return to the inbox. For the person who deleted it, or an owner/admin.
+    /// </summary>
+    public async Task<ProjectDetailDto> RestoreAsync(Guid id, CancellationToken ct = default)
+    {
+        await permissions.RequireAsync(Permissions.ProjectsDelete, ct);
+        var tid = ctx.RequireTenantId();
+        var project = await db.Projects.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == id && p.TenantId == tid && p.IsDeleted, ct)
+            ?? throw new NotFoundException("Project not found.");
+        var admin = ctx.Role is TenantRole.Owner or TenantRole.Admin;
+        if (!admin && project.DeletedBy != ctx.UserId) throw new NotFoundException("Project not found.");
+        if (project.Status != ProjectStatus.Archived)
+            await entitlements.EnsureWithinLimitAsync(FeatureKeys.ProjectLimit, await entitlements.ActiveProjectCountAsync(ct), 1, ct);
+        var at = project.DeletedAt;
+        project.IsDeleted = false; project.DeletedAt = null; project.DeletedBy = null;
+        var back = new List<Guid>();
+        foreach (var t in await db.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tid && t.ProjectId == id && t.IsDeleted && t.DeletedAt == at).ToListAsync(ct))
+        { t.IsDeleted = false; t.DeletedAt = null; t.DeletedBy = null; back.Add(t.Id); }
+        foreach (var w in await db.WorkTasks.IgnoreQueryFilters().Where(w => w.TenantId == tid && w.RelatedProjectId == id && w.Kind == WorkTaskKind.ActionItem && w.IsDeleted && w.DeletedAt == at).ToListAsync(ct))
+        { w.IsDeleted = false; w.DeletedAt = null; w.DeletedBy = null; back.Add(w.Id); }
+        await DeletedWorkTraces.ReviveRemindersAsync(db, clock.Now, id, back, ct);
+        await DeletedWorkTraces.UnarchiveNotificationsAsync(db, at, id, [], ct);
+        recorder.Audit("project.restored", "Project", id, new { project.Name, project.Key, Items = back.Count });
+        recorder.Activity("project.restored", "Project", id, $"Restored project \"{project.Name}\"", id);
+        await notices.TellAsync(new ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget(id, $"Project {project.Name}", $"/projects/{id}", NotificationType.ProjectUpdated),
+            "restored", [project.OwnerId], ct);
+        await db.SaveChangesAsync(ct);
+        return await BuildDetailAsync(project, ct);
     }
 }

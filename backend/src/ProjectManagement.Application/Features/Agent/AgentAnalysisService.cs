@@ -338,8 +338,16 @@ public class AgentAnalysisService(IAppDbContext db, ICurrentContext ctx, AppCloc
         var counts = findings.GroupBy(f => Group(f.Kind)).Select(g => $"{g.Count()} {g.Key}{(g.Count() == 1 ? "" : "s")}");
         var title = $"Project agent: {findings.Count} item{(findings.Count == 1 ? "" : "s")} to review in {project.Name}";
         var body = string.Join(", ", counts) + (run.Summary is { } sum ? $". {sum}" : "");
+        // After a meeting: the minutes and what it produced wait on one Review & approve sheet (Today › Aura), with Review on the notice.
+        var meeting = run.MeetingId is not null && findings.Any(f => f.Kind is AgentFindingKind.CreateTask or AgentFindingKind.CreateActionItem or AgentFindingKind.CreateIssue or AgentFindingKind.Decision);
+        if (meeting)
+        {
+            var items = findings.Count(f => f.Kind is AgentFindingKind.CreateTask or AgentFindingKind.CreateActionItem or AgentFindingKind.CreateIssue);
+            title = $"Minutes ready: {items} action item{(items == 1 ? "" : "s")} to review in {project.Name}";
+        }
         foreach (var uid in to)
-            await notifications.AddAsync(uid, NotificationType.ProjectUpdated, title, body, $"/projects/{project.Id}?tab=agent", $"agent-run:{run.Id}:{uid}",
+            await notifications.AddAsync(uid, meeting ? NotificationType.Meeting : NotificationType.ProjectUpdated, title, body,
+                meeting ? $"/?aura=review&run={run.Id}" : $"/projects/{project.Id}?tab=agent", $"agent-run:{run.Id}:{uid}",
                 toSelf: trigger != "manual", ct: ct);
     }
 

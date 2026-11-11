@@ -1,0 +1,64 @@
+name: Uptime
+
+# Fallback / second opinion to the Google Cloud uptime checks (deploy/gcp/uptime-setup.sh, every minute, email). GitHub runs
+# scheduled workflows at most every 5 minutes (often later when busy), so treat this as the WhatsApp + email safety net.
+# An outage opens one issue labelled "uptime" and alerts once; while it stays open nothing is re-sent; recovery closes it and says so.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    if: vars.UPTIME_DISABLED != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: deploy/ops
+      - name: Check key flows (two tries, 30 s apart, before calling it down)
+        id: check
+        env:
+          BASE_URL: ${{ vars.UPTIME_BASE_URL || 'https://projecttracker.in' }}
+          UPTIME_LOGIN_EMAIL: ${{ secrets.UPTIME_LOGIN_EMAIL }}
+          UPTIME_LOGIN_PASSWORD: ${{ secrets.UPTIME_LOGIN_PASSWORD }}
+          FAILED_FILE: ${{ runner.temp }}/failed
+        run: |
+          if bash deploy/ops/uptime-check.sh || { sleep 30; bash deploy/ops/uptime-check.sh; }; then echo "down=false" >> "$GITHUB_OUTPUT"
+          else echo "down=true" >> "$GITHUB_OUTPUT"; { echo 'failed<<EOF'; cat "$FAILED_FILE"; echo EOF; } >> "$GITHUB_OUTPUT"; fi
+      - name: Alert on change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOWN: ${{ steps.check.outputs.down }}
+          FAILED: ${{ steps.check.outputs.failed }}
+          BASE_URL: ${{ vars.UPTIME_BASE_URL || 'https://projecttracker.in' }}
+          ALERT_RESEND_API_KEY: ${{ secrets.ALERT_RESEND_API_KEY }}
+          ALERT_EMAIL_FROM: ${{ vars.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ vars.ALERT_EMAIL_TO }}
+          ALERT_WHATSAPP_TOKEN: ${{ secrets.ALERT_WHATSAPP_TOKEN }}
+          ALERT_WHATSAPP_PHONE_ID: ${{ vars.ALERT_WHATSAPP_PHONE_ID }}
+          ALERT_WHATSAPP_TO: ${{ vars.ALERT_WHATSAPP_TO }}
+          ALERT_WHATSAPP_TEMPLATE: ${{ vars.ALERT_WHATSAPP_TEMPLATE }}
+        run: |
+          repo="${{ github.repository }}"
+          open=$(gh api "repos/$repo/issues?state=open&labels=uptime&per_page=1" --jq '.[0].number // empty')
+          if [ "$DOWN" = true ] && [ -z "$open" ]; then
+            body="$(printf 'Failing at %s (UTC %s):\n%s\n\nRun: %s' "$BASE_URL" "$(date -u +%H:%M)" "$FAILED" "${{ github.server_url }}/$repo/actions/runs/${{ github.run_id }}")"
+            gh api "repos/$repo/issues" -f title="Site down: $(echo "$FAILED" | head -1)" -f body="$body" -f 'labels[]=uptime' >/dev/null
+            bash deploy/ops/send-alert.sh "ProjectTracker DOWN" "$body"
+          elif [ "$DOWN" = false ] && [ -n "$open" ]; then
+            gh api "repos/$repo/issues/$open/comments" -f body="Recovered at UTC $(date -u +%H:%M)." >/dev/null
+            gh api -X PATCH "repos/$repo/issues/$open" -f state=closed >/dev/null
+            bash deploy/ops/send-alert.sh "ProjectTracker recovered" "All checks pass again at $BASE_URL."
+          else
+            echo "No change (down=$DOWN, open issue=${open:-none})."
+          fi

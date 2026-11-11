@@ -10,6 +10,7 @@ import {
 import { Icon } from '../../components/Icon';
 import { Badge, PageLoader } from '../../components/ui';
 import { AuthLayout } from '../../layouts/AuthLayout';
+import { useAfterFirstPaint } from '../../lib/afterFirstPaint';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { haptic } from '../../lib/mobile';
 import { usePageTitle } from '../../lib/title';
@@ -198,7 +199,9 @@ export function SessionApprovalHost() {
   const wid = useAuth((s) => s.ctx?.current?.id);
   const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
   useEffect(() => { const f = () => setVisible(document.visibilityState === 'visible'); document.addEventListener('visibilitychange', f); return () => document.removeEventListener('visibilitychange', f); }, []);
-  const policy = useQuery({ queryKey: ['session-policy'], queryFn: sessionApprovalApi.policy, enabled: !!wid, staleTime: 5 * 60_000 });
+  // Approving a new device is never the first thing on the screen, so this waits for the first paint and the poll below follows it.
+  const painted = useAfterFirstPaint();
+  const policy = useQuery({ queryKey: ['session-policy'], queryFn: sessionApprovalApi.policy, enabled: !!wid && painted, staleTime: 5 * 60_000 });
   const on = !!policy.data?.effective;
   const q = useQuery({ queryKey: ['session-approval', 'pending'], queryFn: sessionApprovalApi.pending, enabled: !!wid && on && visible, refetchInterval: 8000, refetchIntervalInBackground: false });
   const [live, setLive] = useState<ApprovalPrompt[]>([]);
@@ -229,11 +232,15 @@ export function SessionApprovalHost() {
     tick(); const t = setInterval(tick, 1000); return () => clearInterval(t);
   }, [item?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // After allowing, this device is signed out as soon as the new one is in: check every couple of seconds (a 401 ends the session here).
+  // After allowing, the device used longest ago is signed out as soon as the new one is in. That is this one only when it is the oldest (a 401
+  // ends the session here), so check a few times and then let go: the sheet never stays up waiting for a sign-out that is not coming.
   useEffect(() => {
     if (after !== 'allowed') return;
     let n = 0;
-    const t = setInterval(() => { if (++n > 30) { clearInterval(t); setAfter(null); return; } void meApi.fingerprint().catch(() => undefined); }, 2000);
+    const t = setInterval(() => {
+      if (++n > 3) { clearInterval(t); setAfter(null); toast('Allowed. The new device is signed in.'); return; }
+      void meApi.fingerprint().catch(() => undefined);
+    }, 1500);
     return () => clearInterval(t);
   }, [after]);
 
@@ -242,7 +249,7 @@ export function SessionApprovalHost() {
       <div className="sa-sheet" role="status" aria-live="polite">
         <span className="sa-device ok" aria-hidden="true"><Icon name="tick" size={30} /></span>
         <h2>Allowed</h2>
-        <p className="sa-lede">The new device is signing in. This device will sign out in a moment.</p>
+        <p className="sa-lede">The new device is signing in. This device stays signed in unless it was the one used longest ago.</p>
       </div>
     </div>
   );
@@ -303,13 +310,13 @@ function ApprovalSheet({ item, left, onDone }: { item: ApprovalPrompt; left: num
 
 // ------------------------------------------------------------------ settings
 
-/** Settings › Security › "Single active session": my own switch, and the organizations that already require it. */
+/** Settings › Security › "Two devices at a time": my own switch, and the organizations that already require it. */
 export function SingleSessionRow() {
   const q = useQuery({ queryKey: ['session-policy'], queryFn: sessionApprovalApi.policy });
   const [busy, setBusy] = useState(false);
   const set = async (v: boolean) => {
     setBusy(true);
-    try { queryClient.setQueryData(['session-policy'], await sessionApprovalApi.setPolicy(v)); toast(v ? 'New devices now need your approval.' : 'Single active session is off.'); }
+    try { queryClient.setQueryData(['session-policy'], await sessionApprovalApi.setPolicy(v)); toast(v ? 'New devices now need your approval, and two devices can be signed in at once.' : 'The two-device limit is off.'); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save.', 'error'); }
     finally { setBusy(false); }
   };
@@ -318,11 +325,11 @@ export function SingleSessionRow() {
   return (
     <div className="setting-row" data-setting="account.single-session">
       <div className="setting-info">
-        <h4>Single active session</h4>
-        <p>Signing in on a new device must be allowed from the device you are already signed in on, which is then signed out.
+        <h4>Two devices at a time</h4>
+        <p>Stay signed in on two devices, like your phone and your computer. A new device must be allowed from one you are already signed in on, and a third signs out the one you used longest ago.
           {requiredBy.length > 0 && <> <b>Required by {requiredBy.join(', ')}.</b></>}</p>
       </div>
-      <SSwitch label="Single active session" on={!!p?.singleSession || requiredBy.length > 0} locked={requiredBy.length > 0} disabled={busy || !p} onChange={(v) => void set(v)} />
+      <SSwitch label="Two devices at a time" on={!!p?.singleSession || requiredBy.length > 0} locked={requiredBy.length > 0} disabled={busy || !p} onChange={(v) => void set(v)} />
     </div>
   );
 }
@@ -354,7 +361,7 @@ export function ApprovalHistory() {
   );
 }
 
-/** Workspace settings › Sign-in rules: the organization requires "Single active session" of every member. */
+/** Workspace settings › Sign-in rules: the organization requires "Two devices at a time" of every member. */
 export function WorkspaceSessionPolicyRow() {
   const q = useQuery({ queryKey: ['workspace-session-policy'], queryFn: sessionApprovalApi.workspacePolicy });
   const [busy, setBusy] = useState(false);
@@ -363,7 +370,7 @@ export function WorkspaceSessionPolicyRow() {
     try {
       queryClient.setQueryData(['workspace-session-policy'], await sessionApprovalApi.setWorkspacePolicy(v));
       void queryClient.invalidateQueries({ queryKey: ['session-policy'] });
-      toast(v ? 'Members must now approve new devices from the one they are signed in on.' : 'Single active session is no longer required.');
+      toast(v ? 'Members can now be signed in on two devices, and a new device must be approved from one of them.' : 'The two-device rule is no longer required.');
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not save.', 'error'); }
     finally { setBusy(false); }
   };
@@ -371,10 +378,10 @@ export function WorkspaceSessionPolicyRow() {
   return (
     <div className="setting-row sa-ws-row" data-setting="security.single-session">
       <div className="setting-info">
-        <h4>Single active session</h4>
-        <p>Each member can be signed in on one device at a time. A new device waits until the member allows it from the device already signed in.</p>
+        <h4>Two devices at a time</h4>
+        <p>Each member can be signed in on two devices at once, such as a phone and a computer. A new device waits until the member allows it from a device already signed in; a third signs out the one used longest ago.</p>
       </div>
-      <SSwitch label="Require single active session" on={q.data.singleActiveSession} disabled={busy || !q.data.canManage} onChange={(v) => void set(v)} />
+      <SSwitch label="Require two devices at a time" on={q.data.singleActiveSession} disabled={busy || !q.data.canManage} onChange={(v) => void set(v)} />
     </div>
   );
 }

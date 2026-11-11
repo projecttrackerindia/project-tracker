@@ -11,6 +11,8 @@ public class CacheOptions
     public int EntitlementSeconds { get; set; } = 30;
     /// <summary>How long a hot read (shell summary, portfolio, project health, dashboard, reports) is kept; every change forgets it at once (0 switches it off).</summary>
     public int HotReadSeconds { get; set; } = 30;
+    /// <summary>How long who-a-session-belongs-to and a person's place in a workspace are remembered (0 switches it off). Changes clear it at once; this is only the safety net.</summary>
+    public int SessionSeconds { get; set; } = 10;
 }
 
 /// <summary>

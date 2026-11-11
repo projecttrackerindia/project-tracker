@@ -1,4 +1,6 @@
+import { Select } from '../../components/Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { meetingApi } from '../../api/endpoints';
@@ -197,7 +199,7 @@ export function ActionReview({ seriesRef, at }: { seriesRef: string | null; at: 
         <aside className="rv-rail" aria-label="Minutes, drafting live">
           <div className="rv-rail-h">Minutes · drafting live</div>
           <DraftLines lines={review.draft} />
-          {noUpdate > 0 && <p className="rv-aura"><span className="rv-orb" aria-hidden="true" />Aura: {noUpdate} item{noUpdate === 1 ? ' has' : 's have'} no update — ask before deciding?</p>}
+          {noUpdate > 0 && <p className="rv-aura"><SiriOrb className="rv-orb" />Aura: {noUpdate} item{noUpdate === 1 ? ' has' : 's have'} no update — ask before deciding?</p>}
         </aside>
       </div>
 
@@ -296,9 +298,9 @@ function DecisionPop({ kind, item, review, people, onClose, onSubmit, busy }: {
               {item.owner && <span className="ms-chip ms-person"><Avatar name={item.owner.name} userId={item.owner.id} size="sm" />{item.owner.name}</span>}
               <span aria-hidden="true">→</span>
               <label className={`ms-chip ms-select${owner !== (item.owner?.id ?? '') ? ' on' : ''}`}><span>{newOwner?.name ?? (owner ? '…' : 'No owner')}</span>
-                <select aria-label="New owner" value={owner} onChange={(e) => setOwner(e.target.value)}>
+                <Select aria-label="New owner" value={owner} onChange={(e) => setOwner(e.target.value)}>
                   <option value="">No owner</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select></label>
+                </Select></label>
             </div>
           </div>
         )}
@@ -376,7 +378,7 @@ function MinutesView({ review, minutes, onBack, onSent }: { review: Review; minu
             );
           })
         )}
-        <p className="rv-aura"><span className="rv-orb" aria-hidden="true" />Aura drafted this from your decisions. {minutes.sent ? 'Sent and kept with the review.' : <button type="button" className="rv-nudge" onClick={() => setEditing((v) => !v)}>{editing ? 'Done editing' : 'Edit any line before sending.'}</button>}</p>
+        <p className="rv-aura"><SiriOrb className="rv-orb" />Aura drafted this from your decisions. {minutes.sent ? 'Sent and kept with the review.' : <button type="button" className="rv-nudge" onClick={() => setEditing((v) => !v)}>{editing ? 'Done editing' : 'Edit any line before sending.'}</button>}</p>
       </section>
     </div>
   );

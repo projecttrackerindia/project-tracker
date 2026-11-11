@@ -1,4 +1,4 @@
-import { del, download, fetchText, get, post, put, uploadFile } from './client';
+import { create as createOnce, del, download, fetchText, get, post, put, uploadFile } from './client';
 import type { Backlink,ReportExport,InvoiceSeller,EmailOverview,EmailBlocked,EmailDomainCheck,UnsubscribeInfo,Priority,DocumentType,DocumentPage,DocumentDetail,DocumentFilters,DocumentVisibility,DocumentClassification,LinkedWork,LinkedDocuments,LinkTarget,LinkRelation,DocVersions,DocVersionContent,VersionDiff,DocAccess,DocAccessLevel,GrantPrincipal,DocFile,DocWorkflows,DocWorkflow,ApiOverview,EndpointPage,EndpointDetail,SaveEndpoint,SaveDefinition,ApiImportResult,ApiChanges,EndpointHit,SaveWorkflow,DocumentReview,DocumentInbox,DocumentGate,AccessRequest,Requirement,Coverage,DocActivity,DocComment,DocAuditPage,SecretClass,DocumentDashboard,RequiredGap,SecretList,SecretReveal,StepUpToken,ChainStatus,DocSecurity,Passkey,PasskeyChallenge,AuthResponse,ArtifactVersions,ArtifactVersion,ArtifactCompare,DtCatalog,DtArchitecture,DtDiagram,LiveCheck } from './types';
 
 // ---- passkeys: sign in with the device's own fingerprint, face or screen lock
@@ -31,7 +31,7 @@ export const documentApi = {
   types: () => get<DocumentType[]>('/document-types'),
   list: (f: DocumentFilters = {}) => get<DocumentPage>('/documents', { ...f }),
   get: (id: string) => get<DocumentDetail>(`/documents/${id}`),
-  create: (b: { title: string; typeId: string; projectId?: string | null; teamId?: string | null; visibility?: DocumentVisibility; classification?: DocumentClassification; tags?: string[]; sections?: { key: string; content: string }[]; parentId?: string | null; icon?: string | null }) => post<DocumentDetail>('/documents', b),
+  create: (b: { title: string; typeId: string; projectId?: string | null; teamId?: string | null; visibility?: DocumentVisibility; classification?: DocumentClassification; tags?: string[]; sections?: { key: string; content: string }[]; parentId?: string | null; icon?: string | null }) => createOnce<DocumentDetail>('/documents', b),
   /** Moves a page under another page of the same project (null: top level), at a position among its siblings. */
   place: (id: string, b: { parentId: string | null; pageOrder: number }) => put<DocumentDetail>(`/documents/${id}/place`, b),
   setIcon: (id: string, icon: string | null) => put<DocumentDetail>(`/documents/${id}/icon`, { icon }),

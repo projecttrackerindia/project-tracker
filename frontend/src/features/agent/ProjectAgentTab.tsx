@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -310,10 +311,10 @@ function TuneModal({ a, onClose, onSave }: { a: ProjectAgent; onClose: () => voi
             placeholder={'RK = ravi.kumar@company.com\nPriya S = priya@company.com'} />
         </Field>
         <Field label="Meeting language" hint="The bot switches Meet's captions to it; captions in the wrong language are gibberish.">
-          <select className="input" aria-label="Meeting language" value={language} onChange={(e) => setLanguage(e.target.value)}>
+          <Select className="input" aria-label="Meeting language" value={language} onChange={(e) => setLanguage(e.target.value)}>
             <option value="">Meeting default</option>
             {CAPTION_LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-          </select>
+          </Select>
         </Field>
         {a.slackAvailable && (
           <Field label="Slack channel ID" hint="In Slack: the channel's name › About (at the bottom, starts with C). Invite the app to the channel.">
@@ -356,10 +357,10 @@ function TranscriptModal({ projectId, onClose, onDone }: { projectId: string; on
       <div className="form-grid">
         <Field label="Title"><input className="input" aria-label="Title" value={title} maxLength={200} placeholder="Stand-up 18 Oct" onChange={(e) => setTitle(e.target.value)} /></Field>
         <Field label="Meeting (optional)">
-          <select className="input" aria-label="Meeting" value={meetingId} onChange={(e) => setMeetingId(e.target.value)}>
+          <Select className="input" aria-label="Meeting" value={meetingId} onChange={(e) => setMeetingId(e.target.value)}>
             <option value="">Not one of the project's meetings</option>
             {(meetings.data ?? []).map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Transcript or notes" full hint="Paste it, or open a .txt or .vtt file. Speaker names help the agent assign work.">
           <textarea className="input ag-textarea" aria-label="Transcript or notes" rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder={'Ravi: I finished the gateway sandbox yesterday.\nClient: Can you send the go-live checklist by Friday?'} />

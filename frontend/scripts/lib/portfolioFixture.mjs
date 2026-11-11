@@ -88,12 +88,12 @@ const sheet = (s) => ({ asOf: today, timeZone: 'Asia/Kolkata', rows: s.rows, peo
   scopes: [{ id: 'all', label: 'Everything I can see', allowed: true, why: null, teamId: null }] });
 const projectsOf = (s) => s.rows.filter((r) => r.kind === 'project');
 const timeline = (s) => ({ from: '2026-08-01', to: '2026-12-19', projects: projectsOf(s).map((p, i) => ({
-  id: p.id, key: p.key, name: p.title, health: HEALTH[p.category] ?? 'OnTrack', group: 'Delivery', start: p.start, due: p.due, originalDue: null, forecast: null, progress: p.progress, milestones: [], dependsOn: p.key === 'CB' ? [P.AA] : [],
+  id: p.id, key: p.key, name: p.title, health: HEALTH[p.category] ?? 'OnTrack', group: 'Delivery', start: p.start, due: p.due, originalDue: p.originalDate ?? null, forecast: null, progress: p.progress, milestones: [], dependsOn: p.key === 'CB' ? [P.AA] : [],
   ownerId: p.ownerId, owner: p.owner, team: i < 2 ? 'Team Lending' : 'Team Payments', teamId: g(800 + (i < 2 ? 0 : 1)), slipDays: 0, confidence: 'medium', forecastBasis: null, openTasks: 2, blockedTasks: 0, finishedLast28Days: 3, version: 4, status: 'Active', lastChange: null })) });
 const brief = (s) => {
   const ps = projectsOf(s), n = (c) => ps.filter((p) => p.category === c).length;
   return { asOf: today, projects: ps.length, onTrack: n('OnTrack'), atRisk: n('AtRisk'), delayed: n('Delayed'), onHold: 0, workComplete: n('Done'), overdueTasks: 1, blockedTasks: 0, openActionItems: 0, overdueActionItems: 0, dateChangesLast30Days: 0,
-    headlines: [`${ps.length} active projects: ${n('OnTrack')} on track, ${n('AtRisk')} at risk, ${n('Delayed')} late.`], recentSlips: [], stretched: [],
+    headlines: [`${ps.length} active projects: ${n('OnTrack')} on track, ${n('AtRisk')} at risk, ${n('Delayed')} late.`], recentSlips: s.slips ?? [], stretched: [],
     ranked: ps.map((p) => ({ projectId: p.id, key: p.key, name: p.title, group: 'Delivery', health: HEALTH[p.category], progress: p.progress, owner: p.owner, startDate: p.start, dueDate: p.due, delayedDays: 0, openTasks: 2, overdueTasks: 0,
       blockedTasks: 0, openActionItems: 0, overdueActionItems: 0, finishedLast28Days: 3, inProgressTasks: 1, projectedFinish: null, projectedSlipDays: 0, confidence: 'medium', score: 1, level: 'Low', reasons: [] })) };
 };
@@ -107,6 +107,14 @@ const withTotals = (pl) => { const c = pl.people.flatMap((x) => x.weeks); return
 const plan = (scope = 'Everyone') => withTotals({ from: mon, weeks: 6, scope, available: ['Everyone', 'Reports', 'Me'], entitled: true, weekStarts: [0, 1, 2, 3, 4, 5].map(wk), suggestion: null,
   totals: { capacityMinutes: 7 * 6 * 2400, bookedMinutes: 7 * 6 * 2000, booked: 0.83, overWeeks: 2, leaveWeeks: 0, publicHolidays: 0 },
   people: people.map((p, k) => [p, k]).filter(([p]) => scope !== 'Reports' || [S.LP[0], S.JW[0]].includes(p.id)).map(([p, k]) => ({ userId: p.id, name: p.name, weeklyCapacityMinutes: 2400, weeks: [0, 1, 2, 3, 4, 5].map((i) => { const b = [2600, 2100, 1700, 2300, 1500, 2000, 900][k] - i * 120; return { weekStart: wk(i), capacityMinutes: 2400, bookedMinutes: b, leaveDays: 0, workingDays: 5, onLeave: false, over: b > 2400, holidayDays: 0 }; }) })) });
+
+const loadOf = (scope) => {
+  const day0 = new Date(`${today}T00:00:00`);
+  const days = [...Array(14)].map((_, i) => { const d = new Date(day0); d.setDate(d.getDate() + i); const w = d.getDay() !== 0 && d.getDay() !== 6;
+    return { date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, workingMinutes: w ? 480 : 0, meetingMinutes: 0, capacityMinutes: w ? 480 : 0, committedMinutes: w ? 300 : 0, percent: w ? 62 : null, state: w ? 'balanced' : 'off' }; });
+  const rows = scope === 'people' ? people.map((p) => ({ kind: 'person', id: p.id, name: p.name, state: 'balanced', percent: 62, reason: 'Steady', days, freeMinutes: 900, wip: 1, signal: null, people: 0, freePeople: 0, isMe: p.id === user.id })) : [];
+  return { from: today, days: 14, scope, rows, seesOthers: true, mySignal: null };
+};
 
 /** A browser context that serves dist and answers the API from `state`. `delay` (ms) holds every portfolio read back, to see the loading state. */
 export async function portfolioContext(browser, { theme = 'light', width = 1440, state, delay = 0, classic = false }) {
@@ -125,7 +133,12 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       return;
     }
     let data = [];
-    if (ep === '/api/v1/portfolio/sheet/bulk' && method === 'POST') {
+    // A test can answer any call first (calm round 4a: search, attendance, activity, the extension rule).
+    const own = state.extra ? await state.extra({ ep, method, req, url }) : undefined;
+    if (own !== undefined) {
+      if (own && own.__status) { await route.fulfill({ status: own.__status, contentType: 'application/json', body: JSON.stringify(own.body) }); return; }
+      data = own;
+    } else if (ep === '/api/v1/portfolio/sheet/bulk' && method === 'POST') {
       const b = req.postDataJSON(); state.writes.push({ ep, b });
       for (const c of b.changes) {
         const r = state.rows.find((x) => x.id === c.id); if (!r) continue;
@@ -147,7 +160,7 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       counts: { total: 6, reviewed: 2, done: 0, inProgress: 1, overdue: 0, blocked: 0, noUpdate: 0 }, items: reviewItems(), finished: false, sent: false, draft: [], projectId: null };
     else {
       assert.ok(method === 'GET' || ep.endsWith('/auth/refresh'), `Unexpected write: ${method} ${ep}`);
-      if (ep.startsWith('/api/v1/portfolio/') || ep === '/api/v1/resources/plan') { reads.push(ep); if (delay) await new Promise((r) => setTimeout(r, delay)); }
+      if (ep.startsWith('/api/v1/portfolio/') || ep === '/api/v1/resources/plan' || ep.startsWith('/api/v1/load')) { reads.push(ep); if (delay) await new Promise((r) => setTimeout(r, delay)); }
       if (ep.endsWith('/auth/refresh')) data = { accessToken: token, expiresAt: '2099-01-01T00:00:00Z', user };
       else if (ep === '/api/v1/me') data = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [], current: { ...ws, permissions: ['projects.view', 'projects.edit', 'tasks.view', 'tasks.edit', 'tasks.create', 'org.manage', 'reports.view', 'reports.broad', 'work.view'], modules: { projects: 3, tasks: 3, calendar: 3, work: 3, ai: 3, activity: 3, documents: 3, people: 3, reports: 3, billing: 3 }, plan: { code: 'BUSINESS', name: 'Business', status: 'Active' }, entitlements: { AI_ASSISTANT: 3 } } };
       else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: false };
@@ -155,6 +168,11 @@ export async function portfolioContext(browser, { theme = 'light', width = 1440,
       else if (ep === '/api/v1/portfolio/sheet') data = sheet(state);
       else if (ep === '/api/v1/portfolio/timeline') data = timeline(state);
       else if (ep === '/api/v1/resources/plan') data = plan(url.searchParams.get('scope') || 'Everyone');
+      // Load (Portfolio › Load and the load-aware picker): everyone balanced, nobody to move.
+      else if (ep === '/api/v1/load') data = loadOf(url.searchParams.get('scope') || 'people');
+      else if (ep === '/api/v1/load/suggestions') data = [];
+      else if (ep === '/api/v1/load/fit') data = { minutes: 240, people: people.map((p) => ({ userId: p.id, name: p.name, state: 'balanced', reason: 'Balanced', bestFit: false, fits: true, freeMinutes: 600, isCurrent: false })), teams: [] };
+      else if (/^\/api\/v1\/load\/[^/]+\/day\//.test(ep)) data = { userId: ep.split('/')[4], name: 'Ravi Menon', date: ep.split('/')[6], workingMinutes: 480, usedMinutes: 300, committedMinutes: 240, meetingMinutes: 60, percent: 57, state: 'balanced', items: [], meetings: [] };
       else if (ep === '/api/v1/saved-views') data = [];
       else if (/^\/api\/v1\/work-items\/[^/]+$/.test(ep)) { const id = ep.split('/').pop(); data = (state.details ??= {})[id] ?? (state.details[id] = workDetail(id, state)); }
       else if (ep === '/api/v1/workspace/members') data = people.map((p) => ({ userId: p.id, displayName: p.name, email: `${p.name.split(' ')[0].toLowerCase()}@example.test`, role: 'Member', joinedAt: NOW.toISOString(), jobRole: null, isActive: true }));

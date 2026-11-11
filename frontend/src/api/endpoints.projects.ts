@@ -21,7 +21,11 @@ export interface StageInput {
   durationDays?: number | null; scheduleReason?: string | null; projectVersion?: number;
   name: string; plannedStart?: string | null; plannedEnd?: string | null; actualStart?: string | null; actualEnd?: string | null; status: string;
   ownerId?: string | null; assigneeId?: string | null; description?: string | null; order?: number;
+  /** A team owner (an empty Guid clears it); left out keeps the current one. */ ownerTeamId?: string | null;
+  /** Why a planned date moves later (required then). */ extensionReason?: string | null;
 }
+/** What moving along the journey or handing a stage over did. */
+export interface StageChange { stages: Stage[]; movedTasks: number; message: string | null }
 export interface ProjectScheduleInput {
   version: number; mode: 'FixedDeadline' | 'FollowSchedule'; startDate: string; dueDate: string;
   durations: { id: string; durationDays: number }[]; reason?: string | null; expectedFingerprint?: string | null;
@@ -65,6 +69,10 @@ export const projectApi = {
   updateStage: (id: string, stageId: string, b: StageInput) => put<Stage[]>(`/projects/${id}/stages/${stageId}`, b),
   deleteStage: (id: string, stageId: string, version?: number) => del<Stage[]>(`/projects/${id}/stages/${stageId}${version === undefined ? '' : `?projectVersion=${version}`}`),
   activity: (id: string, page = 1) => get<Paged<Activity>>(`/projects/${id}/activity`, { page, pageSize: 20 }),
+  /** Completes the current stage, starts the next and tells its owner. carryOpenTasks moves unfinished tasks along instead of blocking. */
+  advanceStage: (id: string, carryOpenTasks = false) => post<StageChange>(`/projects/${id}/stages/advance`, { carryOpenTasks }),
+  /** Hands a stage to a person and/or team; moveOpenTasks gives the previous owner's open tasks in it to the new person. */
+  reassignStage: (id: string, stageId: string, b: { ownerId?: string | null; teamId?: string | null; moveOpenTasks?: boolean }) => post<StageChange>(`/projects/${id}/stages/${stageId}/owner`, b),
 };
 
 export const labelApi = {
@@ -85,6 +93,8 @@ export interface TaskInput {
   dueDateReason?: string | null; dueDateDependency?: string | null;
   /** The time of day on the due date ("14:30:00"); left out keeps the current time, `clearDueTime` removes it. */
   dueTime?: string | null; clearDueTime?: boolean;
+  /** The project stage the task belongs to. */ stageId?: string | null;
+  /** Why the due date moves later. */ extensionReason?: string | null;
 }
 
 export const taskApi = {
@@ -111,6 +121,8 @@ export const insightApi = {
   /** Today's "Team & portfolio signals": projects at risk, the team's overdue work, docs out of date, Desk SLA breaches (each with one action). */
   todaySignals: () => get<import('./types').TodaySignals>('/today/signals'),
   search: (q: string) => get<{ hits: SearchHit[] }>('/search', { q }),
+  /** Pages, work, chat messages, meeting notes and project mail found by words and by meaning, with excerpts and links (the ask bar). */
+  searchMeaning: (q: string) => get<import('./types').MeaningSearch>('/search/meaning', { q }),
   activity: (page = 1) => get<Paged<Activity>>('/activity', { page, pageSize: 25 }),
   audit: (action: string | undefined, page = 1) => get<Paged<AuditLog>>('/audit-logs', { action, page, pageSize: 25 }),
   report: (days: number, teamId?: string | null) => get<ReportSummary>('/reports/summary', { days, teamId: teamId ?? undefined }),

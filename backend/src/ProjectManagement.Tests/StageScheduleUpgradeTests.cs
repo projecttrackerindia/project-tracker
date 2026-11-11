@@ -20,6 +20,7 @@ public class StageScheduleUpgradeTests
         {
             base.OnModelCreating(builder);
             builder.Entity<Project>().Ignore(p => p.HealthOverride).Ignore(p => p.HealthNote).Ignore(p => p.HealthUntil).Ignore(p => p.HealthSetById).Ignore(p => p.HealthSetAt);
+            builder.Entity<ProjectStage>().Ignore(s => s.OwnerTeamId);   // added later by 20261231001000_StageOwnerTeams
         }
     }
     private sealed class PreviousContext(DbContextOptions<AppDbContext> options, CurrentContext context) : PreviousContextBase(options, context);
@@ -30,6 +31,7 @@ public class StageScheduleUpgradeTests
             base.OnModelCreating(builder); builder.Entity<Project>().Ignore(p => p.StageScheduleMode); builder.Entity<ProjectStage>().Ignore(s => s.DurationDays);
             builder.Entity<Tenant>().Ignore(t => t.TimeZone);   // added later by 20261018000050_WorkspaceTimeZone
             builder.Entity<Tenant>().Ignore(t => t.AiAgentLevels);   // added later by 20261111000100_AiControlCentre
+            builder.Entity<Tenant>().Ignore(t => t.AiMemoryEnabled).Ignore(t => t.AiWorkspaceMemoryEnabled);   // added later by 20270104001000_AuraMemory
         }
     }
     /// <param name="postgres">The PostgreSQL database still at the older migration: the person is written there with the columns it has then

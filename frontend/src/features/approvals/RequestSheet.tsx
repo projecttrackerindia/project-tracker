@@ -5,6 +5,8 @@ import { attachmentApi } from '../../api/endpoints';
 import { projectApi } from '../../api/endpoints';
 import { workspaceApi } from '../../api/endpoints';
 import { CalmAvatar, CalmGo, CalmLink, CalmSheet } from '../../components/calm';
+import { CalmPicker, type PickItem } from '../../components/calm/CalmPicker';
+import { insightApi } from '../../api/endpoints.projects';
 import { Icon } from '../../components/Icon';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useWorkspaceId } from '../../stores/auth';
@@ -13,6 +15,13 @@ import { approvalsApi, TYPES, typeOf, type ApprovalLink, type ApprovalType, type
 import type { ApprovalDraft } from './host';
 import { TypeIcon } from './TypeIcon';
 import './approvals.css';
+
+function toLink(it: PickItem): ApprovalLink {
+  const [kind, ...rest] = it.id.split(':'); const id = rest.join(':');
+  if (kind === 'text') return { kind: 'item', label: it.label };
+  const href = kind === 'project' ? `/projects/${id}` : null;
+  return { kind, label: it.label, id, href };
+}
 
 const fmtDay = (iso?: string) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '');
 
@@ -64,7 +73,6 @@ function RequestForm({ draft, onDone }: { draft: ApprovalDraft; onDone: () => vo
   const [type, setType] = useState<ApprovalType>(draft.type ?? 'Deployment');
   const [payload, setPayload] = useState<Record<string, string>>(draft.payload ?? {});
   const [links, setLinks] = useState<ApprovalLink[]>(draft.links ?? []);
-  const [linkText, setLinkText] = useState<string | null>(null);
   const [editChain, setEditChain] = useState(false);
   const [chain, setChain] = useState<ChainStepInput[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,6 +83,14 @@ function RequestForm({ draft, onDone }: { draft: ApprovalDraft; onDone: () => vo
   const preview = useWsQuery(['approvals', 'chain', type], () => approvalsApi.chain(type), { staleTime: 60_000 });
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 300_000, enabled: editChain });
   const projects = useWsQuery(['projects', 'pick'], () => projectApi.list({ pageSize: 100 }), { staleTime: 300_000 });
+  const people = useMemo<PickItem[]>(() => (members.data ?? []).map((m) => ({ id: m.userId, label: m.displayName, sub: m.role ?? null })), [members.data]);
+  const linkTop = useMemo<PickItem[]>(() => (projects.data?.items ?? []).slice(0, 4).map((p) => ({ id: `project:${p.id}`, label: p.name, sub: 'Project', dot: null })), [projects.data]);
+  const searchLinks = async (q: string): Promise<PickItem[]> => {
+    if (q.length < 2) return linkTop;
+    const hits = await insightApi.search(q).then((r) => r.hits).catch(() => []);
+    const found: PickItem[] = hits.slice(0, 12).map((h) => ({ id: `${h.type.toLowerCase()}:${h.id}`, label: h.title, sub: h.subtitle ?? h.type, keywords: q }));
+    return [...found, { id: `text:${q}`, label: q, sub: 'Link as text', keywords: q }];
+  };
   useEffect(() => { setChain(null); setEditChain(false); }, [type]);
 
   const steps = chain ?? preview.data?.steps.map((s) => ({ role: s.role, userId: s.approver.id })) ?? [];
@@ -150,10 +166,8 @@ function RequestForm({ draft, onDone }: { draft: ApprovalDraft; onDone: () => vo
               {steps.map((s, i) => (
                 <div key={i} className="apq-edit-row">
                   <input aria-label={`Step ${i + 1} role`} value={s.role} maxLength={60} onChange={(e) => setChain(steps.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))} />
-                  <Select aria-label={`Step ${i + 1} person`} value={s.userId ?? ''} onChange={(e) => setChain(steps.map((x, j) => (j === i ? { ...x, userId: e.target.value || null } : x)))}>
-                    <option value="">By role</option>
-                    {(members.data ?? []).map((m) => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
-                  </Select>
+                  <CalmPicker label={`Step ${i + 1} approver`} testId={`apq-approver-${i}`} recentKey="approver" limit={4} placeholder="By role" allowClear
+                    items={people} value={s.userId ?? null} onChange={(id) => setChain(steps.map((x, j) => (j === i ? { ...x, userId: id } : x)))} />
                   <button type="button" className="apq-x" aria-label={`Remove step ${i + 1}`} onClick={() => setChain(steps.filter((_, j) => j !== i))}><Icon name="close" size={12} /></button>
                 </div>
               ))}
@@ -184,11 +198,9 @@ function RequestForm({ draft, onDone }: { draft: ApprovalDraft; onDone: () => vo
                 <button type="button" aria-label={`Remove ${l.label}`} onClick={() => setLinks(links.filter((_, j) => j !== i))}><Icon name="close" size={10} /></button>
               </span>
             ))}
-            {linkText === null
-              ? <button type="button" className="ap-tag quiet" onClick={() => setLinkText('')}>+ Link</button>
-              : <input className="apq-link-in" autoFocus value={linkText} placeholder="PR #815, ATL-482…" maxLength={80} aria-label="Link an item"
-                  onChange={(e) => setLinkText(e.target.value)} onBlur={() => setLinkText(null)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (linkText.trim()) setLinks([...links, { kind: 'item', label: linkText.trim() }]); setLinkText(null); } }} />}
+            <CalmPicker label="Link an item" testId="apq-link" className="apq-link-pick" placeholder="+ Link" recentKey="approval-link" limit={4} value={null}
+              items={linkTop} search={searchLinks} empty="Type a PR, ticket or task to link it."
+              onChange={(_, it) => { if (it && !links.some((l) => l.label === it.label)) setLinks([...links, toLink(it)]); }} />
           </div>
         </div>
       </div>

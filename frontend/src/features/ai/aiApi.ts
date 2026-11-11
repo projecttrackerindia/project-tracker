@@ -3,6 +3,14 @@ import { del, get, patch, post, put, streamPost, uploadFile } from '../../api/cl
 // ------------------------------------------------------------------ shapes (mirror the API)
 
 export type AiTier = 'quick' | 'standard' | 'deep';
+
+export type AiMemoryScope = 'Person' | 'Team' | 'Workspace';
+export interface AiMemory {
+  id: string; scope: AiMemoryScope; text: string; source: 'Said' | 'Suggested'; teamId: string | null; teamName: string | null;
+  createdAt: string; lastUsedAt: string | null; canDelete: boolean;
+}
+export interface AiMemorySettings { enabled: boolean; workspaceEnabled: boolean; canManage: boolean }
+export interface AiMemories { items: AiMemory[]; settings: AiMemorySettings }
 export type AiMode = 'auto' | AiTier;
 
 export interface AiTierInfo { id: AiTier; label: string; model: string; credits: number; allowed: boolean; description: string }
@@ -104,6 +112,12 @@ export const aiWorkspaceApi = {
   profile: () => get<AiProfile>('/ai/profile'),
   setProfileNotes: (notes: string) => put<AiProfile>('/ai/profile', { notes }),
   resetProfile: () => del('/ai/profile'),
+  /** What Aura remembers: this person's own, their teams' and the workspace's (the server returns nothing else). */
+  memories: () => get<AiMemories>('/ai/memories'),
+  forgetMemory: (id: string) => del(`/ai/memories/${id}`),
+  /** "Forget everything": the caller's own memories, or (admins) the workspace-wide ones. */
+  forgetAllMemories: (scope: 'person' | 'workspace' = 'person') => del<{ forgotten: number }>(`/ai/memories?scope=${scope}`),
+  setMemorySettings: (body: { enabled?: boolean; workspaceEnabled?: boolean }) => put<AiMemorySettings>('/ai/memories/settings', body),
   /** Aura: a short title for a long description (the first sentence when AI is off). */
   title: (text: string, kind?: string) => post<{ title: string; ai: boolean }>('/ai/title', { text, kind }),
   instructions: () => get<AiInstructions>('/ai/instructions'),

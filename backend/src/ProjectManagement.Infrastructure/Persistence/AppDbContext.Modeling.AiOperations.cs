@@ -19,6 +19,8 @@ public partial class AppDbContext
             e.Property(x => x.Kind).HasMaxLength(16);
             e.Property(x => x.Status).HasMaxLength(16);
             e.Property(x => x.E2eeKeyCipher).HasMaxLength(60000);
+            e.Property(x => x.MeetUrl).HasMaxLength(500);
+            e.Property(x => x.MeetEventId).HasMaxLength(200);
             e.HasIndex(x => new { x.TenantId, x.MeetingId });
             e.HasIndex(x => new { x.TenantId, x.WorkspaceMeetingId });
         });
@@ -75,11 +77,20 @@ public partial class AppDbContext
             e.HasIndex(x => new { x.TenantId, x.SourceKind, x.SourceId });
             e.HasIndex(x => new { x.SourceId });
             e.HasIndex(x => new { x.TenantId, x.IndexedAt });
+            e.HasIndex(x => new { x.TenantId, x.ConversationId });
             e.Property(x => x.SourceKind).HasMaxLength(16);
             e.Property(x => x.Title).HasMaxLength(200);
             e.Property(x => x.Text).HasMaxLength(1300);
             e.Property(x => x.Model).HasMaxLength(64);
             e.Property(x => x.ContentHash).HasMaxLength(32);
+        });
+        b.Entity<AiMemory>(e =>
+        {
+            e.HasIndex(x => new { x.TenantId, x.Scope, x.OwnerUserId });
+            e.HasIndex(x => new { x.TenantId, x.TeamId });
+            e.Property(x => x.Scope).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Source).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Text).HasMaxLength(300);
         });
         b.Entity<AiWatch>(e =>
         {

@@ -32,6 +32,14 @@ public class CallRoom : TenantEntity, ITenantScoped
     public bool IsPrivate { get; set; }
     /// <summary>Private calls: the room key, encrypted for each invited person's devices (the same envelope as a private chat message).</summary>
     public string? E2eeKeyCipher { get; set; }
+    /// <summary>
+    /// The Google Meet link this call is held on, when the workspace holds calls on Meet rather than on our own media server. Set once,
+    /// when the call starts, from the Calendar event created in the starter's own Google account; everyone invited joins this same link.
+    /// Null on a call held on our media server, which is what <see cref="RoomName"/> is for.
+    /// </summary>
+    public string? MeetUrl { get; set; }
+    /// <summary>The Calendar event behind <see cref="MeetUrl"/>, so the call can be tidied up in the starter's calendar when it ends.</summary>
+    public string? MeetEventId { get; set; }
 }
 
 /// <summary>Someone invited to or in a call. Invited people may join; others only through the project or conversation the call belongs to.</summary>

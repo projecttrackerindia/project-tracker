@@ -21,6 +21,7 @@ import './planSheet.css';
 import './planSheetTabs.css';
 import './portfolioShell.css';
 import './portfolioCalm.css';
+import { PortfolioViewsBar } from './PortfolioSavedViews';
 export { PortfolioSkeleton } from './portfolioSkeleton';
 
 /**
@@ -237,7 +238,7 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
     : mode === 'actions' ? [`${reviewItems.length} action item${reviewItems.length === 1 ? '' : 's'}.`, decisionN ? `${decisionN} need${decisionN === 1 ? 's' : ''} a decision.` : 'Nothing waits on a decision.']
     : mode === 'sheet' ? ['Plan sheet.', fp ? `${firstWord(tabPrefs.names[fp.id] || fp.title)} · ${openWork(fp.id).length} open, ${blocked(fp.id)} late.` : tab === 'actions' ? 'Action items first.' : `${projects.length} projects · ${openWork().length} open.`]
     : mode === 'timeline' ? ['Timeline.', latest?.due ? `${firstWord(latest.title)} drives ${fmtDay(latest.due)}.` : 'No dates yet.']
-    : mode === 'capacity' ? ['Capacity.', `${people.length} people.`]
+    : mode === 'capacity' ? ['Load', phone ? 'Next 2 weeks.' : 'Next 2 weeks · assigned work + meetings + leave']
     : mode === 'board' ? ['Board.', `${inReview} in review, ${blocked()} late.`]
     : ['Present.', `Week ${weekNo(today)}.`];
   const second = tabLine ?? head[1];
@@ -272,6 +273,7 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
           <DotsMenu label={mode === 'sheet' ? 'More on the plan sheet' : 'More on Portfolio'} items={menu} />
           {!phone && <button type="button" className="pfc-week" onClick={() => url.setMode('present')} title="Present the week">Week {weekNo(today)} ›</button>}
         </div>
+        {mode !== 'present' && <PortfolioViewsBar url={url} />}
         {classic && <TabStrip projects={projects} counts={counts} actionCount={actionCount} active={tab} onPick={pick} prefs={tabPrefs} save={saveTabs} compact={phone} />}
         <div ref={pageRef} className={`ps4-page pfx-page pc-${pageColour} ${mode === 'sheet' && (tab || folderProject) ? 'tabbed' : ''} ${mode === 'sheet' && tab === tabOrder0 ? 'first' : ''} ${classic ? 'pfc-sheetpage' : 'pfc-plain'}`}>
           {/* The field shows on Overview only while a filter is on, so an active filter is never invisible. */}

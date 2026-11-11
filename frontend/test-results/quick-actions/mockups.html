@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quick Actions Mockups</title>
+<style>
+:root{--bg:#f3f6fb;--card:#fff;--ink:#1d1d1f;--ink2:#6e6e73;--ink3:#a1a1a6;--fill:rgba(0,0,0,.05);--acc:#2563eb;--red:#ff3b30;--green:#30b158;--sh:0 1px 2px rgba(0,0,0,.03),0 12px 40px rgba(40,30,80,.10)}
+:root[data-theme=dark]{--bg:#0b0c10;--card:#1c1c1e;--ink:#f5f5f7;--ink2:#a1a1a6;--ink3:#6e6e73;--fill:rgba(255,255,255,.08);--sh:0 12px 40px rgba(0,0,0,.5)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Inter,sans-serif;padding:32px}@media(max-width:500px){body{padding:16px}}
+h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}h2{font-size:13px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin:28px 0 12px}
+.sub{color:var(--ink2);margin:0 0 8px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:18px}
+.logo{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,#7c5cff,#5b3df5);display:inline-grid;place-items:center;color:#fff;font-size:12px;font-weight:700;flex:none}
+.logo::after{content:'✓'}
+/* macOS */
+.mac{background:rgba(246,246,248,.92);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:12px 14px;display:grid;grid-template-columns:auto 1fr;gap:10px;color:#1d1d1f;backdrop-filter:blur(20px)}
+[data-theme=dark] .mac{background:rgba(44,44,46,.92);color:#f5f5f7}
+.mac .t{font-weight:600}.mac .b{color:inherit;opacity:.8}.mac .app{font-size:11px;opacity:.55;display:flex;justify-content:space-between}
+.mac .acts{grid-column:1/-1;display:flex;gap:6px;margin-top:4px}.mac .acts button{flex:1;border:0;border-radius:8px;padding:6px;background:rgba(0,0,0,.06);color:inherit;font:inherit;font-weight:500}
+[data-theme=dark] .mac .acts button{background:rgba(255,255,255,.1)}
+/* Windows */
+.win{background:#f9f9f9;border-radius:8px;border:1px solid rgba(0,0,0,.08);box-shadow:0 8px 28px rgba(0,0,0,.2);padding:14px;font-family:'Segoe UI Variable','Segoe UI',sans-serif;color:#1b1b1b}
+[data-theme=dark] .win{background:#2b2b2b;color:#fff;border-color:rgba(255,255,255,.08)}
+.win .app{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px}.win .t{font-weight:600}.win .b{opacity:.8}
+.win .acts{display:flex;gap:8px;margin-top:12px}.win .acts button{flex:1;border:1px solid rgba(0,0,0,.1);border-radius:4px;padding:6px;background:#fff;color:inherit;font:inherit}
+[data-theme=dark] .win .acts button{background:#3a3a3a;border-color:rgba(255,255,255,.06)}
+.win input,.mac input,.and input,.ios input{width:100%;border:1px solid rgba(0,0,0,.12);border-radius:6px;padding:7px 9px;font:inherit;margin-top:10px;background:transparent;color:inherit}
+/* Android */
+.and{background:#fff;border-radius:24px;padding:14px 16px;box-shadow:0 4px 18px rgba(0,0,0,.14);font-family:Roboto,'Google Sans',sans-serif;color:#1f1f1f}
+[data-theme=dark] .and{background:#2d2f31;color:#e3e3e3}
+.and .app{display:flex;align-items:center;gap:6px;font-size:12px;opacity:.7}.and .t{font-weight:500;margin-top:6px}.and .b{opacity:.75}
+.and .acts{display:flex;gap:18px;margin-top:10px}.and .acts span{color:var(--acc);font-weight:500;font-size:13px}
+/* iOS */
+.ios{background:rgba(250,250,252,.85);border-radius:22px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,.16);display:grid;grid-template-columns:auto 1fr;gap:10px;color:#1d1d1f;backdrop-filter:blur(30px)}
+[data-theme=dark] .ios{background:rgba(40,40,42,.88);color:#f5f5f7}
+.ios .logo{width:36px;height:36px;border-radius:9px;font-size:18px}.ios .t{font-weight:600}.ios .app{font-size:11px;opacity:.5;float:right}
+.ios-menu{margin-top:8px;border-radius:14px;overflow:hidden;background:rgba(250,250,252,.92);box-shadow:0 8px 28px rgba(0,0,0,.14)}
+[data-theme=dark] .ios-menu{background:rgba(40,40,42,.92)}
+.ios-menu div{padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);display:flex;justify-content:space-between}.ios-menu div:first-child{border:0}
+.danger{color:var(--red)!important}.go{color:var(--acc)}
+.cap{font-size:12px;color:var(--ink3);margin:6px 2px 0}
+/* in-app banner */
+.banner{background:var(--card);border-radius:16px;box-shadow:var(--sh);padding:12px 14px;display:flex;gap:12px;align-items:center}
+.banner .dot{width:8px;height:8px;border-radius:50%;background:var(--red);flex:none}.banner .txt{flex:1;min-width:0}.banner .t{font-weight:600}.banner .b{color:var(--ink2);font-size:13px}
+.pill{border:0;border-radius:999px;padding:7px 14px;font:inherit;font-weight:600;background:var(--fill);color:var(--ink)}.pill.go{background:var(--acc);color:#fff}
+/* call */
+.call{background:#1c1c1e;color:#fff;border-radius:28px;padding:22px;text-align:center}
+.call .av{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#a78bfa,#3b82f6);margin:6px auto 10px;display:grid;place-items:center;font-size:26px;font-weight:600}
+.call .row{display:flex;justify-content:space-around;margin-top:18px}.round{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:22px}
+.quick{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:14px}.quick span{background:rgba(255,255,255,.12);border-radius:999px;padding:6px 12px;font-size:12px}
+/* tray */
+.tray{background:var(--card);border-radius:14px;box-shadow:var(--sh);max-width:340px;padding:14px}
+.ring{width:54px;height:54px;border-radius:50%;background:conic-gradient(var(--green) 0 62%,var(--fill) 0);display:grid;place-items:center}
+.ring::after{content:'';width:44px;height:44px;border-radius:50%;background:var(--card)}
+.li{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--fill)}.li:first-child{border:0}
+.ck{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--ink3);flex:none}
+.wid{background:var(--card);border-radius:22px;box-shadow:var(--sh);padding:14px;aspect-ratio:2.1/1}
+.set{background:var(--card);border-radius:16px;box-shadow:var(--sh);overflow:hidden}
+.set .r{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--fill)}.set .r:first-child{border:0}.set .r .n{flex:1}
+.set .r .a{color:var(--ink2);font-size:13px}.tg{width:38px;height:22px;border-radius:99px;background:var(--green);position:relative}.tg::after{content:'';position:absolute;right:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#fff}
+</style></head><body>
+<h1>Quick actions</h1>
+<p class="sub">Act on a notice without opening ProjectTracker. Only urgent notices carry prominent buttons; the rest stay quiet with one tap to open.</p>
+
+<h2>Approvals · macOS</h2>
+<div class="grid">
+ <div><div class="mac"><span class="logo"></span><div><div class="app"><span>PROJECTTRACKER</span><span>now</span></div><div class="t">Leave request · Ravi M.</div><div class="b">3 days, 12–14 Nov. Waiting on you.</div></div><div class="acts"><button>Approve</button><button>Reject</button></div></div><div class="cap">Approve acts at once. Reject asks for a reason.</div></div>
+ <div><div class="mac"><span class="logo"></span><div><div class="app"><span>PROJECTTRACKER</span><span>now</span></div><div class="t">Reason for rejecting</div><input value="Overlaps with the release week"></div><div class="acts"><button>Cancel</button><button class="danger">Reject</button></div></div><div class="cap">Reject → inline reason field (macOS reply action).</div></div>
+</div>
+
+<h2>Messages · Windows</h2>
+<div class="grid">
+ <div><div class="win"><div class="app"><span class="logo"></span>ProjectTracker</div><div class="t">Asha in #release</div><div class="b">@you can we move the demo to 4 pm?</div><input placeholder="Reply…"><div class="acts"><button>Reply</button><button>Mark read</button></div></div></div>
+ <div><div class="win"><div class="app"><span class="logo"></span>ProjectTracker</div><div class="t">Task due in 1 hour</div><div class="b">Finalise rollout checklist · Payments</div><div class="acts"><button>Done</button><button>Snooze 1h</button><button>Open</button></div></div></div>
+</div>
+
+<h2>Android</h2>
+<div class="grid">
+ <div><div class="and"><div class="app"><span class="logo"></span>ProjectTracker · now</div><div class="t">Standup starts in 5 min</div><div class="b">Daily standup · 10:00–10:15</div><div class="acts"><span>JOIN</span><span>RUNNING LATE</span></div></div><div class="cap">Running late posts "Running ~5 min late" to attendees.</div></div>
+ <div><div class="and"><div class="app"><span class="logo"></span>ProjectTracker · 2m</div><div class="t">Invite: Design review</div><div class="b">Thu 14:00 · Neha K.</div><div class="acts"><span>ACCEPT</span><span>DECLINE</span><span>MAYBE</span></div></div></div>
+ <div><div class="and"><div class="app"><span class="logo"></span>ProjectTracker · 5m</div><div class="t">Due date extension requested</div><div class="b">API cut-over → 21 Nov. "Vendor delay"</div><div class="acts"><span>ACCEPT</span><span>DISCUSS</span></div></div></div>
+ <div><div class="and"><div class="app"><span class="logo"></span>ProjectTracker · 1m</div><div class="t">3 action items found</div><div class="b">From "Sprint planning"</div><div class="acts"><span>REVIEW</span></div></div></div>
+</div>
+
+<h2>iOS</h2>
+<div class="grid">
+ <div><div class="ios"><span class="logo"></span><div><span class="app">now</span><div class="t">Reminder</div><div>Call the auditor back</div></div></div><div class="ios-menu"><div>Done <span>✓</span></div><div>Snooze 1 hour <span>⏱</span></div></div><div class="cap">Long-press reveals actions (UNNotificationCategory).</div></div>
+ <div><div class="ios"><span class="logo"></span><div><span class="app">1m</span><div class="t">Action item · Release</div><div>Update the risk register</div></div></div><div class="ios-menu"><div>Done</div><div>Snooze</div><div class="go">Open</div></div></div>
+ <div><div class="ios"><span class="logo"></span><div><span class="app">3m</span><div class="t">Missed call · Ravi M.</div><div>Audio call</div></div></div><div class="ios-menu"><div class="go">Call back</div><div>Message</div></div></div>
+</div>
+
+<h2>Calls</h2>
+<div class="grid">
+ <div class="call"><div style="opacity:.6;font-size:12px">ProjectTracker audio</div><div class="av">RM</div><div style="font-size:20px;font-weight:600">Ravi M.</div><div class="quick"><span>Can't talk now</span><span>Call you in 5</span><span>In a meeting</span></div><div class="row"><span class="round" style="background:var(--red)">✕</span><span class="round" style="background:var(--green)">✆</span></div></div>
+</div>
+
+<h2>In-app banner (urgent only)</h2>
+<div class="grid">
+ <div class="banner"><span class="dot"></span><div class="txt"><div class="t">Expense approval · ₹4,200</div><div class="b">Kiran · Travel</div></div><button class="pill">Reject</button><button class="pill go">Approve</button></div>
+ <div class="banner"><span class="dot" style="background:var(--acc)"></span><div class="txt"><div class="t">Standup in 5 min</div><div class="b">Daily standup</div></div><button class="pill">Late</button><button class="pill go">Join</button></div>
+</div>
+
+<h2>Desktop tray · Widgets</h2>
+<div class="grid">
+ <div class="tray"><div style="display:flex;align-items:center;gap:12px"><div class="ring"></div><div style="flex:1"><div style="font-weight:600">Checked in · 5h 12m</div><div style="color:var(--ink2);font-size:12px">since 9:04</div></div><button class="pill">Out</button></div>
+ <div style="margin-top:12px;display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:var(--fill)"><div style="flex:1"><div style="font-weight:600">Design review</div><div style="color:var(--ink2);font-size:12px">in 12 min</div></div><button class="pill go">Join</button></div>
+ <div style="margin:12px 0 4px;font-size:12px;color:var(--ink2);font-weight:600">TODAY</div>
+ <div class="li"><span class="ck"></span>Finalise rollout checklist</div><div class="li"><span class="ck"></span>Review PR for payments</div><div class="li"><span class="ck"></span>Send weekly note</div>
+ <input style="margin-top:10px;width:100%;border:0;background:var(--fill);border-radius:10px;padding:9px;font:inherit;color:inherit" placeholder="Quick add or ask Aura  ⌘⇧Space"></div>
+ <div class="wid"><div style="display:flex;gap:14px;height:100%"><div style="flex:1"><div style="font-size:11px;color:var(--ink2);font-weight:600">TODAY · 3</div><div class="li" style="border:0"><span class="ck"></span>Rollout checklist</div><div class="li"><span class="ck"></span>Payments PR</div></div><div style="display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end"><div class="ring"></div><button class="pill go">Join 10:00</button></div></div></div>
+</div>
+
+<h2>Settings · Quick actions</h2>
+<div class="set" style="max-width:560px">
+ <div class="r"><span class="n">Approvals</span><span class="a">Approve · Reject</span><span class="tg"></span></div>
+ <div class="r"><span class="n">Messages &amp; mentions</span><span class="a">Reply · Mark read</span><span class="tg"></span></div>
+ <div class="r"><span class="n">Tasks &amp; action items</span><span class="a">Done · Snooze · Open</span><span class="tg"></span></div>
+ <div class="r"><span class="n">Meetings</span><span class="a">Join · Running late · RSVP</span><span class="tg"></span></div>
+ <div class="r"><span class="n">Calls</span><span class="a">Answer · Decline · Reply</span><span class="tg"></span></div>
+</div>
+</body></html>

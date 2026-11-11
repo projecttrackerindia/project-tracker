@@ -40,6 +40,9 @@ public partial class ProjectService
             .GroupBy(i => i.StageId)
             .Select(g => new { StageId = g.Key, Total = g.Count(), Open = g.Count(i => i.Status != IssueStatus.Resolved) })
             .ToListAsync(ct)).ToDictionary(x => x.StageId!.Value);
+        var teamIds = rows.Where(r => r.Stage.OwnerTeamId != null).Select(r => r.Stage.OwnerTeamId!.Value).Distinct().ToList();
+        var teamNames = teamIds.Count == 0 ? new Dictionary<Guid, string>()
+            : await db.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
         return rows.Select((r, i) =>
         {
             // Locked while the stage before it is unfinished, so the timeline can only be worked through in order.
@@ -52,7 +55,9 @@ public partial class ProjectService
                 r.Stage.Description,
                 counts.TryGetValue(r.Stage.Id, out var c) ? c.Total : 0, counts.TryGetValue(r.Stage.Id, out var d) ? d.Done : 0,
                 locked, locked ? previous!.Name : null,
-                issues.TryGetValue(r.Stage.Id, out var iss) ? iss.Open : 0, iss?.Total ?? 0, StageScheduler.Duration(r.Stage.DurationDays, r.Stage.PlannedStart, r.Stage.PlannedEnd));
+                issues.TryGetValue(r.Stage.Id, out var iss) ? iss.Open : 0, iss?.Total ?? 0, StageScheduler.Duration(r.Stage.DurationDays, r.Stage.PlannedStart, r.Stage.PlannedEnd),
+                r.Stage.OwnerTeamId is { } tid && teamNames.TryGetValue(tid, out var tn) ? tid : null,
+                r.Stage.OwnerTeamId is { } tid2 && teamNames.TryGetValue(tid2, out var tn2) ? tn2 : null);
         }).ToList();
     }
 
@@ -116,11 +121,35 @@ public partial class ProjectService
         stage.Name = req.Name.Trim();
         if (req.DurationDays is < 0 or > 36500) throw new ValidationException("durationDays", "Use 0 to 36500 calendar days; zero represents a milestone.");
         stage.DurationDays = req.DurationDays ?? StageScheduler.Duration(null, req.PlannedStart, req.PlannedEnd) ?? stage.DurationDays;
+        // A phase's planned dates moving later need a reason, like every other date (kept in the date history and told to the project's manager).
+        var why = DueDateHistory.ReasonOf(req.ExtensionReason, req.ScheduleReason);
+        var startWhy = dueHistory.Require("phase's planned start", stage.PlannedStart, req.PlannedStart, why);
+        var endWhy = dueHistory.Require("phase's planned end", stage.PlannedEnd, req.PlannedEnd, why);
+        var (wasStart, wasEnd) = (stage.PlannedStart, stage.PlannedEnd);
         stage.PlannedStart = req.PlannedStart; stage.PlannedEnd = req.PlannedEnd;
+        if (wasStart is not null) dueHistory.RecordDate(stage.TenantId, stage.ProjectId, DateKinds.Stage, stage.Id, DateKinds.Start, wasStart, stage.PlannedStart, startWhy);
+        if (wasEnd is not null) dueHistory.RecordDate(stage.TenantId, stage.ProjectId, DateKinds.Stage, stage.Id, DateKinds.End, wasEnd, stage.PlannedEnd, endWhy);
+        if (DueDateHistory.IsLater(wasEnd, stage.PlannedEnd) || DueDateHistory.IsLater(wasStart, stage.PlannedStart))
+        {
+            var later = DueDateHistory.IsLater(wasEnd, stage.PlannedEnd);
+            await notices.ExtendedAsync(new ProjectManagement.Application.Features.WorkHistory.WorkNoticeTarget(stage.ProjectId, $"Phase {req.Name.Trim()}", $"/projects/{stage.ProjectId}?tab=timeline", NotificationType.ProjectUpdated),
+                stage.ProjectId, later ? "Planned end" : "Planned start", later ? wasEnd : wasStart, later ? stage.PlannedEnd : stage.PlannedStart, later ? endWhy : startWhy,
+                [stage.OwnerId, stage.AssigneeId], ct);
+        }
         stage.ActualStart = req.ActualStart; stage.ActualEnd = req.ActualEnd;
         // Set by a person now: never put back automatically.
         db.StageAutoStarts.RemoveRange(await db.StageAutoStarts.Where(a => a.StageId == stage.Id).ToListAsync(ct));
         stage.OwnerId = req.OwnerId; stage.AssigneeId = req.AssigneeId;
+        // A team owner is optional and only changes when sent (Guid.Empty clears it), so older clients keep it.
+        if (req.OwnerTeamId is { } team)
+        {
+            if (team == Guid.Empty) stage.OwnerTeamId = null;
+            else
+            {
+                if (!await db.Teams.AnyAsync(t => t.Id == team, ct)) throw new ValidationException("ownerTeamId", "Choose a team of this workspace.");
+                stage.OwnerTeamId = team;
+            }
+        }
         stage.Description = req.Description?.Trim();
         stage.Status = req.Status;
         if (req.Status is StageStatus.InProgress or StageStatus.Completed) stage.ActualStart ??= today;
@@ -247,5 +276,113 @@ public partial class ProjectService
         // The stage that now follows the one before it may have just become available.
         if (index < stages.Count) await completion.SyncStagesAsync([stages[index].Id], ct);
         return await GetStagesAsync(projectId, ct);
+    }
+
+    // ---------------------------------------------------------------- stage owners and moving along the journey
+
+    private static UpsertStageRequest Same(ProjectStage s, StageStatus status) =>
+        new(s.Name, s.PlannedStart, s.PlannedEnd, s.ActualStart, s.ActualEnd, status, s.OwnerId, s.AssigneeId, s.Description, null, s.DurationDays);
+
+    /// <summary>The people who own a stage: its owner, its assignee and every member of its team.</summary>
+    private async Task<List<Guid>> StagePeopleAsync(ProjectStage stage, CancellationToken ct)
+    {
+        var people = new List<Guid>();
+        if (stage.OwnerId is { } o) people.Add(o);
+        if (stage.AssigneeId is { } a) people.Add(a);
+        if (stage.OwnerTeamId is { } team)
+            people.AddRange(await db.TeamMembers.AsNoTracking().Where(m => m.TeamId == team).Select(m => m.UserId).ToListAsync(ct));
+        return people.Distinct().ToList();
+    }
+
+    /// <summary>
+    /// "Move to next stage": completes the current stage (the first unfinished one), starts the next and tells its owner (person or team).
+    /// Open tasks still block completing, unless CarryOpenTasks moves them on to the next stage.
+    /// </summary>
+    public async Task<StageChangeResultDto> AdvanceStageAsync(Guid projectId, AdvanceStageRequest req, CancellationToken ct = default)
+    {
+        var project = await access.GetProjectAsync(projectId, ct);
+        await access.RequireProjectEditAsync(project, ct);
+        RequireScheduleVersion(project, req.ProjectVersion);
+        var stages = await db.ProjectStages.AsNoTracking().Where(s => s.ProjectId == projectId).OrderBy(s => s.Order).ToListAsync(ct);
+        var index = stages.FindIndex(s => s.Status != StageStatus.Completed);
+        if (index < 0) throw new ConflictException("Every stage is already complete.", "STAGES_COMPLETE");
+        var current = stages[index];
+        var next = index + 1 < stages.Count ? stages[index + 1] : null;
+
+        var moved = 0;
+        if (req.CarryOpenTasks && next is not null)
+        {
+            var open = await db.Tasks.Where(t => t.ProjectId == projectId && t.StageId == current.Id
+                    && t.Status!.Category != StatusCategory.Done && t.Status!.Category != StatusCategory.Cancelled)
+                .ToListAsync(ct);
+            var openIds = open.Select(t => t.Id).ToList();
+            // Subtasks always sit in their parent's stage, so the done subtasks of a moved task go with it.
+            var children = await db.Tasks.Where(t => t.ParentTaskId != null && openIds.Contains(t.ParentTaskId.Value) && !openIds.Contains(t.Id)).ToListAsync(ct);
+            foreach (var t in open.Concat(children)) { t.StageId = next.Id; t.Version++; }
+            moved = open.Count(t => t.ParentTaskId == null);
+            await db.SaveChangesAsync(ct);
+        }
+
+        await UpdateStageAsync(projectId, current.Id, Same(current, StageStatus.Completed), ct);
+        if (next is not null)
+        {
+            var fresh = await db.ProjectStages.AsNoTracking().SingleAsync(s => s.Id == next.Id, ct);
+            if (fresh.Status == StageStatus.Pending) await UpdateStageAsync(projectId, next.Id, Same(fresh, StageStatus.InProgress), ct);
+            foreach (var who in await StagePeopleAsync(next, ct))
+                await notifications.AddAsync(who, NotificationType.ProjectUpdated, $"\"{project.Name}\" is now in {next.Name}",
+                    $"{current.Name} is done. {next.Name} is yours{(next.PlannedEnd is { } d ? $", due {d:dd MMM}" : "")}.", $"/projects/{projectId}", ct: ct);
+        }
+        recorder.Activity("project.stage_advanced", "Project", projectId,
+            next is null ? $"Completed the last stage \"{current.Name}\" of \"{project.Name}\""
+                : $"Moved \"{project.Name}\" from {current.Name} to {next.Name}{(moved > 0 ? $" ({moved} open task{(moved == 1 ? "" : "s")} moved along)" : "")}",
+            projectId, current.Name, next?.Name);
+        await db.SaveChangesAsync(ct);
+        return new StageChangeResultDto(await GetStagesAsync(projectId, ct), moved, next is null ? "All stages complete." : $"Moved to {next.Name}.");
+    }
+
+    /// <summary>Gives a stage to a new person and/or team, optionally handing the previous owner's open tasks in that stage to the new person.</summary>
+    public async Task<StageChangeResultDto> ReassignStageAsync(Guid projectId, Guid stageId, ReassignStageRequest req, CancellationToken ct = default)
+    {
+        var project = await access.GetProjectAsync(projectId, ct);
+        await access.RequireProjectEditAsync(project, ct);
+        var stage = await db.ProjectStages.SingleOrDefaultAsync(s => s.Id == stageId && s.ProjectId == projectId, ct) ?? throw new NotFoundException("Stage not found.");
+        if (req.OwnerId is null && req.TeamId is null) throw new ValidationException("ownerId", "Choose a person or a team.");
+        if (req.OwnerId is { } o) await access.EnsureTenantMemberAsync(o, "ownerId", ct);
+        string? teamName = null;
+        if (req.TeamId is { } team)
+            teamName = await db.Teams.AsNoTracking().Where(t => t.Id == team).Select(t => t.Name).FirstOrDefaultAsync(ct)
+                ?? throw new ValidationException("teamId", "Choose a team of this workspace.");
+
+        var previous = stage.OwnerId;
+        stage.OwnerId = req.OwnerId;
+        stage.OwnerTeamId = req.TeamId;
+        stage.UpdatedAt = clock.Now;
+
+        var moved = 0;
+        if (req.MoveOpenTasks && previous is { } was && req.OwnerId is { } now && was != now)
+        {
+            var tasks = await db.Tasks.Where(t => t.ProjectId == projectId && t.StageId == stageId && t.AssigneeId == was
+                    && t.Status!.Category != StatusCategory.Done && t.Status!.Category != StatusCategory.Cancelled)
+                .ToListAsync(ct);
+            foreach (var t in tasks) { t.AssigneeId = now; t.Version++; }
+            moved = tasks.Count;
+        }
+
+        var ownerName = req.OwnerId is { } on ? await db.Users.AsNoTracking().Where(u => u.Id == on).Select(u => u.DisplayName).FirstOrDefaultAsync(ct) : null;
+        var label = string.Join(" · ", new[] { ownerName, teamName }.Where(x => !string.IsNullOrEmpty(x)));
+        recorder.Activity("project.stage_owner_changed", "Project", projectId,
+            $"{stage.Name} of \"{project.Name}\" is now owned by {label}{(moved > 0 ? $"; {moved} open task{(moved == 1 ? "" : "s")} moved" : "")}", projectId,
+            previous?.ToString(), req.OwnerId?.ToString());
+        recorder.Audit("project.stage_owner_changed", "ProjectStage", stageId, previous?.ToString(), req.OwnerId?.ToString());
+        await db.SaveChangesAsync(ct);
+
+        foreach (var who in await StagePeopleAsync(stage, ct))
+            await notifications.AddAsync(who, NotificationType.ProjectUpdated, $"You own {stage.Name} on \"{project.Name}\"",
+                moved > 0 ? $"{moved} open task{(moved == 1 ? " was" : "s were")} moved to you." : "The stage was handed to you.", $"/projects/{projectId}", ct: ct);
+        if (previous is { } p && p != req.OwnerId)
+            await notifications.AddAsync(p, NotificationType.ProjectUpdated, $"{stage.Name} on \"{project.Name}\" was handed to {label}",
+                moved > 0 ? $"{moved} of your open tasks moved with it." : null, $"/projects/{projectId}", ct: ct);
+        await db.SaveChangesAsync(ct);
+        return new StageChangeResultDto(await GetStagesAsync(projectId, ct), moved, moved > 0 ? $"Moved {moved} task{(moved == 1 ? "" : "s")}." : null);
     }
 }

@@ -332,6 +332,14 @@ public class AgentReviewService(IAppDbContext db, ICurrentContext ctx, AppClock 
             }
             case AgentFindingKind.CreateActionItem:
             {
+                // The same minutes read twice (a second reading, or two proposals of one point) must not add the action item again: when the
+                // agent already added an action item with this title in this project and it still exists, approving this one points at it.
+                var lower = f.Title.Trim().ToLower();
+                var earlier = await db.AgentFindings.AsNoTracking().Where(x => x.ProjectId == f.ProjectId && x.Id != f.Id && x.Kind == AgentFindingKind.CreateActionItem
+                        && x.Status == AgentFindingStatus.Applied && x.AppliedEntityId != null && x.Title.Trim().ToLower() == lower)
+                    .OrderBy(x => x.DecidedAt).Select(x => x.AppliedEntityId).ToListAsync(ct);
+                foreach (var eid in earlier)
+                    if (eid is { } e && await db.WorkTasks.AsNoTracking().AnyAsync(w => w.Id == e && w.Kind == WorkTaskKind.ActionItem, ct)) return (e, null);
                 var created = await actionItems.CreateAsync(f.ProjectId, new CreateActionItemRequest(f.Title, Describe(f, 2000), f.AssigneeId, f.DueDate, f.Priority), ct);
                 return (created.Id, null);
             }

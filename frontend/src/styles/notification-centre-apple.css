@@ -75,6 +75,8 @@ html .ncx-bell.ncx-bell { padding: 0; margin: 0; }
 .ncx-more-from:hover { color: var(--ds-text); background: rgba(118, 118, 128, .08); }
 .ncx-stack-head { display: flex; align-items: center; gap: 6px; margin: 4px 2px 6px 6px; animation: ncx-fade var(--motion-standard) ease-out; }
 .ncx-stack-head b { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; letter-spacing: -.01em; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ncx-group-title { margin: 2px 6px 6px; font-size: 12px; font-weight: 600; letter-spacing: -.005em; color: var(--ds-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ncx-muted { font-weight: 500; color: var(--ds-text-3, var(--ds-text-2)); }
 .ncx-pill { height: 24px; padding: 0 10px; border: 0; border-radius: 12px; background: rgba(118, 118, 128, .16); color: var(--ds-text); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; }
 .ncx-pill.x { width: 24px; padding: 0; justify-content: center; }
 .ncx-pill:hover { background: rgba(118, 118, 128, .26); }

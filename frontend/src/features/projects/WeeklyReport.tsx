@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { chatApi, statusApi } from '../../api/endpoints';
 import type { WeeklyItem, WeeklySent } from '../../api/endpoints';
 import { ErrorState, PageLoader } from '../../components/ui';
+import { CalmLink, CalmPicker, CalmRailCard, CalmSplit } from '../../components/calm';
 import { useWsQuery } from '../../lib/hooks';
 import { toast } from '../../stores/ui';
 import { useAi } from '../ai/Assistant';
@@ -67,7 +69,6 @@ export function WeeklyReportPage() {
   const [busy, setBusy] = useState<null | 'send' | 'shorten' | 'formal' | 'schedule'>(null);
   const [to, setTo] = useState<string[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [adding, setAdding] = useState(false);
   useEffect(() => {
     if (!d) return;
     setText(d.text);
@@ -122,134 +123,120 @@ export function WeeklyReportPage() {
   const history: WeeklySent[] = [...(d.history ?? [])].reverse();
   const addable = [...(d.canSend && !to.includes(CHAT) ? [{ id: CHAT, name: 'Project chat' }] : []), ...(d.people ?? []).filter((p) => !to.includes(p.id))];
   const approve = (cls = '') => (
-    <button type="button" className={`btn btn-primary wrp-approve ${cls}`} disabled={!canGo} title={why} onClick={() => void send()}>
+    <button type="button" className={`calm-go wrp-approve ${cls}`} disabled={!canGo} title={why} onClick={() => void send()}>
       {busy === 'send' ? 'Sending…' : 'Approve & send'}
     </button>
   );
 
-  return (
-    <div className="wrp">
-      <div className="wrp-top">
-        <button type="button" className="wrp-back" onClick={() => nav(`/work/projects/${id}`)}>‹ {d.projectName}</button>
-        <span className="wrp-sp" />
-        {approve('wrp-approve-top')}
-      </div>
-      <header className="wrp-head">
-        <div>
-          <div className="wrp-eyebrow">Weekly status · {range(d.from, d.to)}</div>
-          <h1 className="wrp-h1">Week {d.week ?? isoWeek(d.to)} report.<em>{range(d.from, d.to)}</em></h1>
+  const rail = (
+    <>
+      <CalmRailCard title="Send to stakeholders" className="wrp-card wrp-send">
+        <ul className="wrp-to">
+          {to.map((r) => (
+            <li key={r}>
+              {r === CHAT ? <span className="pa-av wrp-chatav" aria-hidden="true">#</span> : <Initials name={people.get(r)} userId={r} />}
+              <span className="wrp-to-name">{r === CHAT ? 'Project chat · Messages' : people.get(r) ?? 'Someone'}</span>
+              <button type="button" className="wrp-x" aria-label={`Remove ${r === CHAT ? 'project chat' : people.get(r)}`} onClick={() => setTo(to.filter((x) => x !== r))}>×</button>
+            </li>
+          ))}
+          <li className="wrp-add-li">
+            <CalmPicker label="Add person or channel" testId="wrp-add" className="wrp-add-pick" placeholder="＋ Add person or channel" value={null} limit={4} disabled={addable.length === 0}
+              items={addable.map((p) => ({ id: p.id, label: p.name, sub: p.id === CHAT ? 'Messages' : 'Mail' }))}
+              onChange={(v) => { if (v) { setTo([...to, v]); if (v !== CHAT && !channels.includes('mail')) setChannels([...channels, 'mail']); } }} />
+          </li>
+        </ul>
+        <div className="wrp-seg calm-pills" role="group" aria-label="Send by">
+          {(['mail', 'chat', 'pdf'] as Channel[]).map((c) => (
+            <button key={c} type="button" aria-pressed={channels.includes(c)} className={channels.includes(c) ? 'on' : ''} onClick={() => toggle(c)}>
+              {c === 'mail' ? 'Mail' : c === 'chat' ? 'Messages' : 'PDF'}
+            </button>
+          ))}
         </div>
-        <div className="wrp-sourceline"><span className="wrp-orb" aria-hidden="true" />
+        {approve('wrp-approve-side')}
+        {why && <p className="wrp-why">{why}.</p>}
+        <button type="button" className={`wrp-sched ${d.schedule ? 'on' : ''}`} aria-pressed={!!d.schedule} disabled={busy === 'schedule'} onClick={() => void schedule()}>
+          <span className="wrp-dot" aria-hidden="true" />Every Friday 5 PM · you approve first{d.schedule ? ' · on' : ''}
+        </button>
+      </CalmRailCard>
+
+      <div className="calm-rc wrp-card wrp-ai">
+        <p><SiriOrb className="wrp-orb" />{ai ? 'Tone is neutral and every line comes from the project. Want it shorter, or framed for executives?' : 'Read it through, edit any line, then approve.'}</p>
+        <div className="wrp-ai-row">
+          {ai && <button type="button" className="calm-chip-btn" disabled={busy !== null} onClick={() => void rewrite('shorten')}>{busy === 'shorten' ? 'Shortening…' : 'Shorter'}</button>}
+          {ai && <button type="button" className="calm-chip-btn" disabled={busy !== null} onClick={() => void rewrite('formal')}>{busy === 'formal' ? 'Rewriting…' : 'For execs'}</button>}
+          <button type="button" className="calm-chip-btn" onClick={() => setEditing(!editing)}>{editing ? 'Report view' : 'Edit'}</button>
+        </div>
+      </div>
+
+      {mail.threads.length > 0 && (
+        <CalmRailCard title="From mail" className="wrp-card" label="From mail">
+          <ul className="wrp-mail" data-testid="report-mail">
+            {mail.threads.map((t) => (
+              <li key={t.key}><span className="wrp-mail-s">{t.subject || '(no subject)'}</span><Link className="wrp-src" to="/mail" title={`${t.count} message${t.count === 1 ? '' : 's'} this week, linked to this project in Mail`}>Mail · {t.who}</Link></li>
+            ))}
+          </ul>
+          <p className="wrp-none">Threads linked to this project in Mail. Cite them in the text if they explain a line.</p>
+        </CalmRailCard>
+      )}
+
+      <CalmRailCard title="Last 4 weeks" className="wrp-card">
+        {history.length === 0 ? <p className="wrp-none">No report sent yet. Approve this one to start the history.</p> : (
+          <div className="wrp-weeks">
+            {history.map((h) => (
+              <span key={h.sentAt} className={`wrp-pill sm ${tone(h.health)}`} title={`Sent ${new Date(h.sentAt).toLocaleString()}${h.by ? ` by ${h.by}` : ''} · ${h.health ?? ''} · ${h.done} done, ${h.slipped} slipped · ${h.channels.join(', ')}`}>
+                W{isoWeek(h.sentAt)}
+              </span>
+            ))}
+          </div>
+        )}
+      </CalmRailCard>
+    </>
+  );
+
+  return (
+    <CalmSplit className="wrp-calm" label="Weekly report" rail={rail}
+      crumb={<><button type="button" className="wrp-back calm-link" onClick={() => nav(`/work/projects/${id}`)}>‹ {d.projectName}</button><span className="wrp-sp" />{approve('wrp-approve-top')}</>}>
+      <header className="calm-hero wrp-head">
+        <div className="wrp-eyebrow">Weekly status · {range(d.from, d.to)}</div>
+        <h1 className="calm-hero-title wrp-h1">Week {d.week ?? isoWeek(d.to)} report.<em>{range(d.from, d.to)}</em></h1>
+        <div className="aura-line wrp-sourceline"><SiriOrb className="wrp-orb" />
           Written from {s ? `${plural(s.updates, 'update')}, ${plural(s.meetings, 'meeting')}${mail.count ? `, ${plural(mail.count, 'mail')}` : ''} and ${plural(s.commits, 'commit')}` : 'the project'} · {ago(d.writtenAt)}
         </div>
       </header>
 
-      <div className="wrp-wrap">
-        <article className="wrp-doc" aria-label="Report">
-          <div className="wrp-verdict">
-            <span className={`wrp-pill ${tone(d.health)}`}>● {d.health}</span>
-            <span className="wrp-line">{d.verdict || `${d.progress ?? 0}% done.`}</span>
-          </div>
-          <div className="wrp-kpi">
-            <div><b>{d.moved}</b><span>Items done</span></div>
-            <div><b className={d.slipped ? 'bad' : ''}>{d.slipped}</b><span>Slipped</span></div>
-            <div><b className={(d.scopeChange ?? 0) > 15 ? 'warn' : ''}>{(d.scopeChange ?? 0) > 0 ? '+' : ''}{d.scopeChange ?? 0}%</b><span>Scope change · {d.progress ?? 0}% done</span></div>
-            <div><b className={fd && fd > 0 ? 'warn' : 'ok'}>{fd == null ? '—' : fd > 0 ? `+${fd}d` : 'On plan'}</b><span>Forecast vs plan{d.forecastDate ? ` · ${day(d.forecastDate)}` : ''}</span></div>
-          </div>
-          {editing ? (
-            <div className="wrp-edit">
-              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={18} maxLength={8000} aria-label="Report text" />
-              <div className="wrp-edit-bar">
-                <span>{edited ? 'Edited — this text is what gets sent.' : 'This text is what gets sent.'}</span>
-                {edited && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setText(d.text)}>Undo changes</button>}
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Done</button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {edited && <p className="wrp-note">You edited the wording. <button type="button" className="wrp-link" onClick={() => setEditing(true)}>See the text that will be sent</button></p>}
-              <Section title="What moved" kind="moved" items={d.movedItems ?? []} empty="Nothing was finished this week." />
-              <Section title="What slipped, and why" kind="slipped" items={d.slippedItems ?? []} empty="No dates moved." />
-              <Section title="Risks" kind="risks" items={d.riskItems ?? []} empty="None that the plan shows." owner />
-              <Section title="Next week" kind="next" items={d.nextItems ?? []} empty="Nothing is due." />
-            </>
-          )}
-        </article>
-
-        <aside className="wrp-side">
-          <div className="wrp-card">
-            <h3>Send to stakeholders</h3>
-            <ul className="wrp-to">
-              {to.map((r) => (
-                <li key={r}>
-                  {r === CHAT ? <span className="pa-av wrp-chatav" aria-hidden="true">#</span> : <Initials name={people.get(r)} userId={r} />}
-                  <span className="wrp-to-name">{r === CHAT ? 'Project chat · Messages' : people.get(r) ?? 'Someone'}</span>
-                  <button type="button" className="wrp-x" aria-label={`Remove ${r === CHAT ? 'project chat' : people.get(r)}`} onClick={() => setTo(to.filter((x) => x !== r))}>×</button>
-                </li>
-              ))}
-              <li>
-                {adding ? (
-                  <select autoFocus className="wrp-add-select" aria-label="Add person or channel" value="" onBlur={() => setAdding(false)}
-                    onChange={(e) => { const v = e.target.value; if (v) { setTo([...to, v]); if (v !== CHAT && !channels.includes('mail')) setChannels([...channels, 'mail']); } setAdding(false); }}>
-                    <option value="">Choose…</option>
-                    {addable.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                ) : <button type="button" className="wrp-add" disabled={addable.length === 0} onClick={() => setAdding(true)}>＋ Add person or channel</button>}
-              </li>
-            </ul>
-            <div className="wrp-seg" role="group" aria-label="Send by">
-              {(['mail', 'chat', 'pdf'] as Channel[]).map((c) => (
-                <button key={c} type="button" aria-pressed={channels.includes(c)} className={channels.includes(c) ? 'on' : ''} onClick={() => toggle(c)}>
-                  {c === 'mail' ? 'Mail' : c === 'chat' ? 'Messages' : 'PDF'}
-                </button>
-              ))}
-            </div>
-            {approve('wrp-approve-side')}
-            {why && <p className="wrp-why">{why}.</p>}
-            <button type="button" className={`wrp-sched ${d.schedule ? 'on' : ''}`} aria-pressed={!!d.schedule} disabled={busy === 'schedule'} onClick={() => void schedule()}>
-              <span className="wrp-dot" aria-hidden="true" />Every Friday 5 PM · you approve first{d.schedule ? ' · on' : ''}
-            </button>
-          </div>
-
-          {mail.threads.length > 0 && (
-            <div className="wrp-card" data-testid="report-mail">
-              <h3>From mail</h3>
-              <ul className="wrp-mail">
-                {mail.threads.map((t) => (
-                  <li key={t.key}><span className="wrp-mail-s">{t.subject || '(no subject)'}</span><Link className="wrp-src" to="/mail" title={`${t.count} message${t.count === 1 ? '' : 's'} this week, linked to this project in Mail`}>Mail · {t.who}</Link></li>
-                ))}
-              </ul>
-              <p className="wrp-none">Threads linked to this project in Mail. Cite them in the text if they explain a line.</p>
-            </div>
-          )}
-
-          <div className="wrp-card wrp-ai">
-            <p><span className="wrp-orb" aria-hidden="true" />{ai ? 'Tone is neutral and every line comes from the project. Want it shorter, or framed for executives?' : 'Read it through, edit any line, then approve.'}</p>
-            <div className="wrp-ai-row">
-              {ai && <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void rewrite('shorten')}>{busy === 'shorten' ? 'Shortening…' : 'Shorter'}</button>}
-              {ai && <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => void rewrite('formal')}>{busy === 'formal' ? 'Rewriting…' : 'For execs'}</button>}
-              <button type="button" className="btn btn-sm" onClick={() => setEditing(!editing)}>{editing ? 'Report view' : 'Edit'}</button>
+      <article className="calm-card wrp-doc" aria-label="Report">
+        <div className="wrp-verdict">
+          <span className={`wrp-pill ${tone(d.health)}`}>● {d.health}</span>
+          <span className="wrp-line">{d.verdict || `${d.progress ?? 0}% done.`}</span>
+        </div>
+        <div className="wrp-kpi">
+          <div><b>{d.moved}</b><span>Items done</span></div>
+          <div><b className={d.slipped ? 'bad' : ''}>{d.slipped}</b><span>Slipped</span></div>
+          <div><b className={(d.scopeChange ?? 0) > 15 ? 'warn' : ''}>{(d.scopeChange ?? 0) > 0 ? '+' : ''}{d.scopeChange ?? 0}%</b><span>Scope change · {d.progress ?? 0}% done</span></div>
+          <div><b className={fd && fd > 0 ? 'warn' : 'ok'}>{fd == null ? '—' : fd > 0 ? `+${fd}d` : 'On plan'}</b><span>Forecast vs plan{d.forecastDate ? ` · ${day(d.forecastDate)}` : ''}</span></div>
+        </div>
+        {editing ? (
+          <div className="wrp-edit">
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={18} maxLength={8000} aria-label="Report text" />
+            <div className="wrp-edit-bar">
+              <span>{edited ? 'Edited — this text is what gets sent.' : 'This text is what gets sent.'}</span>
+              {edited && <CalmLink onClick={() => setText(d.text)}>Undo changes</CalmLink>}
+              <CalmLink onClick={() => setEditing(false)}>Done</CalmLink>
             </div>
           </div>
-
-          <div className="wrp-card">
-            <h3>Last 4 weeks</h3>
-            {history.length === 0 ? <p className="wrp-none">No report sent yet. Approve this one to start the history.</p> : (
-              <div className="wrp-weeks">
-                {history.map((h) => (
-                  <span key={h.sentAt} className={`wrp-pill sm ${tone(h.health)}`} title={`Sent ${new Date(h.sentAt).toLocaleString()}${h.by ? ` by ${h.by}` : ''} · ${h.health ?? ''} · ${h.done} done, ${h.slipped} slipped · ${h.channels.join(', ')}`}>
-                    W{isoWeek(h.sentAt)}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </aside>
-      </div>
-    </div>
+        ) : (
+          <>
+            {edited && <p className="wrp-note">You edited the wording. <button type="button" className="wrp-link" onClick={() => setEditing(true)}>See the text that will be sent</button></p>}
+            <Section title="What moved" kind="moved" items={d.movedItems ?? []} empty="Nothing was finished this week." />
+            <Section title="What slipped, and why" kind="slipped" items={d.slippedItems ?? []} empty="No dates moved." />
+            <Section title="Risks" kind="risks" items={d.riskItems ?? []} empty="None that the plan shows." owner />
+            <Section title="Next week" kind="next" items={d.nextItems ?? []} empty="Nothing is due." />
+          </>
+        )}
+      </article>
+    </CalmSplit>
   );
 }
-
 
 /** "Ruth Varma <ruth@…>" → "Ruth". */
 const firstName = (from: string) => (from.replace(/<.*>/, '').replace(/["']/g, '').trim() || from.split('@')[0]).split(/\s+/)[0];

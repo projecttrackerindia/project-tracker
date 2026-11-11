@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { ErrorState } from '../../components/ui';
@@ -159,7 +160,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
                   })}
                   {g.items.length > 6 && <div className="pfa-sub">+{g.items.length - 6} more</div>}
                 </div>
-                {quote && <div className="pfa-quote"><span className="calm-orb" aria-hidden="true" />“{quote}”</div>}
+                {quote && <div className="pfa-quote"><SiriOrb className="calm-orb" />“{quote}”</div>}
                 <div className="pfa-foot">
                   {firstNew >= 0 ? <button type="button" className="pfa-rv" onClick={() => setReviewing(firstNew)}>Review · A / R / S ›</button> : <span className="pfa-sub">All reviewed</span>}
                   <span className="ps3-sp" />
@@ -191,7 +192,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
         })}
       </div>
       )}
-      <CalmWorkSheet id={opened?.id ?? null} title={opened?.title} onClose={() => setOpened(null)} />
+      <CalmWorkSheet id={opened?.id ?? null} title={opened?.title} onClose={() => setOpened(null)} kind="actionitem" />
       {snoozeAt && <SnoozePicker item={snoozeAt.item} anchor={snoozeAt.anchor} onClose={() => setSnoozeAt(null)}
         onPick={(day) => { const it = snoozeAt.item; setSnoozeAt(null); void decide(it, 'replan', { dueDate: day }, `Snoozed ${it.key} to ${dm(day)}`); }} />}
       {reassign && (

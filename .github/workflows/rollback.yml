@@ -1,0 +1,51 @@
+name: Rollback
+
+# One click back to an earlier release: Actions › Rollback › Run workflow. Leave "tag" empty to go back to the release before the
+# live one, or give a short commit id (the image tag; Actions › Deploy runs and `gcloud artifacts docker tags list` show them).
+# Nothing is built: the server switches to images already in Artifact Registry and waits for /health/ready.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to put live (empty = the previous release)
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  rollback:
+    name: Roll back the server
+    if: vars.GCP_WIF_PROVIDER != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Switch the server to the chosen release
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          WANT: ${{ inputs.tag }}
+        run: |
+          [ -z "$WANT" ] || [[ "$WANT" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "Not a valid tag" >&2; exit 1; }
+          ./deploy/gcp/rollback.sh $WANT
+      - name: Check the site answers from outside
+        run: |
+          for i in $(seq 30); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' https://projecttracker.in/health/ready || true)" = 200 ] && { echo ready; exit 0; }
+            sleep 10
+          done
+          exit 1

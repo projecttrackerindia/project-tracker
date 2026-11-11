@@ -1,4 +1,5 @@
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Select } from '../../../components/Select';
+import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { instant, presets, t } from '../../../lib/motion';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
@@ -299,7 +300,7 @@ function TryIt({ def, ep, base, envLabel }: { def: ApiDefinition | undefined; ep
             </div>
             <CodeTabs key={curl} label="Your request" tabs={[{ id: 'curl', label: `cURL · ${envLabel}`, code: curl }]} />
             <div className="dx-row">
-              {d.responses.length > 1 && <select className="input dx-try-status" aria-label="Response to show" value={status} onChange={(ev) => { setStatus(ev.target.value); setRan(null); }}>{d.responses.map((r) => <option key={r.status} value={r.status}>{r.status} {r.description ?? ''}</option>)}</select>}
+              {d.responses.length > 1 && <Select className="input dx-try-status" aria-label="Response to show" value={status} onChange={(ev) => { setStatus(ev.target.value); setRan(null); }}>{d.responses.map((r) => <option key={r.status} value={r.status}>{r.status} {r.description ?? ''}</option>)}</Select>}
               <button type="button" className="dx-btn pri" disabled={missing.length > 0} title={missing.length ? `Fill ${missing.map((x) => x.name).join(', ')}` : undefined} onClick={() => setRan({ at: Date.now(), status })}><Icon name="play" size={12} /> Run</button>
               <span className="dx-note">Shows the documented response. Requests are not sent from ProjectTracker.</span>
             </div>

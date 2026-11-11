@@ -152,6 +152,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Agent.MeetingBotQueue>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.MeetingBotIdentityService>();
         services.AddScoped<ProjectManagement.Application.Features.Agent.NotetakerService>();
+        services.AddScoped<ProjectManagement.Application.Features.Agent.DeviceRecordingService>();
         services.AddScoped<ProjectManagement.Application.Features.Voice.VoiceAgentService>();
         services.AddScoped<ProjectManagement.Application.Features.Voice.ConnectorCaller>();
         services.AddScoped<ProjectManagement.Application.Features.Voice.VoiceSpeechService>();
@@ -215,6 +216,8 @@ public static class DependencyInjection
         services.AddScoped<AccessService>();
         services.AddScoped<ProjectService>();
         services.AddScoped<DueDateHistory>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkHistory.WorkActivityService>();
+        services.AddScoped<ProjectManagement.Application.Features.WorkHistory.WorkChangeNotices>();
         services.AddScoped<ProjectGroupService>();
         services.AddScoped<ProjectStatusService>();
         services.AddScoped<WeeklyReportService>();
@@ -225,6 +228,8 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Platform.HistoryService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.SavedViewService>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.HolidayService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.ProblemReportService>();
+        services.AddScoped<ProjectManagement.Application.Features.Platform.FeatureFlagService>();
         services.AddScoped<ProjectManagement.Application.Features.Attendance.AttendanceService>();
         services.AddScoped<ProjectManagement.Application.Features.Attendance.AttendanceMonitor>();
         services.AddScoped<ProjectManagement.Application.Features.Platform.StatusPageService>();
@@ -255,6 +260,7 @@ public static class DependencyInjection
         services.AddScoped<TimesheetNudgeMonitor>();
         services.AddScoped<CapacityService>();
         services.AddScoped<CapacityPlanService>();
+        services.AddScoped<ProjectManagement.Application.Features.Load.LoadService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.CalendarFeedService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.InboundEmailService>();
         services.AddScoped<ProjectManagement.Application.Features.Integrations.GitLinkService>();
@@ -271,9 +277,12 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiWorkdayTools>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiPowerTools>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiPowerActions>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiMemoryService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiMemoryTools>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiUndoService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiWatchService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiSemanticIndex>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.AiSemanticSources>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiQualityService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiVoiceInput>();
         services.AddScoped<ProjectManagement.Application.Features.Calls.CallService>();
@@ -300,6 +309,10 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiCreditBudgetService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiKnowledgeService>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiForecastService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.ForecastCalibrationService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.SlipFixService>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.SlipFixActions>();
+        services.AddScoped<ProjectManagement.Application.Features.Ai.SlipFixOwnerRun>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AiOperationsService>();
         services.AddSingleton<ProjectManagement.Application.Features.Ai.AiOperationsProcessor>();
         services.AddScoped<ProjectManagement.Application.Features.Ai.AgentTrackerService>();
@@ -316,6 +329,10 @@ public static class DependencyInjection
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderSuggestionService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderEngine>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.PortfolioDigestService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.RecurrenceService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.RecurrenceJob>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.TemplateService>();
+        services.AddScoped<ProjectManagement.Application.Features.Recurring.ManagerDigestService>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderPlanner>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderSync>();
         services.AddScoped<ProjectManagement.Application.Features.Reminders.ReminderActionService>();
@@ -337,6 +354,7 @@ public static class DependencyInjection
         services.AddScoped<ApiKeyAuthenticator>();
         services.AddScoped<CustomFieldService>();
         services.AddScoped<TaskImportService>();
+        services.AddScoped<SampleProjectService>();
         services.AddScoped<ChecklistService>();
         services.AddScoped<PriorityService>();
         services.AddScoped<ReportExportService>();
@@ -352,8 +370,10 @@ public static class DependencyInjection
         services.AddScoped<AttachmentService>();
         services.AddScoped<AttachmentJanitor>();
         services.AddScoped<NotificationRouter>();
+        services.AddScoped<SmartNotificationService>();
         services.AddScoped<NotificationService>();
         services.AddScoped<NotificationActionService>();
+        services.AddScoped<QuickActionService>();
         services.AddScoped<NotificationPreferenceService>();
         services.AddScoped<NotificationEmailService>();
         services.AddScoped<ActivityService>();
@@ -361,6 +381,11 @@ public static class DependencyInjection
         services.AddScoped<CalendarService>();
         services.AddScoped<TimelineService>();
         services.AddScoped<TodaySignalsService>();
+        services.AddScoped<AuraBriefingService>();
+        services.AddScoped<AuraWhyService>();
+        services.AddScoped<AuraMeetingReviewService>();
+        services.AddScoped<AuraFridayService>();
+        services.AddScoped<AuraFridayJob>();
         services.AddScoped<ProjectManagement.Application.Features.Time.TimesheetReviewService>();
         services.AddScoped<ProjectManagement.Application.Features.Quality.QualityLinksService>();
         services.AddScoped<SearchService>();

@@ -46,7 +46,7 @@ public class ProjectStatusTests(ApiFactory factory)
         // Pushing the date later without saying why is refused; the field is named.
         var refused = await Reschedule(c, task, todo, Iso(20), title: "Build login");
         Assert.Equal(422, (int)refused.Status);
-        Assert.Equal("dueDateReason", refused.Json!["errors"]![0]!["field"]!.GetValue<string>());
+        Assert.Equal("extensionReason", refused.Json!["errors"]![0]!["field"]!.GetValue<string>());
 
         var delayed = await Reschedule(c, task, todo, Iso(20), "Waiting for client sign-off", "Client answer on the design", "Build login");
         Assert.True(delayed.Ok, delayed.ToString());
@@ -98,7 +98,7 @@ public class ProjectStatusTests(ApiFactory factory)
         var second = (await c.Get($"/api/v1/projects/{project}")).Data!["project"]!;
         var noReason = await c.Put($"/api/v1/projects/{project}", new { name = "Payments", priority = "Medium", status = "OnHold", version = second["version"]!.GetValue<int>(), dueDate = Iso(45) });
         Assert.Equal(422, (int)noReason.Status);
-        Assert.Equal("dueDateReason", noReason.Json!["errors"]![0]!["field"]!.GetValue<string>());
+        Assert.Equal("extensionReason", noReason.Json!["errors"]![0]!["field"]!.GetValue<string>());
 
         var both = await c.Put($"/api/v1/projects/{project}", new
         {

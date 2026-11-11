@@ -5,6 +5,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { shimSelect } from './lib/select-shim.mjs';
 import assert from 'node:assert/strict';
 import { cutOff } from './lib/phone.mjs';
 import { appCsp } from './lib/csp.mjs';
@@ -75,6 +76,7 @@ const timeline = (from, to) => ({ from, to, timeZone: 'Asia/Kolkata', scope: 'me
 const errors = [], checks = [], writes = [];
 const doneIds = new Set();
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
+await shimSelect(browser);
 try {
   async function context(theme) {
     const ctx = await browser.newContext({ timezoneId: 'Asia/Kolkata', serviceWorkers: 'block' });

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../../api/client';
 import { insightApi, timeApi } from '../../api/endpoints';
@@ -11,7 +12,7 @@ import { Icon } from '../../components/Icon';
 import { projectColor, ribbonColors } from '../../lib/calm';
 import { todayISO } from '../../lib/format';
 import { invalidateWorkspace, useCachedWsQuery, useWsQuery } from '../../lib/hooks';
-import { useReducedMotion, motion } from 'framer-motion';
+import { useReducedMotion, m as motion } from 'framer-motion';
 import { gentleSpring } from '../../lib/motion';
 import { hourIn, shiftIsoDate, zonedParts } from '../../lib/zone';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
@@ -29,6 +30,8 @@ import { inboxApi } from './inboxApi';
 import '../calm/calm-pages.css';
 
 type DayState = 'morning' | 'afternoon' | 'evening';
+/** Aura's briefing (and its review, Friday and Ask sheets) is its own chunk: Today paints first, the briefing follows. */
+const AuraBriefing = lazy(() => import('../aura-brief/AuraBriefing'));
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const hm = (min: number) => { const h = Math.floor(min / 60), m = Math.round(min % 60); return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`; };
 const clock = (d: Date) => { const p = zonedParts(d); return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`; };
@@ -130,11 +133,15 @@ export function CalmToday() {
   return (
     <CalmSplit className="cp-page" crumb={<span>{headDay(today)}</span>} label="Today" rail={<TodayRail meets={meets} nowH={nowH} freeMin={day?.freeMin ?? 0} hero={hero} />}>
       <header className="cp-hero" data-testid="today-hero"><h1>{title}<em>{second}</em></h1></header>
-      {state === 'morning' ? <CheckInCard planned={planned} usual={a?.workStart} />
-        : state === 'evening' ? <EveningCard logged={logged} planned={planned} />
-        : hero ? <HeroTask w={hero} why={whyLine(hero, nextIn)} onOpen={() => nav(`/work?item=${hero.id}`)} onLater={() => setSkipped((x) => [...x, hero.id])} />
-        : <CalmCard variant="hero" className="td-hero"><div className="cp-tag">All clear</div><h2>Nothing needs you right now</h2><p className="td-why">New work, decisions and mentions arrive here first.</p>
-            <div className="td-acts"><CalmGo onClick={() => openCalmNew({ type: 'task' })}>New task</CalmGo><CalmLink onClick={() => nav('/work')}>My work ›</CalmLink></div></CalmCard>}
+      {(() => {
+        const own = state === 'morning' ? <CheckInCard planned={planned} usual={a?.workStart} />
+          : state === 'evening' ? <EveningCard logged={logged} planned={planned} />
+          : hero ? <HeroTask w={hero} why={whyLine(hero, nextIn)} onOpen={() => nav(`/work?item=${hero.id}`)} onLater={() => setSkipped((x) => [...x, hero.id])} />
+          : <CalmCard variant="hero" className="td-hero"><div className="cp-tag">All clear</div><h2>Nothing needs you right now</h2><p className="td-why">New work, decisions and mentions arrive here first.</p>
+              <div className="td-acts"><CalmGo onClick={() => openCalmNew({ type: 'task' })}>New task</CalmGo><CalmLink onClick={() => nav('/work')}>My work ›</CalmLink></div></CalmCard>;
+        // The hero is Aura's briefing; the evening keeps its own card. The morning's check-in follows the briefing.
+        return <Suspense fallback={own}><AuraBriefing fallback={own} quiet={state === 'evening'} extra={state === 'morning' ? own : undefined} /></Suspense>;
+      })()}
       {(then.length > 0 || state !== 'afternoon') && (
         <div className="td-then" aria-label={state === 'evening' ? 'Tomorrow' : 'Then'}>
           <span>{state === 'morning' ? 'First' : state === 'evening' ? 'Next' : 'Then'}</span>
@@ -303,7 +310,7 @@ function TodayRail({ meets, nowH, freeMin, hero }: { meets: MeetLite[]; nowH: nu
       <WeekCard />
       {freeMin >= 30 && hero && (
         <CalmCard className="td-tip" aria-label="Aura">
-          <span className="calm-orb" aria-hidden="true" />
+          <SiriOrb className="calm-orb" />
           <p>You have {hm(freeMin)} free today. {hero.title} is the best use of it. {ai && <button type="button" onClick={() => ask(`Hold focus time for ${hero.key} ${hero.title} in my free time today.`)}>Hold it</button>}</p>
         </CalmCard>
       )}

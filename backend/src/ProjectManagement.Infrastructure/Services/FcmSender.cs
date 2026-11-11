@@ -62,7 +62,7 @@ public class FcmSender(IHttpClientFactory http, IOptions<PushOptions> options, I
         var root = doc.RootElement;
         string? Get(string name) => root.TryGetProperty(name, out var v) && v.ValueKind is not JsonValueKind.Null ? (v.ValueKind == JsonValueKind.String ? v.GetString() : v.ToString()) : null;
         var data = new Dictionary<string, string>();
-        foreach (var name in new[] { "link", "tag", "type", "token", "urgent", "number", "call" })
+        foreach (var name in new[] { "link", "tag", "type", "token", "urgent", "number", "call", "qa", "actions", "id" })
             if (Get(name) is { Length: > 0 } v) data[name] = v;
         var title = Get("title") ?? "Project Tracker";
         var message = new Dictionary<string, object?>
@@ -77,7 +77,10 @@ public class FcmSender(IHttpClientFactory http, IOptions<PushOptions> options, I
                 notification = new { channel_id = "alerts", tag = Get("tag"), click_action = "FCM_PLUGIN_ACTIVITY" },
             },
         };
-        return JsonSerializer.Serialize(new { message });
+        // Quick actions: the iOS app registers one notification category per button set (QA_APPROVE_REJECT, QA_REPLY_READ...), which shows them.
+        if (root.TryGetProperty("actions", out var acts) && acts.ValueKind == JsonValueKind.Array && acts.GetArrayLength() > 0)
+            message["apns"] = new { payload = new { aps = new { category = "QA_" + string.Join("_", acts.EnumerateArray().Select(a => (a.GetString() ?? "").ToUpperInvariant())) } } };
+                return JsonSerializer.Serialize(new { message });
     }
 
     private Account? Load()

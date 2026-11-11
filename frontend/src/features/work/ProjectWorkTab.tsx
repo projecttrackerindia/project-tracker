@@ -29,7 +29,7 @@ const VIEW_ALIAS: Record<string, View> = { plan: 'timeline', sprints: 'timeline'
  * project's board; Timeline is its stages and its plan (milestones or sprints). Quick add sits over List and Board as before. Every item
  * opens in the same side panel as on Work, kept in the address (?item=), and the switch too (?view=).
  */
-export function ProjectWorkTab({ projectId }: { projectId: string }) {
+export function ProjectWorkTab({ projectId, onOpenTask }: { projectId: string; /** Opens a board card somewhere else (the project page's own task sheet, so Board and Plan open tasks the same way). */ onOpenTask?: (id: string) => void }) {
   const [params, setParams] = useSearchParams();
   const asked = params.get('view') ?? '';
   const view: View = VIEWS.some((v) => v.id === asked) ? (asked as View) : VIEW_ALIAS[asked] ?? 'list';
@@ -77,7 +77,7 @@ export function ProjectWorkTab({ projectId }: { projectId: string }) {
       )}
       {view !== 'list' && (q.isLoading ? <PageLoader /> : q.isError || !detail || !p ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : view === 'board' ? (
         <section className="wk-card wk-board" aria-label="Board">
-          <Board projectId={projectId} statuses={detail.statuses} stages={detail.stages} archived={archived} canCreate={canCreate && !archived} onOpenTask={open} onAddTask={() => openNew('task', '', here('task'))} />
+          <Board projectId={projectId} statuses={detail.statuses} stages={detail.stages} archived={archived} canCreate={canCreate && !archived} onOpenTask={onOpenTask ?? open} onAddTask={() => openNew('task', '', here('task'))} />
         </section>
       ) : (
         <div className="wk-timeline">

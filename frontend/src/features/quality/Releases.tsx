@@ -171,9 +171,9 @@ function Detail({ s, onChange }: { s: ReleaseState; onChange: (s: ReleaseState) 
           {s.runs.length > 0 && <ul className="rl-runs">{s.runs.map((x) => <li key={x.id}><b>{x.name}</b><small>{[x.environment, x.build ? `build ${x.build}` : null, x.status].filter(Boolean).join(' · ')}</small>
             {planned && <button type="button" className="rl-x" aria-label={`Untie ${x.name}`} onClick={() => void act(() => releaseApi.detachRun(r.id, x.id), 'Run untied.')}>×</button>}</li>)}</ul>}
           {planned && free.length > 0 && (
-            <label className="rl-tie">Tie a run<select value="" onChange={(e) => { if (e.target.value) void act(() => releaseApi.attachRun(r.id, e.target.value), 'Run tied to the release.'); }}>
+            <label className="rl-tie">Tie a run<Select value="" onChange={(e) => { if (e.target.value) void act(() => releaseApi.attachRun(r.id, e.target.value), 'Run tied to the release.'); }}>
               <option value="">Choose…</option>{free.map((x) => <option key={x.id} value={x.id}>{x.name}{x.environment ? ` · ${x.environment}` : ''}</option>)}
-            </select></label>
+            </Select></label>
           )}
         </section>
 

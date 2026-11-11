@@ -87,6 +87,7 @@ public class AiAgentLevelUpgradeTests
             base.OnModelCreating(b);
             b.Entity<Project>().Ignore(x => x.HealthOverride).Ignore(x => x.HealthNote).Ignore(x => x.HealthUntil).Ignore(x => x.HealthSetById).Ignore(x => x.HealthSetAt);
             b.Entity<User>().Ignore(x => x.LockoutStreak).Ignore(x => x.SingleSession);   // added later (SecurityHardening, SessionApproval)
+            b.Entity<Tenant>().Ignore(x => x.AiMemoryEnabled).Ignore(x => x.AiWorkspaceMemoryEnabled);   // added later by 20270104001000_AuraMemory
         }
     }
 }

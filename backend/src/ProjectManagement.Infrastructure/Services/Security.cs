@@ -82,6 +82,32 @@ public class TokenService(IOptions<JwtOptions> options, TimeProvider clock) : IT
         return $"{B64(payload)}.{B64(HMACSHA256.HashData(ChallengeKey, payload))}";
     }
 
+    private byte[] PurposeKey(string purpose) => HKDF.DeriveKey(HashAlgorithmName.SHA256, Encoding.UTF8.GetBytes(_opt.SigningKey), 32, info: Encoding.UTF8.GetBytes("pm-seal-" + purpose));
+
+    public string Seal(string purpose, string payload, TimeSpan lifetime)
+    {
+        if (payload.Contains('|')) throw new ArgumentException("The payload may not contain '|'.", nameof(payload));
+        var bytes = Encoding.UTF8.GetBytes($"{payload}|{clock.GetUtcNow().Add(lifetime).ToUnixTimeSeconds()}");
+        return $"{B64(bytes)}.{B64(HMACSHA256.HashData(PurposeKey(purpose), bytes))}";
+    }
+
+    public string? Unseal(string purpose, string token)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(token) || token.Length > 400) return null;
+            var parts = token.Split('.');
+            if (parts.Length != 2) return null;
+            var bytes = FromB64(parts[0]);
+            if (!CryptographicOperations.FixedTimeEquals(HMACSHA256.HashData(PurposeKey(purpose), bytes), FromB64(parts[1]))) return null;
+            var text = Encoding.UTF8.GetString(bytes);
+            var bar = text.LastIndexOf('|');
+            if (bar < 0 || !long.TryParse(text[(bar + 1)..], out var expiry) || expiry < clock.GetUtcNow().ToUnixTimeSeconds()) return null;
+            return text[..bar];
+        }
+        catch (FormatException) { return null; }
+    }
+
     public Guid? ReadChallenge(string token)
     {
         try

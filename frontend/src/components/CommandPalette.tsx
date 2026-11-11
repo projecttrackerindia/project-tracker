@@ -1,3 +1,5 @@
+import { openProblemReport, openWhatsNew } from '../features/feedback/capture';
+import { openTour } from '../features/onboarding/open';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -94,6 +96,10 @@ export function CommandPalette() {
     if (ctx && !ctx.user.isPlatformAdmin) {
       list.push({ id: 'acc:profile', group: 'Settings', label: 'My profile', icon: 'user', keywords: 'account', run: go('/settings/profile') });
       list.push({ id: 'acc:notifications', group: 'Settings', label: 'My notifications', icon: 'bell', keywords: 'account email push desktop my notifications delivery', run: go('/settings/notifications') });
+      list.push({ id: 'acc:smart', group: 'Settings', label: 'Smart notifications', icon: 'bell', keywords: 'urgent priority group mute quiet daily summary digest', run: go('/settings/notifications/smart') });
+      list.push({ id: 'help:report', group: 'Settings', label: 'Report a problem', icon: 'alert', keywords: 'bug feedback broken screenshot support', run: () => { close(); window.setTimeout(openProblemReport, 80); } });
+      list.push({ id: 'help:tour', group: 'Settings', label: 'Welcome tour', icon: 'play', keywords: 'onboarding getting started sample project demo help', run: () => { close(); window.setTimeout(openTour, 80); } });
+      list.push({ id: 'help:whatsnew', group: 'Settings', label: 'What’s new', icon: 'sparkle', keywords: 'release changelog update new features', run: () => { close(); openWhatsNew(); } });
       list.push({ id: 'acc:mobile', group: 'Settings', label: 'Mobile app & phone sign-in', icon: 'phone', keywords: 'android install push phone approve login', run: go('/settings/profile/mobile') });
       list.push({ id: 'acc:security', group: 'Settings', label: 'Sign-in & security', icon: 'lock', keywords: 'account password two-step mfa', run: go('/settings/security/account') });
       list.push({ id: 'acc:connected', group: 'Settings', label: 'Connected accounts', icon: 'link', keywords: 'google microsoft outlook teams slack github gmail calendar meet connect', run: go('/settings/profile/accounts') });

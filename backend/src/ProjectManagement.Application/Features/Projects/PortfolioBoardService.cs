@@ -414,7 +414,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         var ranked = board.Brief.Ranked;
         var ids = ranked.Select(r => r.ProjectId).ToList();
         var milestones = await reads.Milestones.AsNoTracking().Where(m => ids.Contains(m.ProjectId)).OrderBy(m => m.DueDate).Select(m => new { m.Id, m.ProjectId, m.Name, m.DueDate, m.Status }).ToListAsync(ct);
-        var firstDue = (await reads.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderBy(c => c.CreatedAt).Select(c => new { c.ProjectId, c.Previous }).ToListAsync(ct))
+        var firstDue = (await reads.DueDateChanges.AsNoTracking().Where(c => c.EntityType == null && c.Field == null && ids.Contains(c.ProjectId) && c.TaskId == null).OrderBy(c => c.CreatedAt).Select(c => new { c.ProjectId, c.Previous }).ToListAsync(ct))
             .GroupBy(c => c.ProjectId).ToDictionary(g => g.Key, g => g.First().Previous);
         // A project depends on another when one of its tasks waits on a task there.
         var deps = await (from d in reads.TaskDependencies.AsNoTracking()
@@ -427,7 +427,7 @@ public class PortfolioBoardService(IAppDbContext db, ICurrentContext ctx, AppClo
         var teamIds = meta.Where(m => m.TeamId != null).Select(m => m.TeamId!.Value).Distinct().ToList();
         var teams = await reads.Teams.AsNoTracking().Where(t => teamIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
         // The latest project-level due-date change, with who made it.
-        var lastChanges = (await reads.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderByDescending(c => c.CreatedAt).Take(500)
+        var lastChanges = (await reads.DueDateChanges.AsNoTracking().Where(c => c.EntityType == null && c.Field == null && ids.Contains(c.ProjectId) && c.TaskId == null).OrderByDescending(c => c.CreatedAt).Take(500)
             .Select(c => new { c.ProjectId, c.Previous, c.Revised, c.Reason, c.CreatedBy, c.CreatedAt }).ToListAsync(ct)).GroupBy(c => c.ProjectId).ToDictionary(g => g.Key, g => g.First());
         var byIds = lastChanges.Values.Where(c => c.CreatedBy != null).Select(c => c.CreatedBy!.Value).Distinct().ToList();
         var byNames = await reads.Users.AsNoTracking().Where(u => byIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);

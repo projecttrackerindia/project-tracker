@@ -1238,3 +1238,7 @@ html .ss-pop { background: var(--calm-solid, var(--panel-solid)); border: 0; bor
 }
 /* Native selects that remain: Windows/Edge draws their option list from the option colours, so give them the theme's (no white popups in dark). */
 [data-theme='dark'] select, [data-theme='dark'] option, [data-theme='dark'] optgroup { background-color: var(--ds-surface, #161618); color: var(--ds-text, #f5f5f7); }
+
+/* The text-button link (was in chat.css; it is used everywhere, so it stays with the first screen's styles). */
+.link-btn { color: var(--primary); font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; }
+.link-btn:hover { text-decoration: underline; }

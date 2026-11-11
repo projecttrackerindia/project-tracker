@@ -647,3 +647,16 @@ html[data-theme='dark'] .dz-aitag { color: #a5a3ff; }
 .dx-missing a:hover { color: var(--ds-accent); }
 .dx-missing-ok { color: #1a7f35; font-weight: 600; }
 html[data-theme='dark'] .dx-missing-ok { color: #5de06f; }
+
+/* Delete on a list row: shown on hover or focus on a pointer device, always there on touch. */
+.dx-del-host { position: relative; }
+.dx-trash { position: absolute; top: 50%; right: 8px; translate: 0 -50%; z-index: 2; display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%;
+  background: var(--ds-fill); color: var(--ds-text-2); cursor: pointer; }
+.dx-trash:hover { background: color-mix(in srgb, var(--ds-danger, #e5484d) 16%, transparent); color: var(--ds-danger, #e5484d); }
+.dx-trash:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.dx-list .dx-del-host .dx-li { padding-right: 52px; }
+.lib-dgrid .dx-del-host > .dx-trash { top: 10px; right: 10px; translate: none; z-index: 3; background: color-mix(in srgb, var(--calm-solid, #fff) 86%, transparent); backdrop-filter: blur(8px); }
+@media (hover: hover) {
+  .dx-trash { opacity: 0; transition: opacity var(--motion-standard, .2s); }
+  .dx-del-host:hover > .dx-trash, .dx-trash:focus-visible { opacity: 1; }
+}

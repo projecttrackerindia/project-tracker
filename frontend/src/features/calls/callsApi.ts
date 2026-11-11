@@ -1,6 +1,10 @@
 import { get, post } from '../../api/client';
 
-export interface CallsStatus { available: boolean; maxParticipants: number }
+export interface CallsStatus {
+  available: boolean; maxParticipants: number;
+  /** Where calls are held: 'meet' opens Google Meet in a new tab, 'inapp' opens the call screen here. */
+  provider?: 'meet' | 'inapp';
+}
 export interface CallPerson { userId: string; name: string; role: 'host' | 'member'; inCall: boolean; joinedAt: string | null }
 export interface Call {
   id: string; title: string; kind: 'project' | 'chat' | 'adhoc'; projectId: string | null; projectKey: string | null; conversationId: string | null;
@@ -8,6 +12,7 @@ export interface Call {
   agentEnabled: boolean; agentStatus: string | null; canEnd: boolean; people: CallPerson[];
   /** End-to-end encrypted: no notetaker, recording or transcript. */ isPrivate?: boolean;
 }
+/** On a call held on Google Meet, `url` is the Meet link and `token` and `room` are empty: the browser leaves for Meet. */
 export interface CallJoin { callId: string; url: string; token: string; room: string; identity: string; title: string; agentEnabled: boolean; expiresAt: string;
   /** Private calls: the room key, encrypted for this person's devices. */ e2ee?: boolean; keyCipher?: string | null }
 export interface StartCall { title?: string; projectId?: string | null; meetingId?: string | null; conversationId?: string | null; invite?: string[]; agent?: boolean; private?: boolean; keyCipher?: string | null }

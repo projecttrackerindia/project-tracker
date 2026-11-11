@@ -16,6 +16,7 @@ import { refreshWork } from '../work/workUi';
 import { parseQuick } from './quickParse';
 import { openNew } from '../../components/v2/state';
 import './calm-pages.css';
+import { ActivityHistory } from '../dates/ActivityHistory';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 /** "Fri 6 Nov" */
@@ -33,11 +34,17 @@ export const openCalmNew = (detail: CalmNewDetail) => window.dispatchEvent(new C
 /** The earlier pages are on (?classic=1, or pt_classic_pages): + keeps the earlier + New sheet. */
 const classicOn = () => { try { return new URLSearchParams(location.search).get('classic') === '1' || localStorage.getItem('pt_classic_pages') === '1'; } catch { return false; } };
 
+/** The project whose page is open (`/work/projects/<id>`), so + New task there files the task under it without asking again. */
+const projectOnPage = (): { id: string; name: string } | null => {
+  const m = /\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i.exec(location.pathname);
+  return m ? { id: m[1], name: '' } : null;
+};
+
 /** Listens for `pt:new` and shows the sheet. Mounted by the calm pages (Today, My work, Projects, a project). */
 export function CalmCreateHost({ project }: { project?: { id: string; name: string } | null }) {
   const [open, setOpen] = useState<CalmNewDetail | null>(null);
   useEffect(() => {
-    const on = (e: Event) => { if (classicOn()) return; const d = (e as CustomEvent<CalmNewDetail>).detail; if (d?.type === 'task' || d?.type === 'project') { e.preventDefault(); setOpen({ ...d, project: d.project ?? project ?? null }); } };
+    const on = (e: Event) => { if (classicOn()) return; const d = (e as CustomEvent<CalmNewDetail>).detail; if (d?.type === 'task' || d?.type === 'project') { e.preventDefault(); setOpen({ ...d, project: d.project ?? project ?? (d.type === 'task' ? projectOnPage() : null) }); } };
     window.addEventListener('pt:new', on);
     return () => window.removeEventListener('pt:new', on);
   }, [project]);
@@ -228,9 +235,8 @@ export function ProjectSheet({ open, onClose, project }: { open: boolean; onClos
     try {
       const base = { name: name.trim(), description: desc.trim() || undefined, ownerId: ownerId || null, teamId: teamId || null, startDate: start || null, dueDate: target || null };
       if (edit && project) {
-        const moved = (project.dueDate ?? '') < (target ?? '') && !!project.dueDate;
         await projectApi.update(project.id, { ...base, priority: project.priority, status: project.status, version: project.version, enforceDependencies: project.enforceDependencies,
-          projectGroupId: project.projectGroupId, projectType: project.projectType, deliveryMethod: project.deliveryMethod, dueDateReason: moved ? 'Target moved from the project sheet' : null });
+          projectGroupId: project.projectGroupId, projectType: project.projectType, deliveryMethod: project.deliveryMethod, dueDateReason: null });   // a later target asks for the reason in the shared sheet
         toast('Saved.'); await invalidateWorkspace(wid); onClose();
       } else {
         const pickable = (groups.data ?? []).filter((g) => g.isActive);
@@ -268,6 +274,8 @@ export function ProjectSheet({ open, onClose, project }: { open: boolean; onClos
                 <div className="cm-lab">Colour</div>
                 <p className="cm-note"><CalmDot color={projectColor(project!.id)} /> Every project keeps one dot colour, the same on every screen.</p>
                 <p className="cm-note">Phases, members, workflow and automation are in the project’s ⋯ menu.</p>
+                <div className="cm-lab">Activity</div>
+                <div className="cm-activity"><ActivityHistory type="project" id={project!.id} /></div>
               </>
             ) : (
               <>

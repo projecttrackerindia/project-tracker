@@ -190,6 +190,7 @@ function TitleEdit({ value, disabled, onSave }: { value: string; disabled: boole
 function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
   w: WorkItemDetail; save: (f: Omit<WorkItemPatch, 'version'>) => Promise<boolean>; conflict: boolean; onDismissConflict: () => void; refetch: () => void;
 }) {
+  const wid = useWorkspaceId();
   const editable = canEditOf(w);
   const me = useAuth((s) => s.ctx?.user);
   const members = useWsQuery(['members'], () => workspaceApi.members(), { staleTime: 5 * 60_000 });
@@ -199,6 +200,13 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
     ? [...(project.data?.statuses ?? [])].sort((a, b) => a.order - b.order).map((s) => ({ id: s.id, label: s.name }))
     : STATUSES[w.kind];
   const current = statusValue(w);
+  // Status and owner show at once (the name comes from the lists the pickers already have); the server's answer then replaces them, and a
+  // refusal reads what is saved again. Priority, due date, title and notes already do this inside `save`.
+  const showNow = (patch: (now: WorkItemDetail) => WorkItemDetail) => {
+    const key = [wid, 'work-items', 'item', w.id];
+    const now = queryClient.getQueryData<WorkItemDetail>(key);
+    if (now) queryClient.setQueryData<WorkItemDetail>(key, patch(now));
+  };
   const statusOptions = statuses.some((s) => s.id === current) ? statuses : [{ id: current, label: w.status }, ...statuses];
 
   // Pushing a task's due date (or its time) later needs a reason (the Portfolio shows why delivery moved): asked for right here before saving.
@@ -219,9 +227,16 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
     void save({ dueTime: time });
   };
   // A ticket with no due time of its own is due at its SLA resolve-by.
-  const dueValue = w.dueDate ? dueWithTime(w.dueDate, w.dueTime, w.isOverdue) + (hm(w.dueTime) || (daysUntil(w.dueDate) ?? 0) > 1 ? '' : ` · ${formatDate(w.dueDate).slice(0, 6)}`)
+  const dueBase = w.dueDate ? dueWithTime(w.dueDate, w.dueTime, w.isOverdue) : '';
+  const dueDate6 = w.dueDate ? formatDate(w.dueDate).slice(0, 6) : '';
+  // "Today", "Tomorrow" and "2d late" get the date after them; a date that is already the text (a finished or older task) is not said twice.
+  const dueValue = w.dueDate ? dueBase + (hm(w.dueTime) || (daysUntil(w.dueDate) ?? 0) > 1 || dueBase.replace(/^0/, '') === dueDate6.replace(/^0/, '') ? '' : ` · ${dueDate6}`)
     : w.dueFromSla && w.dueAt ? `SLA · ${clock24(w.dueAt)}` : 'No date';
-  const setStatus = (v: string) => void save(w.kind === 'task' ? { statusId: v } : { status: v });
+  const setStatus = (v: string) => {
+    const label = statuses.find((x) => x.id === v)?.label;
+    if (label) showNow((n) => ({ ...n, status: label, detail: { ...(n.detail as object), ...(n.kind === 'task' ? { statusId: v } : { status: v }) } as WorkItemDetail['detail'] }));
+    void save(w.kind === 'task' ? { statusId: v } : { status: v });
+  };
 
   return (
     <div className="wkp">
@@ -235,19 +250,19 @@ function PanelBody({ w, save, conflict, onDismissConflict, refetch }: {
       {w.source?.meetingRef && <FromMeetingCard source={w.source} createdBy={w.reporter?.name} />}
       <div className="wkp-tiles">
         <Tile label="Status" value={w.status} tone={w.category === 'Done' ? 'done' : w.category === 'Active' ? 'active' : undefined} disabled={!editable}>
-          <select aria-label="Status" value={current} onChange={(e) => setStatus(e.target.value)} disabled={!editable}>
+          <Select aria-label="Status" value={current} onChange={(e) => setStatus(e.target.value)} disabled={!editable}>
             {statusOptions.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
+          </Select>
         </Tile>
         <Tile label="Priority" value={<><span className={`wk-dot p-${w.priority}`} aria-hidden="true" />{w.priority}</>} disabled={!editable}>
-          <select aria-label="Priority" value={w.priority} onChange={(e) => void save({ priority: e.target.value as Priority })} disabled={!editable}><PriorityOptions /></select>
+          <Select aria-label="Priority" value={w.priority} onChange={(e) => void save({ priority: e.target.value as Priority })} disabled={!editable}><PriorityOptions /></Select>
         </Tile>
         <Tile label="Owner" value={w.assignee ? (w.assignee.id === me?.id ? `${w.assignee.name.split(' ')[0]} (you)` : w.assignee.name) : 'Nobody yet'} disabled={!editable}>
-          <select aria-label="Owner" value={w.assignee?.id ?? ''} onChange={(e) => void save({ assigneeId: e.target.value || null })} disabled={!editable}>
+          <Select aria-label="Owner" value={w.assignee?.id ?? ''} onChange={(e) => { const v = e.target.value; const who = people.find((m) => m.userId === v)?.displayName; showNow((n) => ({ ...n, assignee: v && who ? ({ ...(n.assignee ?? {}), id: v, name: who } as WorkItemDetail['assignee']) : null })); void save({ assigneeId: v || null }); }} disabled={!editable}>
             <option value="">Nobody yet</option>
             {w.assignee && !people.some((p) => p.userId === w.assignee!.id) && <option value={w.assignee.id}>{w.assignee.name}</option>}
             {people.map((m) => <option key={m.userId} value={m.userId}>{m.displayName}{m.userId === me?.id ? ' (you)' : ''}</option>)}
-          </select>
+          </Select>
         </Tile>
         <Tile label="Due" value={<span data-testid="wkp-due">{dueValue}</span>} tone={w.isOverdue ? 'late' : undefined} disabled={!editable}>
           <input type="date" aria-label="Due date" value={w.dueDate ?? ''} disabled={!editable} onChange={(e) => setDue(e.target.value || null)} />
@@ -416,9 +431,9 @@ function TicketFields({ w, editable, save }: { w: WorkItemDetail; editable: bool
       <div><dt>Channel</dt><dd><span className={`wkp-channel c-${channel}`}>{CHANNEL_LABEL[channel] ?? channel}</span></dd></div>
       <div><dt>Type</dt><dd className="wkp-inline">
         <span>{d.workType ?? '—'}</span>
-        {editable && <select aria-label="Work type" value={d.workTypeId ?? ''} onChange={(e) => void save({ workTypeId: e.target.value })}>
+        {editable && <Select aria-label="Work type" value={d.workTypeId ?? ''} onChange={(e) => void save({ workTypeId: e.target.value })}>
           {(types.data ?? []).filter((t) => t.isActive || t.id === d.workTypeId).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>}
+        </Select>}
       </dd></div>
       <div><dt>Project</dt><dd className="wkp-inline">
         <span>{d.relatedProject?.name ?? 'None'}</span>

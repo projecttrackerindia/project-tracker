@@ -196,12 +196,12 @@ public class AiPortfolio(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         var itemsBy = items.GroupBy(i => i.Project).ToDictionary(g => g.Key, g => (Open: g.Count(i => ItemOpen(i.Status)), Overdue: g.Count(i => ItemOpen(i.Status) && i.DueDate is { } d && d < today)));
 
         // Delivery dates that moved.
-        var changes = ids.Count == 0 ? [] : await db.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.CreatedAt >= since30).OrderByDescending(c => c.CreatedAt).Take(301).ToListAsync(ct);
+        var changes = ids.Count == 0 ? [] : await db.DueDateChanges.AsNoTracking().Where(c => c.EntityType == null && c.Field == null && ids.Contains(c.ProjectId) && c.CreatedAt >= since30).OrderByDescending(c => c.CreatedAt).Take(301).ToListAsync(ct);
         truncated |= changes.Count > 300;
         changes = changes.Take(300).ToList();
         var visibleTaskIds = tasks.Select(t => t.Id).ToHashSet();
         changes = changes.Where(c => c.TaskId is null || visibleTaskIds.Contains(c.TaskId.Value)).ToList();
-        var baseline = ids.Count == 0 ? [] : (await db.DueDateChanges.AsNoTracking().Where(c => ids.Contains(c.ProjectId) && c.TaskId == null).OrderBy(c => c.CreatedAt).Select(c => new { c.ProjectId, c.Previous, c.Revised }).ToListAsync(ct))
+        var baseline = ids.Count == 0 ? [] : (await db.DueDateChanges.AsNoTracking().Where(c => c.EntityType == null && c.Field == null && ids.Contains(c.ProjectId) && c.TaskId == null).OrderBy(c => c.CreatedAt).Select(c => new { c.ProjectId, c.Previous, c.Revised }).ToListAsync(ct))
             .GroupBy(c => c.ProjectId).ToDictionary(g => g.Key, g => g.First().Previous ?? g.First().Revised);
 
         var risks = new List<PortfolioRiskDto>();

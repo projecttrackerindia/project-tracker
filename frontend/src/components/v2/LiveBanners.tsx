@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, m as motion, useReducedMotion } from 'framer-motion';
 import { chatApi, notificationApi } from '../../api/endpoints';
 import type { AppNotification } from '../../api/types';
 import { CHECK_NOTIFICATIONS } from '../../features/notifications/events';
@@ -12,10 +12,11 @@ import { Icon } from '../Icon';
 import { liveBannersOn } from './liveBannersPref';
 import { toast } from '../../stores/ui';
 import { playCue } from '../../lib/attention';
-import { announce } from '../../features/notifications/centre/announce';
+import { announce, isQuiet } from '../../features/notifications/centre/announce';
 import { CATEGORY_META, categoryOf, conversationOf, iconOf } from '../../features/notifications/centre/model';
 import { mayBanner, maySound } from '../../features/notifications/centre/prefs';
 import { isViewing } from '../../features/notifications/centre/readSync';
+import { QuickBannerActions } from '../../features/notifications/quick/QuickBannerActions';
 import './v2.css';
 
 const MAX = 3;
@@ -53,7 +54,7 @@ export function LiveBanners() {
         const arrived = all.filter((n) => !isViewing(n.link));
         // Each new one is announced once with its own sound (unless muted here); reminders keep their own alert card, so no banner for them.
         arrived.forEach((n) => { if (!SKIP.has(n.type)) announce(n); });
-        const fresh = arrived.filter((n) => !SKIP.has(n.type) && mayBanner(categoryOf(n)));
+        const fresh = arrived.filter((n) => !SKIP.has(n.type) && !isQuiet(n) && mayBanner(categoryOf(n)));
         if (fresh.length && liveBannersOn()) {
           setItems((cur) => [...fresh.reverse(), ...cur].slice(0, MAX));
           void qc.invalidateQueries({ queryKey: [wid, 'inbox'] });
@@ -123,6 +124,7 @@ function Banner({ n, onClose }: { n: AppNotification; onClose: () => void }) {
             <button type="button" className="ncx-btn ghost" onClick={open}>Open chat</button>
           </div>
         )}
+        {!canReply && <QuickBannerActions n={n} onDone={onClose} />}
         {replying && (
           <form className="ncx-reply" onSubmit={(e) => void send(e)}>
             <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Reply…" aria-label="Reply" maxLength={4000}

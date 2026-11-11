@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { optimisticMutationCache } from '../lib/optimistic';
 import { create } from 'zustand';
+import { isSessionLocked, markUnlocked } from '../api/lockState';
 import { get as apiGet, refreshWasRefused, setAccessToken, setAuthLostHandler, refreshSession, setTabWorkspace, setWorkDeletedHandler, setWorkspaceMismatchHandler, transientStatus } from '../api/client';
 import { authApi, meApi, pushApi, workspaceApi } from '../api/endpoints';
 import { isApprovalStart, type ApprovalStart } from '../api/endpoints.sessionApproval';
@@ -23,10 +24,16 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * The frame's numbers in one call (/shell/summary: bell and tab badges, Approvals, chat unread, reminders), fetched beside /me and put in
- * the cache under the same keys those badges read, so they do not each make their own first request.
+ * What the frame needs at start, in one call (/shell/summary: bell and tab badges, Approvals, chat unread, reminders, which features are
+ * on, whether the assistant may be used, a running timer), fetched beside /me and put in the cache under the same keys those readers use,
+ * so they do not each make their own first request. A part the server left out stays out of the cache and that reader asks for it itself.
  */
-interface ShellSummary { workspaceId: string; notifications: unknown; approvals: unknown; chatUnread: unknown; reminders: unknown }
+interface ShellSummary {
+  workspaceId: string; notifications: unknown; approvals: unknown; chatUnread: unknown; reminders: unknown;
+  featureFlags?: unknown; aiStatus?: unknown;
+  /** Present whenever the timer could be read; `entry` is null when no timer is running, which is an answer and not a missing part. */
+  timer?: { entry: unknown } | null;
+}
 let pendingSummary: Promise<ShellSummary | null> | null = null;
 function seedSummary(s: ShellSummary | null, wid: string | undefined) {
   if (!s || !wid || s.workspaceId !== wid) return;   // only ever into the workspace it was read for
@@ -35,6 +42,10 @@ function seedSummary(s: ShellSummary | null, wid: string | undefined) {
   put([wid, 'approvals', 'counts'], s.approvals);
   put([wid, 'chat', 'unread'], s.chatUnread);
   put([wid, 'reminders', 'counts'], s.reminders);
+  put([wid, 'feature-flags', 'mine'], s.featureFlags);
+  put([wid, 'ai', 'status'], s.aiStatus);
+  // The timer's own readers expect the entry itself, or null for "nothing running".
+  if (s.timer) queryClient.setQueryData([wid, 'timer'], s.timer.entry ?? null);
 }
 
 // Every mutation in the app shares one MutationCache: optimistic cache updates, rollback on error and the "✓ Saved" tick (lib/optimistic.ts).
@@ -89,6 +100,9 @@ export const useAuth = create<AuthState>((set, get) => ({
     const auth = await refresh;
     if (!auth) {
       // No connection (not a refused session): keep showing the saved copy, readable and editable through the outbox, until it is back.
+      // Locked after inactivity: the saved copy stays on the screen behind the lock screen, which takes it from here.
+      if (warm && sameAddress && isSessionLocked() && get().status === 'authenticated') return;
+      if (isSessionLocked()) markUnlocked(false);
       if (warm && sameAddress && !refreshWasRefused() && get().status === 'authenticated') { set({ offlineSession: true }); return; }
       if (warm) { clearWarmStart(); queryClient.clear(); }
       // Not answered (a release restarting, a blip) is not "signed out": with saved work the offline view shows, and it is tried again.

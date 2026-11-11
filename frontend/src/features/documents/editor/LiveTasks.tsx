@@ -38,12 +38,12 @@ function LiveTasksView({ node, updateAttributes, editor, selected, deleteNode }:
                 {page.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             )}
-            <select aria-label="Which tasks" value={filter} onChange={(e) => updateAttributes({ filter: e.target.value })}>
+            <Select aria-label="Which tasks" value={filter} onChange={(e) => updateAttributes({ filter: e.target.value })}>
               {FILTERS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-            </select>
-            <select aria-label="How many" value={limit} onChange={(e) => updateAttributes({ limit: Number(e.target.value) })}>
+            </Select>
+            <Select aria-label="How many" value={limit} onChange={(e) => updateAttributes({ limit: Number(e.target.value) })}>
               {[5, 10, 20, 50].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
+            </Select>
             <button type="button" className="live-tasks-x" aria-label="Remove the task list" onClick={() => deleteNode()}>×</button>
           </span>
         )}

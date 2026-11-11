@@ -25,7 +25,7 @@ public record PlanSheetRowDto(string Kind, Guid Id, Guid ProjectId, Guid? Parent
     DateOnly? Start, DateOnly? Due, string? DueTime, int? DurationDays, string Status, string Category, Guid? StatusId, int? Progress, IReadOnlyList<string> DependsOn,
     string? Cadence, DateTime? NextAt, DateTime? UpdatedAt, string? UpdatedBy, string? Notes, bool Late, bool AtRisk, int Version, bool CanEdit, DateOnly? Forecast = null,
     decimal? EstimatedHours = null, int? ChecklistTotal = null, int? ChecklistDone = null, bool ManualProgress = false, int? SlipDays = null,
-    Guid? StageId = null, string? Stage = null);
+    Guid? StageId = null, string? Stage = null, DateOnly? OriginalDate = null, int ExtensionCount = 0, int TotalSlipDays = 0, string? Size = null);
 public record PlanSheetStatusDto(Guid Id, Guid ProjectId, string Name, string Category);
 /// <summary>A "Viewing" choice. Only what exists today is allowed (everything I can see, my work, one team of the team lens); team-scoped views come later.</summary>
 public record PlanSheetScopeDto(string Id, string Label, bool Allowed, string? Why = null, Guid? TeamId = null);
@@ -72,7 +72,7 @@ public record PlanSheetPasteResultDto(Guid ProjectId, string ProjectKey, string 
 /// </summary>
 public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock clock, AiPortfolio portfolio, ProjectAccess access, WorkItemApiService work,
     ProjectService projects, Recorder recorder, PermissionService permissions, ProjectManagement.Application.Features.Notifications.NotificationService notifications,
-    ProjectManagement.Application.Features.Notifications.EmailLinks links)
+    ProjectManagement.Application.Features.Notifications.EmailLinks links, DueDateHistory dueHistory)
 {
     public const int MaxRows = 5000, MaxBulk = 500, MaxPaste = 500;
 
@@ -99,7 +99,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         var tasks = ids.Count == 0 ? [] : await access.VisibleTasks().AsNoTracking().Where(t => ids.Contains(t.ProjectId))
             .OrderBy(t => t.ProjectId).ThenBy(t => t.Position).ThenBy(t => t.Number)
             .Select(t => new { t.Id, t.ProjectId, t.ParentTaskId, t.Number, t.Title, t.AssigneeId, t.StartDate, t.DueDate, t.DueTime, t.StatusId, StatusName = t.Status!.Name,
-                Cat = t.Status.Category, t.Version, t.UpdatedAt, t.UpdatedBy, t.CreatedAt, t.CreatedBy, t.Description, t.EstimatedHours, t.ManualProgress, t.StageId })
+                Cat = t.Status.Category, t.Version, t.UpdatedAt, t.UpdatedBy, t.CreatedAt, t.CreatedBy, t.Description, t.EstimatedHours, t.ManualProgress, t.StageId, t.Size })
             .Take(MaxRows + 1).ToListAsync(ct);
         var truncated = tasks.Count > MaxRows || brief.Truncated;
         tasks = tasks.Take(MaxRows).ToList();
@@ -119,7 +119,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         var depsBy = deps.GroupBy(d => d.TaskId).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(d => $"{d.Key}-{d.Number}").Distinct().OrderBy(k => k).ToList());
         // Slip: how far the due date has moved from the first one it had (the date history), shown as "+3d" next to the dates.
         // Only the earliest change per task is needed: the database picks it, instead of every change in the portfolio being sent over.
-        var firstDue = ids.Count == 0 ? [] : await db.DueDateChanges.AsNoTracking().Where(d => ids.Contains(d.ProjectId) && d.TaskId != null && d.Previous != null)
+        var firstDue = ids.Count == 0 ? [] : await db.DueDateChanges.AsNoTracking().Where(d => d.EntityType == null && d.Field == null && ids.Contains(d.ProjectId) && d.TaskId != null && d.Previous != null)
             .GroupBy(d => d.TaskId).Select(g => g.OrderBy(d => d.CreatedAt).First()).Take(MaxRows * 2).ToListAsync(ct);
         var originalDue = new Dictionary<Guid, DateOnly>();
         foreach (var d in firstDue) originalDue.TryAdd(d.TaskId!.Value, d.Previous!.Value);
@@ -179,7 +179,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                         depsBy.GetValueOrDefault(t.Id) ?? [], null, null, t.UpdatedAt ?? t.CreatedAt, Name(t.UpdatedBy ?? t.CreatedBy), PlanSheetMath.FirstLine(t.Description), late, risk, t.Version, canEdit, null,
                         t.EstimatedHours, check?.Total, check?.Done, t.ManualProgress is not null && t.Cat != StatusCategory.Done,
                         t.DueDate is { } due && originalDue.TryGetValue(t.Id, out var first) && due > first ? due.DayNumber - first.DayNumber : null,
-                        t.StageId, t.StageId is { } sg ? stageNames.GetValueOrDefault(sg) : null));
+                        t.StageId, t.StageId is { } sg ? stageNames.GetValueOrDefault(sg) : null, Size: t.Size));
                 }
                 foreach (var s in subs) AddTask(s.Id, level + 1);
             }
@@ -201,7 +201,12 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         foreach (var t in await access.LensTeamsAsync(ct)) scopes.Add(new PlanSheetScopeDto("team", t.Name, true, null, t.Id));
         // Dated tasks are on the app's calendar; with a calendar feed they are also in the person's own calendar (synced when it last read the feed).
         var feed = await db.CalendarFeeds.AsNoTracking().Where(f => f.UserId == me).OrderByDescending(f => f.LastUsedAt).Select(f => new { f.LastUsedAt }).FirstOrDefaultAsync(ct);
-        return new PlanSheetDto(today, clock.ZoneId, rows, people, statuses, scopes, truncated, canEdit, meetings.Count > 0, feed is not null, feed?.LastUsedAt);
+        // Date slips for every project and task row: original due date, extensions, days late against the original.
+        var projectSlips = await DateSlips.ProjectsAsync(db, rows.Where(r => r.Kind == "project").Select(r => r.Id).ToList(), ct);
+        var itemSlips = await DateSlips.ItemsAsync(db, rows.Where(r => r.Kind is "task" or "subtask").Select(r => r.Id).ToList(), ct);
+        var slipped = rows.Select(r => (r.Kind == "project" ? projectSlips : itemSlips).TryGetValue(r.Id, out var s)
+            ? r with { OriginalDate = s.OriginalDate, ExtensionCount = s.ExtensionCount, TotalSlipDays = s.TotalSlipDays } : r).ToList();
+        return new PlanSheetDto(today, clock.ZoneId, slipped, people, statuses, scopes, truncated, canEdit, meetings.Count > 0, feed is not null, feed?.LastUsedAt);
     }
 
     // ---------------------------------------------------------------- bulk edit
@@ -238,7 +243,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
                     if (c.AssigneeId is null && c.StartDate is null && !c.ClearStart && c.DueDate is null) throw new ValidationException("changes", "Say what to change.");
                     var d = await projects.UpdateAsync(p.Id, new UpdateProjectRequest(p.Name, p.Description, p.Priority, p.Status, c.AssigneeId ?? p.OwnerId, p.TeamId,
                         c.ClearStart ? null : c.StartDate ?? p.StartDate, c.DueDate ?? p.DueDate, c.Version ?? p.Version, null, p.ProjectGroupId,
-                        c.DueDate is not null ? reason : null, c.DueDate is not null ? dependency : null), ct);
+                        c.DueDate is not null || c.StartDate is not null ? reason : null, c.DueDate is not null ? dependency : null), ct);
                     await db.SaveChangesAsync(ct);
                     results.Add(new(c.Id, key, true, Version: d.Project.Version));
                 }
@@ -524,6 +529,7 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
             if (allowEmpty) return null;
             throw new ValidationException("changes", "Say what to change.");
         }
+        if (reason is not null && c.StartDate is not null) o["extensionReason"] = reason;   // a start moved later needs the batch's reason too
         if (c.DueDate is not null || o.ContainsKey("dueTime"))
         {
             if (reason is not null) o["dueDateReason"] = reason;
@@ -662,7 +668,8 @@ public class PlanSheetService(IAppDbContext db, ICurrentContext ctx, AppClock cl
         if (req.Commit)
         {
             if (outRows.Any(r => r.Ready && r.NeedsReason && (include is null || include.Contains(r.Index))) && reason is null)
-                throw new ValidationException("dueDateReason", "Say why the due dates are moving (for example a dependency, a change in scope or waiting on a client).");
+                throw new DateExtensionReasonRequiredException("due dates");
+            dueHistory.Importing = true;   // a paste is an import: start dates are what the sheet says (due dates keep the rule above)
             for (var k = 0; k < outRows.Count; k++)
             {
                 var r = outRows[k];

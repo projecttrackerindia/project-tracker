@@ -120,3 +120,24 @@ html[data-theme='dark'] .aura-plan { background: rgba(255, 255, 255, .05); }
 @media (prefers-reduced-motion: reduce) { .aura-plan-l .gc-card.running > i { animation: none; } }
 .aura-thinking li.rise { animation: aura-step-in var(--motion-emphasised) ease-out both; }
 @keyframes aura-step-in { from { opacity: 0; transform: translateX(-6px); } }
+
+/* ------------------------------------------------------------------ the Aura visual language in the big panel (aura-siri): the ring, blue
+   question bubbles, the pill compose with a gradient rim (the same as the invoked bar) */
+.gc-who { display: none; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; color: var(--ds-text-2, #64748b); }
+.groot-chat:not(.card) .gc-me p { background: #2563eb; border-radius: 18px; }
+html[data-theme='dark'] .groot-chat:not(.card) .gc-me p { background: #3b82f6; }
+.groot-chat:not(.card) .gc-compose { border-top: 0; padding: 8px 14px calc(14px + env(safe-area-inset-bottom)); align-items: center; }
+.groot-chat:not(.card) .gc-compose textarea { position: relative; border-radius: 22px; background: rgba(255, 255, 255, .9); padding: 11px 16px; min-height: 44px;
+  box-shadow: 0 0 0 1.5px transparent, 0 6px 22px rgba(15, 23, 42, .1);
+  border: 1.5px solid transparent; background-image: linear-gradient(var(--ds-surface, #fff), var(--ds-surface, #fff)), conic-gradient(from 90deg, #5b8cff, #a06bff, #ff5fa2, #ff9a4d, #ffd25a, #3ee0a1, #5b8cff);
+  background-origin: border-box; background-clip: padding-box, border-box; }
+.groot-chat:not(.card) .gc-compose textarea:focus { box-shadow: 0 6px 22px rgba(160, 107, 255, .22); }
+.gc-send { background: #0f172a; }
+html[data-theme='dark'] .gc-send:not(:disabled) { background: #f5f5f7; color: #0f172a; }
+.gc-step-dot, .gc-wait > span:not(.sr-only) { background: conic-gradient(from 30deg, #5b8cff, #a06bff, #ff5fa2, #ff9a4d, #ffd25a, #3ee0a1, #5b8cff); }
+.gc-cur { background: #a06bff; }
+.groot-chat .gc-head .groot { width: 24px !important; height: 24px !important; }
+.groot-chat { border-image: none; }
+.groot-chat:not(.card)::after { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: conic-gradient(from 200deg, rgba(91, 140, 255, .55), rgba(160, 107, 255, .55), rgba(255, 95, 162, .5), rgba(255, 154, 77, .45), rgba(62, 224, 161, .45), rgba(91, 140, 255, .55));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }

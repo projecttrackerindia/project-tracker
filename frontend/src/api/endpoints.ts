@@ -8,3 +8,5 @@ export * from './endpoints.planning';
 export * from './endpoints.platform';
 export * from './endpoints.documents';
 export * from './endpoints.agent';
+export * from './endpoints.recording';
+export * from './endpoints.notifySmart';

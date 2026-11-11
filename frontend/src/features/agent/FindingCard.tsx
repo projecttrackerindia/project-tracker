@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -115,18 +116,18 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
           {changes(f.kind) && f.kind !== 'Delay' && (
             <>
               <Field label="Owner">
-                <select className="input" aria-label="Owner" value={edits.clearAssignee ? '' : edits.assigneeId ?? f.assignee?.id ?? ''}
+                <Select className="input" aria-label="Owner" value={edits.clearAssignee ? '' : edits.assigneeId ?? f.assignee?.id ?? ''}
                   onChange={(e) => setEdits((x) => e.target.value ? { ...x, assigneeId: e.target.value, clearAssignee: undefined } : { ...x, assigneeId: undefined, clearAssignee: true })}>
                   <option value="">Nobody yet</option>
                   {f.assignee && !people.data?.some((p) => p.userId === f.assignee!.id) && <option value={f.assignee.id}>{f.assignee.name}</option>}
                   {(people.data ?? []).filter((p) => p.role !== 'Guest' && p.isActive !== false).map((p) => <option key={p.userId} value={p.userId}>{p.displayName}</option>)}
-                </select>
+                </Select>
               </Field>
               <Field label="Priority">
-                <select className="input" aria-label="Priority" value={edits.priority ?? f.priority ?? ''} onChange={(e) => setEdits((x) => ({ ...x, priority: (e.target.value || undefined) as Priority | undefined }))}>
+                <Select className="input" aria-label="Priority" value={edits.priority ?? f.priority ?? ''} onChange={(e) => setEdits((x) => ({ ...x, priority: (e.target.value || undefined) as Priority | undefined }))}>
                   <option value="">Keep</option>
                   {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
+                </Select>
               </Field>
             </>
           )}
@@ -137,10 +138,10 @@ export function FindingCard({ f, canDecide, showProject }: { f: AgentFinding; ca
           )}
           {(f.kind === 'UpdateTask' || f.kind === 'UpdateIssue') && (
             <Field label="Status">
-              <select className="input" aria-label="Status" value={edits.newStatus ?? f.newStatus ?? ''} onChange={(e) => setEdits((x) => ({ ...x, newStatus: e.target.value }))}>
+              <Select className="input" aria-label="Status" value={edits.newStatus ?? f.newStatus ?? ''} onChange={(e) => setEdits((x) => ({ ...x, newStatus: e.target.value }))}>
                 <option value="">Leave as it is</option>
                 {(f.kind === 'UpdateTask' ? ['todo', 'in_progress', 'done'] : ['in_progress', 'fixed', 'resolved']).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-              </select>
+              </Select>
             </Field>
           )}
           {(f.kind === 'UpdateTask' || f.kind === 'UpdateIssue' || f.kind === 'Delay') && (

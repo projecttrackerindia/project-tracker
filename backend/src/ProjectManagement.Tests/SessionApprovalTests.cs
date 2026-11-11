@@ -8,8 +8,8 @@ using ProjectManagement.Tests.Infrastructure;
 namespace ProjectManagement.Tests;
 
 /// <summary>
-/// "Single active session" with approve-on-other-device: a sign-in on a new device waits for a device already signed in to allow it (the old one is
-/// then signed out and told why), reject it or report it; after two minutes it is denied, and the person can still let themselves in with an emailed
+/// "Two devices at a time" with approve-on-other-device: a sign-in on a new device waits for a device already signed in to allow it (the first one
+/// stays signed in; a third device signs out the one used longest ago, told why), reject it or report it; after two minutes it is denied, and the person can still let themselves in with an emailed
 /// link or a code. A device never approves its own sign-in. Fictional people and addresses only.
 /// </summary>
 [Collection("api")]
@@ -67,7 +67,7 @@ public class SessionApprovalTests(ApiFactory factory)
         factory.WithDb(db => db.AuditLogs.IgnoreQueryFilters().Any(a => a.UserId == userId && a.Action == action));
 
     [Fact]
-    public async Task Allow_signs_in_the_new_device_and_signs_out_the_old_one_with_the_reason()
+    public async Task Allow_signs_in_the_new_device_and_the_first_one_stays_signed_in()
     {
         var laptop = await SignedInWithPolicy();
         var phone = NewDevice(laptop);
@@ -92,15 +92,42 @@ public class SessionApprovalTests(ApiFactory factory)
         Assert.Equal(laptop.Email, S((await phone.Get("/api/v1/me")).Data!["user"]!["email"]));
         Assert.Equal("closed", S((await StatusOf(phone, id, secret)).Data!["status"]));          // redeemed once
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await laptop.Get("/api/v1/me")).Status);        // the old device is signed out at once
-        var refresh = await laptop.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = laptop.RefreshToken }, true);
-        Assert.Equal("SESSION_REPLACED", refresh.ErrorCode);
-        Assert.Contains("Signed out because you signed in on Chrome on Windows", refresh.Json!["errors"]![0]!["message"]!.GetValue<string>());
+        Assert.True((await laptop.Get("/api/v1/me")).Ok);                                          // two devices at a time: the first stays signed in
 
         var history = (await phone.Get("/api/v1/me/session-approvals")).Data!.AsArray();
         Assert.Equal("allowed", S(history.Single(h => S(h!["id"]) == id)!["outcome"]));
         Assert.True(Audited(laptop.UserId, "session.approval_requested"));
         Assert.True(Audited(laptop.UserId, "session.approval_allowed"));
+        Assert.False(Audited(laptop.UserId, "session.replaced"));
+    }
+
+    [Fact]
+    public async Task A_third_device_signs_out_the_one_used_longest_ago_with_the_reason()
+    {
+        var laptop = await SignedInWithPolicy("Theo Third");
+        var phone = NewDevice(laptop);
+        var (id1, secret1, _) = await AskAsync(phone);
+        Assert.True((await Decide(laptop, id1, S((await PromptOn(laptop, id1))["token"]), "allow")).Ok);
+        var phoneAuth = (await StatusOf(phone, id1, secret1)).Data!["auth"]!;
+        phone.Token = S(phoneAuth["accessToken"]);
+        phone.RefreshToken = S(phoneAuth["refreshToken"]);
+        Assert.True((await phone.Get("/api/v1/me")).Ok);
+
+        // The phone has been idle the longest.
+        factory.WithDb(db => db.UserSessions.Where(s => s.UserId == laptop.UserId && s.RevokedAt == null && s.Id != db.UserSessions.Where(x => x.UserId == laptop.UserId && x.RevokedAt == null).OrderBy(x => x.CreatedAt).Select(x => x.Id).First())
+            .ExecuteUpdate(u => u.SetProperty(s => s.LastSeenAt, DateTime.UtcNow.AddHours(-3)).SetProperty(s => s.LastActivityAt, (DateTime?)null)));
+
+        var tablet = NewDevice(laptop);
+        var (id2, secret2, _) = await AskAsync(tablet);
+        Assert.True((await Decide(laptop, id2, S((await PromptOn(laptop, id2))["token"]), "allow")).Ok);
+        tablet.Token = S((await StatusOf(tablet, id2, secret2)).Data!["auth"]!["accessToken"]);
+
+        Assert.True((await laptop.Get("/api/v1/me")).Ok);
+        Assert.True((await tablet.Get("/api/v1/me")).Ok);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await phone.Get("/api/v1/me")).Status);
+        var refresh = await phone.Send(HttpMethod.Post, "/api/v1/auth/refresh", new { refreshToken = phone.RefreshToken }, true);
+        Assert.Equal("SESSION_REPLACED", refresh.ErrorCode);
+        Assert.Contains("Signed out because you signed in on Chrome on Windows", refresh.Json!["errors"]![0]!["message"]!.GetValue<string>());
         Assert.True(Audited(laptop.UserId, "session.replaced"));
     }
 
@@ -150,7 +177,7 @@ public class SessionApprovalTests(ApiFactory factory)
         var done = (await StatusOf(phone, id, secret)).Data!;
         Assert.Equal("approved", S(done["status"]));
         Assert.NotNull(done["auth"]!["accessToken"]);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await laptop.Get("/api/v1/me")).Status);
+        Assert.True((await laptop.Get("/api/v1/me")).Ok);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 import { openNew } from '../../components/v2/state';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Face } from '../../components/Face';
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -19,12 +20,14 @@ import './desk-page.css';
 import { BulkEditBar } from '../platform/BulkEditBar';
 import { SavedViewsBar } from '../platform/SavedViews';
 import { Link, useSearchParams } from 'react-router-dom';
+import { deskAiApi, isObj, type DeskRouting } from '../../api/deskAiApi';
 import { AvailabilitySwitch, RoutingCard, VoiceCard, WhatsAppBubbles } from './DeskIntelligence';
 import { useDeskSettings, useWhatsAppThread } from './deskAiHooks';
 import { CalmDeskFront } from './CalmDeskFront';
 import { CalmSkeleton } from '../../components/calm';
 
-type Tab = 'queue' | 'mine' | 'solved';
+type Tab = 'mine' | 'team' | 'unassigned' | 'solved';
+const TAB_LABEL: Record<Tab, string> = { mine: 'Mine', team: 'Team', unassigned: 'Unassigned', solved: 'Solved' };
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
 const CHANNEL: Record<string, string> = { whatsapp: 'WhatsApp', email: 'mail', phone: 'phone', webhook: 'webhook', ai: 'AI employee', app: 'the app' };
 const TONE_TEXT: Record<DeskTone, string> = { ok: 'var(--dq-green)', warn: '#c77700', late: '#d70015', idle: 'var(--ds-text-4)' };
@@ -94,7 +97,7 @@ async function sendReply(w: WorkItemDetail, text: string): Promise<{ ok: boolean
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
 export function DeskPage() {
-  const [tab, setTab] = useState<Tab>('queue');
+  const [tabPick, setTab] = useState<Tab | null>(null);
   const [params, setParams] = useSearchParams();
   // Calm Desk (demo shots 06/07): the overview first; a ticket (or "Queue ›") opens the three-pane queue. ?classic=1 shows both stacked, as before.
   const classic = params.get('classic') === '1';
@@ -104,7 +107,6 @@ export function DeskPage() {
   const [selected, setSelected] = useState<string | null>(() => params.get('ticket'));
   const deskSettings = useDeskSettings();
   const [prio, setPrio] = useState<'all' | 'urgent'>('all');
-  const [unassigned, setUnassigned] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const now = useNow(true);
@@ -112,20 +114,26 @@ export function DeskPage() {
   const wid = useWorkspaceId();
   const listRef = useRef<HTMLDivElement>(null);
 
-  const list = useWsQuery(['desk', 'list', tab], () => workItemsApi.list({ kind: ['ticket'], status: tab === 'solved' ? 'closed' : 'open', mine: tab === 'mine' || undefined, limit: 200 }),
-    { refetchInterval: 30_000 });
   const open = useWsQuery(['desk', 'list', 'queue'], () => workItemsApi.list({ kind: ['ticket'], status: 'open', limit: 200 }), { refetchInterval: 30_000 });
+  // Mine / Team / Unassigned are views of the one open queue (counts on each tab); Solved asks for closed tickets.
+  const openAll = open.data?.items ?? [];
+  const counts = { mine: openAll.filter((r) => r.assignee?.id === me?.id).length, team: openAll.length, unassigned: openAll.filter((r) => !r.assignee).length };
+  // A ticket link opens Team (every open ticket, so the linked one is in the list); otherwise Mine when anything is yours.
+  const tab: Tab = tabPick ?? (params.has('ticket') ? 'team' : open.isLoading || counts.mine > 0 ? 'mine' : 'team');
+  const solved = useWsQuery(['desk', 'list', 'solved'], () => workItemsApi.list({ kind: ['ticket'], status: 'closed', limit: 200 }), { refetchInterval: 30_000, enabled: tab === 'solved' });
+  const list = tab === 'solved' ? solved : open;
 
   const rows = useMemo(() => {
-    const items = (list.data?.items ?? []).filter((r) => (prio === 'all' || r.priority === 'Critical' || r.priority === 'High') && (!unassigned || !r.assignee));
+    const items = (list.data?.items ?? []).filter((r) => (prio === 'all' || r.priority === 'Critical' || r.priority === 'High')
+      && (tab === 'mine' ? r.assignee?.id === me?.id : tab === 'unassigned' ? !r.assignee : true));
     const due = (r: WorkRow) => (r.slaDueAt ? Date.parse(r.slaDueAt) : Number.POSITIVE_INFINITY);
     return tab === 'solved' ? items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) : items.sort((a, b) => due(a) - due(b) || a.key.localeCompare(b.key));
-  }, [list.data, tab, prio, unassigned]);
+  }, [list.data, tab, prio, me?.id]);
   const pickedRows = rows.filter((r) => picked.has(r.id));
   const togglePick = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const viewConfig = { tab, priority: prio === 'all' ? undefined : prio, unassigned: unassigned || undefined };
+  const viewConfig = { tab, priority: prio === 'all' ? undefined : prio };
   const applyView = (c: Record<string, unknown>) => {
-    setTab(c.tab === 'mine' || c.tab === 'solved' ? c.tab : 'queue'); setPrio(c.priority === 'urgent' ? 'urgent' : 'all'); setUnassigned(c.unassigned === true);
+    setTab(c.unassigned === true ? 'unassigned' : c.tab === 'mine' || c.tab === 'solved' || c.tab === 'unassigned' ? c.tab : 'team'); setPrio(c.priority === 'urgent' ? 'urgent' : 'all');
     setSelected(null); setPicked(new Set());
   };
 
@@ -151,11 +159,11 @@ export function DeskPage() {
   const workRef = useRef<HTMLDivElement>(null);
   const openTicket = (id: string) => {
     if (!classic) showView('queue');
-    if (tab !== 'queue') { setTab('queue'); setPicked(new Set()); }
+    if (tab === 'solved') { setTab('team'); setPicked(new Set()); }
     setSelected(id);
     if (classic) requestAnimationFrame(() => workRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
   };
-  const openRows = open.data?.items ?? [];
+  const openRows = openAll;
   const critical = openRows.filter((r) => r.priority === 'Critical').sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))[0] ?? null;
   const breaching = openRows.filter((r) => r.slaDueAt && Date.parse(r.slaDueAt) - now < 3600e3).length;
 
@@ -178,7 +186,7 @@ export function DeskPage() {
   }, [rows, current?.id]);
 
   return (
-    <div className={`dq-page dq-desk${classic ? '' : ' cdq'}${!classic && queueView ? ' cdq-work' : ''}`}>
+    <div className={`dq-page dq-desk${classic ? '' : ' cdq'}${!classic && queueView ? ' cdq-work' : ''}${critical ? ' has-inc' : ''}`}>
       {!classic && queueView && (
         <div className="cdq-crumb"><span>Desk › Queue</span><span className="dq-sp" />
           <button type="button" className="calm-link accent" onClick={() => showView(null)}>‹ Overview</button></div>
@@ -192,9 +200,9 @@ export function DeskPage() {
       {critical && <Incident row={critical} now={now} />}
       <div className="mw-tbslot inline dq-tb dq-tb-work">
         <div className="dq-seg" role="tablist" aria-label="Desk views">
-          {(['queue', 'mine', 'solved'] as Tab[]).map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setSelected(null); setPicked(new Set()); }}>
-              {t === 'queue' ? 'Queue' : t === 'mine' ? 'Mine' : 'Solved'}
+          {(['mine', 'team', 'unassigned', 'solved'] as Tab[]).map((t) => (
+            <button key={t} type="button" role="tab" aria-selected={tab === t} className={`${tab === t ? 'on' : ''}${t === 'solved' ? ' quiet' : ''}`} data-testid={`dq-tab-${t}`} onClick={() => { setTab(t); setSelected(null); setPicked(new Set()); }}>
+              {TAB_LABEL[t]}{t !== 'solved' && <span className="dq-tabn">{counts[t]}</span>}
             </button>
           ))}
         </div>
@@ -215,11 +223,10 @@ export function DeskPage() {
 
       <div className="dq-cols">
         <section className="dq-card dq-q" aria-label="Live queue">
-          <div className="dq-qh"><h2 className="dq-h3">{tab === 'solved' ? 'Solved' : tab === 'mine' ? 'Mine' : 'Live queue'}</h2><span className="dq-faint">{tab === 'solved' ? 'latest first' : 'by SLA left'}</span>
+          <div className="dq-qh"><h2 className="dq-h3">{tab === 'team' ? 'Live queue' : TAB_LABEL[tab]}</h2><span className="dq-faint">{tab === 'solved' ? 'latest first' : 'by SLA left'}</span>
             {rows.length > 0 && <button type="button" className="pv-select-btn dq-select" aria-pressed={selecting} onClick={() => { setSelecting((v) => !v); setPicked(new Set()); }}>{selecting ? 'Done' : 'Select'}</button>}</div>
           <div className="dq-filters" role="group" aria-label="Narrow the queue">
             <button type="button" className={`pv-chip dq-fchip${prio === 'urgent' ? ' on' : ''}`} aria-pressed={prio === 'urgent'} onClick={() => setPrio((p) => (p === 'urgent' ? 'all' : 'urgent'))}><span>Critical & high</span></button>
-            <button type="button" className={`pv-chip dq-fchip${unassigned ? ' on' : ''}`} aria-pressed={unassigned} onClick={() => setUnassigned((v) => !v)}><span>Unassigned</span></button>
           </div>
           <SavedViewsBar scope="desk" current={viewConfig} onApply={applyView} />
           <div className="dq-qlist" ref={listRef} role="listbox" aria-label="Tickets" tabIndex={0}
@@ -255,7 +262,7 @@ export function DeskPage() {
           </div>
         </section>
 
-        {current ? <Conversation key={current.id} row={current} me={me?.id ?? null} /> : <AllClear tab={tab} onSolved={() => { setTab('solved'); setSelected(null); }} />}
+        {current ? <Conversation key={current.id} row={current} me={me?.id ?? null} now={now} /> : <AllClear tab={tab} onSolved={() => { setTab('solved'); setSelected(null); }} />}
         {current ? <Context key={`c-${current.id}`} row={current} now={now} /> : <div className="dq-ctx" />}
       </div>
       {selecting && <BulkEditBar rows={pickedRows} onClear={() => setPicked(new Set())} onDone={() => { setSelecting(false); void qc.invalidateQueries({ queryKey: [wid, 'desk'] }); }} />}
@@ -295,8 +302,25 @@ function WarRoomButton({ w }: { w: WorkItemDetail }) {
   return <button type="button" className="dq-war" disabled={busy} onClick={() => void open()}>{busy ? 'Opening…' : 'War room'}</button>;
 }
 
+/** The SLA left on the open ticket as a chip: red under 15 minutes or late, amber under an hour, quiet otherwise. */
+function SlaChip({ due, state, now }: { due: string; state: string | null; now: number }) {
+  const ms = Date.parse(due) - now;
+  const late = ms <= 0 || state === 'Breached' || state === 'Missed';
+  const tone = late || ms < 15 * 60e3 ? 'late' : ms < 3600e3 ? 'warn' : 'ok';
+  return <span className={`cdq-sla ${tone}`} data-testid="dq-sla-chip" title={`SLA due ${new Date(due).toLocaleString()}`}>{late ? 'SLA breached' : `SLA ${leftLabel(due, now)}`}</span>;
+}
+
+/** Aura's one-paragraph read of the ticket (the desk AI's summary when routing has one, else what the customer wrote). */
+function AuraSummary({ ticketId, fallback }: { ticketId: string; fallback: string | null }) {
+  const q = useWsQuery(['desk', 'routing', ticketId], () => deskAiApi.routing(ticketId), { staleTime: 15_000, refetchInterval: 30_000, retry: false });
+  const r = isObj<DeskRouting>(q.data) && 'workTaskId' in q.data ? q.data : null;
+  const text = r?.insight?.summary || fallback;
+  if (!text) return null;
+  return <div className="cdq-aura" data-testid="dq-aura-summary"><span className="dq-orb" aria-hidden="true" /><p>{text}</p></div>;
+}
+
 /** The open ticket as a conversation: what was raised, then every comment, file and note in order, and the reply box. */
-function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
+function Conversation({ row, me, now }: { row: WorkRow; me: string | null; now: number }) {
   const qc = useQueryClient();
   const wid = useWorkspaceId();
   const d = useWsQuery(['desk', 'item', row.id], () => workItemsApi.get(row.id), { staleTime: 30_000 });
@@ -346,8 +370,9 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
           {me && row.assignee?.id !== me && <button type="button" className="dq-btn sm" onClick={() => void save({ assigneeId: me }, 'Assigned to you.')}>Assign</button>}
           {row.category !== 'Done' && row.category !== 'Cancelled' && <button type="button" className="dq-btn sm pri" onClick={() => void save({ status: 'Completed' }, 'Resolved.')}>Resolve</button>}
         </div>
-        <h2 className="dq-title">{row.title}</h2>
+        <div className="dq-row cdq-titlerow"><h2 className="dq-title">{row.title}</h2>{row.slaDueAt && row.category !== 'Done' && <SlaChip due={row.slaDueAt} state={row.slaState ?? null} now={now} />}</div>
       </div>
+      <AuraSummary ticketId={row.id} fallback={firstLine(w?.description, 220)} />
       <div className="dq-msgs">
         {thread && <WhatsAppBubbles thread={thread} />}
         {w && w.description && !thread && (
@@ -361,7 +386,7 @@ function Conversation({ row, me }: { row: WorkRow; me: string | null }) {
       </div>
       {saved && w && <SavedReplies w={w} onClose={() => setSaved(false)} onUse={(t) => { setText(t); setSaved(false); setTimeout(() => box.current?.focus(), 0); }} />}
       <form className="dq-comp" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <span className="dq-orb" aria-hidden="true" />
+        <SiriOrb className="dq-orb" />
         <textarea ref={box} rows={1} value={text} maxLength={4000} aria-label="Reply" placeholder={`Reply on ${channel === 'whatsapp' ? 'WhatsApp' : channel === 'email' ? 'mail' : 'the ticket'}…`}
           onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }} />
         <button type="button" className={`dq-sr-btn${saved ? ' on' : ''}`} aria-label="Saved replies" aria-expanded={saved} title="Saved replies" disabled={!w}
@@ -424,7 +449,7 @@ function SavedReplies({ w, onUse, onClose }: { w: WorkItemDetail; onUse: (text: 
               <div className="dq-sr-p">{t.text}</div></div>
             <div className="dq-sr-a">
               <button type="button" className="dq-btn sm" disabled={!!busy} onClick={() => void use(t, false)}>{busy === `${t.id}-in` ? '…' : 'Insert'}</button>
-              {ai && <button type="button" className="dq-btn sm dq-sr-ai" disabled={!!busy} onClick={() => void use(t, true)}><span className="dq-orb" aria-hidden="true" />{busy === `${t.id}-ai` ? 'Filling…' : 'AI fill'}</button>}
+              {ai && <button type="button" className="dq-btn sm dq-sr-ai" disabled={!!busy} onClick={() => void use(t, true)}><SiriOrb className="dq-orb" />{busy === `${t.id}-ai` ? 'Filling…' : 'AI fill'}</button>}
             </div>
           </div>
         ))}
@@ -530,7 +555,7 @@ function Context({ row, now }: { row: WorkRow; now: number }) {
         ))}
       </div>
       <div className="dq-card dq-ai">
-        <div className="dq-ai-line"><span className="dq-orb" aria-hidden="true" /><span>{draft.isLoading && ai ? 'Drafting a reply from similar tickets…' : `“${reply}”`}</span></div>
+        <div className="dq-ai-line"><SiriOrb className="dq-orb" /><span>{draft.isLoading && ai ? 'Drafting a reply from similar tickets…' : `“${reply}”`}</span></div>
         <div className="dq-row" style={{ gap: 8, marginTop: 12, paddingLeft: 26 }}>
           <button type="button" className="dq-btn sm pri" disabled={sending || !w} onClick={() => void send()}>{sending ? 'Sending…' : 'Send'}</button>
           <button type="button" className="dq-btn sm white" onClick={() => window.dispatchEvent(new CustomEvent('dq-draft', { detail: reply }))}>Edit</button>

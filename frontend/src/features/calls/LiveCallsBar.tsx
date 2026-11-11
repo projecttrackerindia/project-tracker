@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { onRinging, ringingCalls } from './incomingCalls';
 import { Link, useLocation } from 'react-router-dom';
+import { useAfterFirstPaint } from '../../lib/afterFirstPaint';
 import { useWsQuery } from '../../lib/hooks';
 import { useAuth } from '../../stores/auth';
 import { callLink, callsApi } from './callsApi';
@@ -10,7 +11,9 @@ import './calls.css';
 export function LiveCallsBar() {
   const { pathname, search } = useLocation();
   const me = useAuth((s) => s.ctx?.user.id);
-  const status = useWsQuery(['calls', 'status'], callsApi.status, { staleTime: 600_000, retry: false });
+  // Nothing on the first screen shows this bar, so it waits for the first paint rather than competing with the reads that do.
+  const painted = useAfterFirstPaint();
+  const status = useWsQuery(['calls', 'status'], callsApi.status, { staleTime: 600_000, retry: false, enabled: painted });
   const live = useWsQuery(['calls', 'live'], callsApi.live, { enabled: !!status.data?.available, refetchInterval: 30_000, retry: false });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const ringing = useSyncExternalStore(onRinging, ringingCalls);   // a call ringing for me has its own card

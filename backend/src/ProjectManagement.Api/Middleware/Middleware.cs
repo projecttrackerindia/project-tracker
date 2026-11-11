@@ -29,13 +29,39 @@ public static class ErrorWriter
     }
 }
 
-/// <summary>Counts requests and server errors for the platform health page.</summary>
+/// <summary>
+/// Counts requests and server errors for the platform health page, and times every API request: the answer carries a Server-Timing header
+/// (visible in the browser's network panel, so the server's share of a slow save can be told from the network's), and a request slower than
+/// <see cref="SlowMs"/> is logged as a warning with its route, so slowness is measured and found rather than guessed.
+/// </summary>
 public class MetricsMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext http, ProjectManagement.Application.Common.SystemMetrics metrics)
+    public const int SlowMs = 800;
+
+    public async Task InvokeAsync(HttpContext http, ProjectManagement.Application.Common.SystemMetrics metrics, Microsoft.Extensions.Logging.ILogger<MetricsMiddleware> log)
     {
+        var api = http.Request.Path.StartsWithSegments("/api");
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var db = api ? ProjectManagement.Application.Common.RequestDbStats.Begin() : null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        // app = the server's whole time; db = the part spent in the database and how many commands it took (many small ones is the usual cause of a slow save).
+        if (api)
+            http.Response.OnStarting(() =>
+            {
+                var ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                http.Response.Headers["Server-Timing"] = "app;dur=" + ms.ToString("0.#", inv) + ", db;dur=" + db!.Milliseconds.ToString("0.#", inv) + ";desc=\"" + db.Queries + " queries\"";
+                return Task.CompletedTask;
+            });
         try { await next(http); }
-        finally { if (http.Request.Path.StartsWithSegments("/api")) metrics.Record(http.Response.StatusCode); }
+        finally
+        {
+            if (api)
+            {
+                metrics.Record(http.Response.StatusCode);
+                var took = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                if (took >= SlowMs) log.LogWarning("Slow request: {Method} {Path} took {Elapsed:0} ms (status {Status}); database {DbMs:0} ms in {Queries} commands", http.Request.Method, http.Request.Path.Value, took, http.Response.StatusCode, db!.Milliseconds, db.Queries);
+            }
+        }
     }
 }
 
@@ -241,7 +267,8 @@ public class ApiKeyAuthMiddleware(RequestDelegate next)
 public class CurrentContextMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext http, CurrentContext ctx, IAppDbContext db, TimeProvider clock,
-        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone)
+        ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone,
+        ProjectManagement.Application.Services.SessionCache sessions)
     {
         ctx.IpAddress = http.Connection.RemoteIpAddress?.ToString();
         ctx.UserAgent = http.Request.Headers.UserAgent.ToString();
@@ -281,14 +308,23 @@ public class CurrentContextMiddleware(RequestDelegate next)
             }
 
             var now = clock.GetUtcNow().UtcDateTime;
-            var session = await (from s in db.UserSessions
-                                 join u in db.Users on s.UserId equals u.Id
-                                 where s.Id == sessionId && s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now
-                                 select new { u.IsActive, u.IsPlatformAdmin, u.MfaEnabled, u.MustChangePassword, u.TimeZone, s.SsoTenantId, s.AuthMethod, s.CreatedAt, u.PasswordLength,
-                                     ZoneChosen = db.ReminderSettings.Any(r => r.UserId == u.Id && !r.FollowDeviceTimeZone) }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+            // Who the session belongs to is remembered for a few seconds and cleared the moment it is revoked, locked, or its person changes
+            // (SessionCache); expiry and revocation are still judged here against this request's own clock.
+            var session = await sessions.SessionAsync(db, sessionId, userId, http.RequestAborted);
+            if (session is not null && (session.RevokedAt is not null || session.ExpiresAt <= now)) session = null;
             if (session is null || !session.IsActive)
             {
                 await ErrorWriter.WriteAsync(http, 401, "Your session has ended. Please sign in again.", [new ApiError("SESSION_REVOKED", "Your session has ended. Please sign in again.")]);
+                return;
+            }
+            // A locked session (or one left unused for longer than its workspace allows) can only unlock or sign out: everything else is refused
+            // until the person proves it is still them. Background polling with a still-valid access token gets the same answer.
+            var idleMinutes = session.IdleMinutes ?? ProjectManagement.Application.Features.Auth.AuthService.DefaultIdleMinutes;
+            if ((session.LockedAt is not null || ProjectManagement.Application.Features.Auth.AuthService.IsIdle(
+                    ProjectManagement.Application.Features.Auth.AuthService.LastActivity(session.LastActivityAt, session.LastSeenAt, session.CreatedAt), idleMinutes, now))
+                && !http.Request.Path.StartsWithSegments("/api/v1/auth"))
+            {
+                await ErrorWriter.WriteAsync(http, 401, "You were away for a while. Unlock to carry on.", [new ApiError("SESSION_IDLE_LOCKED", "You were away for a while. Unlock to carry on.")]);
                 return;
             }
 
@@ -306,6 +342,23 @@ public class CurrentContextMiddleware(RequestDelegate next)
             await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, userId, secondFactor, session.SsoTenantId,
                 new ProjectManagement.Application.Features.Organization.SignInFacts(session.AuthMethod, session.CreatedAt, session.PasswordLength));
         }
+        else if (HttpMethods.IsPost(http.Request.Method) && http.Request.Path.StartsWithSegments("/api/v1/notification-actions", out var rest)
+            && rest.Value is { Length: > 1 } key && key.IndexOf('/', 1) < 0)
+        {
+            // A button on a notification outside the app: its signed, single-use key (QuickActionService) names the person and the workspace.
+            // The request is signed in as them in that workspace only, with the same membership, suspension and IP rules as a sign-in.
+            var tokens = http.RequestServices.GetRequiredService<ProjectManagement.Application.Abstractions.ITokenService>();
+            if (ProjectManagement.Application.Features.Notifications.QuickActionService.Read(tokens, Uri.UnescapeDataString(key[1..])) is { } claim)
+            {
+                var owner = await db.Users.AsNoTracking().Where(u => u.Id == claim.UserId).Select(u => new { u.IsActive, u.TimeZone, u.MfaEnabled, u.MustChangePassword }).FirstOrDefaultAsync(http.RequestAborted);
+                if (owner is { IsActive: true })
+                {
+                    ctx.UserId = claim.UserId; ctx.SessionId = null; ctx.IsPlatformAdmin = false; ctx.MustChangePassword = owner.MustChangePassword;
+                    zone.UserZoneId = owner.TimeZone;
+                    await ApplyMembershipAsync(http, ctx, db, orgSecurity, zone, claim.UserId, owner.MfaEnabled, workspace: claim.TenantId);
+                }
+            }
+        }
         await next(http);
     }
 
@@ -316,15 +369,14 @@ public class CurrentContextMiddleware(RequestDelegate next)
     /// </summary>
     private static async Task ApplyMembershipAsync(HttpContext http, CurrentContext ctx, IAppDbContext db,
         ProjectManagement.Application.Features.Organization.OrgSecurityService orgSecurity, ProjectManagement.Application.Services.RequestZone zone,
-        Guid userId, bool mfaEnabled, Guid? ssoTenantId = null, ProjectManagement.Application.Features.Organization.SignInFacts? signIn = null)
+        Guid userId, bool mfaEnabled, Guid? ssoTenantId = null, ProjectManagement.Application.Features.Organization.SignInFacts? signIn = null, Guid? workspace = null)
     {
-        if (!Guid.TryParse(http.User.FindFirst(JwtClaims.WorkspaceId)?.Value, out var workspaceId)) return;
+        Guid workspaceId;
+        if (workspace is { } named) workspaceId = named;
+        else if (!Guid.TryParse(http.User.FindFirst(JwtClaims.WorkspaceId)?.Value, out workspaceId)) return;
         // Signed in through this organization's own single sign-on: its identity provider vouched for the person (and applies its MFA).
         if (ssoTenantId == workspaceId) mfaEnabled = true;
-        var membership = await (from m in db.TenantMembers
-                                join t in db.Tenants on m.TenantId equals t.Id
-                                where m.UserId == userId && m.TenantId == workspaceId && t.Status == TenantStatus.Active
-                                select new { m.Role, m.Status, t.Type, t.ProjectVisibility, t.TimeZone }).AsNoTracking().FirstOrDefaultAsync(http.RequestAborted);
+        var membership = await http.RequestServices.GetRequiredService<ProjectManagement.Application.Services.SessionCache>().MembershipAsync(db, userId, workspaceId, http.RequestAborted);
         if (membership is null) return;
         zone.WorkspaceZoneId = membership.TimeZone;
         // A suspended member keeps their place but cannot open the workspace: every workspace request is refused with MEMBER_SUSPENDED.

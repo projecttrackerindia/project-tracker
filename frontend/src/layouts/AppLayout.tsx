@@ -9,7 +9,6 @@ import { notificationApi } from '../api/endpoints';
 import { PageLoader, ToastRoot, ConfirmRoot } from '../components/ui';
 import { useAuth } from '../stores/auth';
 import { AccessWatcher } from './AccessWatcher';
-import { ProjectChatHost } from '../features/chat/ProjectChat';
 import { PlatformBanner } from '../components/PlatformBanner';
 import { LensSync } from '../lib/teamLens';
 import { MobileTopBar } from './MobileChrome';
@@ -18,19 +17,24 @@ import { useIsMobile } from '../lib/mobile';
 import { useConversationViewport } from '../lib/conversationViewport';
 import { SignInIsland } from '../components/SignInIsland';
 // "Single active session": a new device of mine asking to sign in (loaded beside the app, not in its first bundle).
+// Hosts that only matter once something happens (a call, a due reminder, a sign-in to approve, a change to undo): their code follows the
+// first screen instead of holding it up.
+const ProjectChatHost = lazy(() => import('../features/chat/ProjectChat').then((m) => ({ default: m.ProjectChatHost })));
+const ReminderAlerts = lazy(() => import('../features/reminders/ReminderAlerts').then((m) => ({ default: m.ReminderAlerts })));
+const AlertsSetup = lazy(() => import('../features/notifications/AlertsSetup').then((m) => ({ default: m.AlertsSetup })));
+const IncomingCallHost = lazy(() => import('../features/calls/IncomingCall').then((m) => ({ default: m.IncomingCallHost })));
+const ChangeUndoPrompt = lazy(() => import('../features/projects/ChangeUndoPrompt').then((m) => ({ default: m.ChangeUndoPrompt })));
+const IdleLockHost = lazy(() => import('../features/auth/IdleLock').then((m) => ({ default: m.IdleLockHost })));
 const SessionApprovalHost = lazy(() => import('../features/auth/SessionApproval').then((m) => ({ default: m.SessionApprovalHost })));
-import { ReminderAlerts } from '../features/reminders/ReminderAlerts';
-import { AlertsSetup } from '../features/notifications/AlertsSetup';
 import { CHECK_NOTIFICATIONS } from '../features/notifications/events';
 import { firstTime, kindForType } from '../lib/attention';
-import { announce } from '../features/notifications/centre/announce';
+import { announce, isQuiet } from '../features/notifications/centre/announce';
 import { getAlertPrefs, isMuted } from '../features/notifications/centre/prefs';
 import { BadgeSync, NotificationCentreHost } from '../features/notifications/centre/NotificationCentre';
 import { pushCoversThisDevice, systemNotification } from '../features/reminders/device';
 import { useReminderComposer } from '../features/reminders/store';
 import { LiveCallsBar } from '../features/calls/LiveCallsBar';
 import { CallHost } from '../features/calls/CallHost';
-import { IncomingCallHost } from '../features/calls/IncomingCall';
 import { isRingNotice } from '../features/calls/incomingCalls';
 import { AuraKeys, CopilotHost, LiveBanners, PhoneBar, Rail, Toolbar, useNewSheet } from '../components/v2';
 import { useScheduleSheet } from '../features/meet/scheduleStore';
@@ -42,8 +46,10 @@ import '../components/shell/shell.css';
 import { MotionConfig } from 'framer-motion';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
+import { AuraSearchHost } from '../components/aura/AuraSearch';
+import { ExtensionReasonHost } from '../features/dates/ExtensionReason';
 import { OfflineSync } from '../features/offline/OfflineSync';
-import { ChangeUndoPrompt } from '../features/projects/ChangeUndoPrompt';
+import { TourGate } from '../features/onboarding/TourGate';
 
 // The calm create sheets (New task / New project from the + menu), mounted once for every page. Loaded through a glob so the shell
 // builds before that feature lands and wires it up by itself once features/calm/createSheets.tsx exists.
@@ -114,7 +120,7 @@ function DesktopNotifier() {
         const times = page.items.map(deliveryTime).filter((at) => Number.isFinite(at) && at <= now);
         const last = read() || openedAt;
         const newest = Math.max(last, ...times, 0);
-        const fresh = page.items.filter((x) => x.browser && deliveryTime(x) > last && deliveryTime(x) <= now && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
+        const fresh = page.items.filter((x) => x.browser && !isQuiet(x) && deliveryTime(x) > last && deliveryTime(x) <= now && !isRingNotice(x) && !isViewing(x.link) && firstTime(`dn-${x.id}`, 120_000)).reverse();
         for (const n of fresh) {
           const kind = kindForType(n.type);
           const played = announce(n);
@@ -207,6 +213,8 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {/* The floating + (bottom right; above the tab bar on a phone) and ⌘K for the Aura panel (the header orb). No bottom Aura capsule. */}
       {!admin && !(phone && conversation) && <Fab />}
       {!admin && <AuraKeys />}
+      {!admin && <AuraSearchHost />}
+      <ExtensionReasonHost />
       {!admin && <ApprovalRequestHost />}
       {!admin && CalmCreateHost && <Suspense fallback={null}><CalmCreateHost /></Suspense>}
       {!admin && <WhenFirstOpened open={newOpen}><NewSheetHost /></WhenFirstOpened>}
@@ -216,23 +224,25 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       {!admin && <CopilotHost />}
       <OfflineSync phone={phone} />
       <SignInIsland />
-      <Suspense fallback={null}><SessionApprovalHost /></Suspense>
+      <AfterFirstPaint><SessionApprovalHost /></AfterFirstPaint>
+      <AfterFirstPaint><IdleLockHost /></AfterFirstPaint>
       <CallHost />
-      {!admin && <IncomingCallHost />}
+      {!admin && <AfterFirstPaint><IncomingCallHost /></AfterFirstPaint>}
       <ToastRoot />
       <ConfirmRoot />
       <MutationSync />
       <DesktopNotifier />
       <AccessWatcher />
       <PaletteLauncher />
-      <ReminderAlerts />
-      <AlertsSetup />
+      <AfterFirstPaint><ReminderAlerts /></AfterFirstPaint>
+      <AfterFirstPaint><AlertsSetup /></AfterFirstPaint>
       <ComposerSlot />
       {!admin && <AttendanceHost />}
       {!admin && <AuraWatcher />}
-      {!admin && <ChangeUndoPrompt />}
+      {!admin && <AfterFirstPaint><ChangeUndoPrompt /></AfterFirstPaint>}
+      {!admin && <AfterFirstPaint><TourGate /></AfterFirstPaint>}
       {liveOn && <AfterFirstPaint><ChatRealtime chat={chatOn} /></AfterFirstPaint>}
-      {chatOn && <ProjectChatHost />}
+      {chatOn && <AfterFirstPaint><ProjectChatHost /></AfterFirstPaint>}
       {!admin && <LiveBanners />}
       {!admin && <BadgeSync />}
       {!admin && <NotificationCentreHost />}

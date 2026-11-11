@@ -1,4 +1,5 @@
 import { Face } from '../../components/Face';
+import { SiriOrb } from '../../components/aura/SiriOrb';
 import { MeetTimeRows } from '../meet/MeetTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgentWorkflowsPage } from '../ai/AgentWorkflowsPage';
@@ -6,7 +7,7 @@ import { TimesheetPage, type TimesheetSection } from '../time/TimesheetPage';
 import { Link, useSearchParams, Navigate } from 'react-router-dom';
 import { ApiError, del, get, post } from '../../api/client';
 import { opsApi, projectApi, timeApi, workItemApi } from '../../api/endpoints';
-import type { GridKind, GridRow, ParsedTime, ReportKind, TimesheetGrid } from '../../api/types';
+import type { ForecastScoreboard, GridKind, GridRow, ParsedTime, ReportKind, TimesheetGrid } from '../../api/types';
 import { Icon, type IconName } from '../../components/Icon';
 import { EmptyState, ErrorState, PageHead, PageLoader, Segmented } from '../../components/ui';
 import { MONTHS, formatDate, timeAgo, todayISO } from '../../lib/format';
@@ -291,7 +292,7 @@ function Overview({ tabs, onReports }: { tabs: React.ReactNode; onReports: (job:
         </section>
       </div>
       <section className="ins-card ins-ai" aria-label="What stands out">
-        <b className="ins-ai-h"><span className="ins-orb" aria-hidden="true" />What stands out</b>
+        <b className="ins-ai-h"><SiriOrb className="ins-orb" />What stands out</b>
         {workload.isLoading || projects.isLoading ? <p>Reading the numbers…</p> : (
           <div className="ins-so">
             {notes.slice(0, 3).map((n) => <div key={n.id}><p><b>{n.lead}</b>{n.rest}</p>{n.action}</div>)}
@@ -579,6 +580,8 @@ function Reviews({ selected, onSelect }: { selected: string | null; onSelect: (i
   };
   const job = (selected && (jobs.data?.find((j) => j.id === selected) ?? picked.data)) || null;
   return (
+    <>
+    <ForecastScoreboardCard />
     <div className="ins-row ins-reviews">
       <section className="ins-card" aria-label="Monday summary">
         <div className="ins-card-head"><b>Monday summary</b>{monday && <span className="ds-pill success">On</span>}</div>
@@ -614,6 +617,21 @@ function Reviews({ selected, onSelect }: { selected: string | null; onSelect: (i
         {job && !job.result && <p className="ins-p">{job.status === 'failed' ? 'This review could not finish.' : 'Still working on it…'}</p>}
       </section>
     </div>
+    </>
+  );
+}
+
+/** How often past finish forecasts were right. Hidden until the server has enough verified completions, and always labelled a heuristic. */
+function ForecastScoreboardCard() {
+  const board = useWsQuery(['forecast-scoreboard'], () => get<ForecastScoreboard>('/ai/operations/forecasts/scoreboard'), { retry: false });
+  const b = board.data;
+  if (!b?.visible || b.meanAbsoluteErrorDays == null || b.percentWithinDays == null) return null;
+  return (
+    <section className="ins-card" aria-label="Forecast accuracy" data-testid="forecast-scoreboard">
+      <div className="ins-card-head"><b>How often Aura&apos;s finish dates were right</b><span className="ds-pill">Heuristic</span></div>
+      <p className="ins-p"><b>{b.percentWithinDays}%</b> landed within {b.withinDays} days · off by <b>{b.meanAbsoluteErrorDays.toFixed(1)}</b> days on average · <b>{b.verified}</b> finished projects checked.</p>
+      <p className="ins-p">{b.note}</p>
+    </section>
   );
 }
 

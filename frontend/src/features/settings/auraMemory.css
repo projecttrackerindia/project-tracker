@@ -1,0 +1,42 @@
+/* Settings › Aura memory: calm cards, a violet accent (the AI's colour), one column on a phone. */
+.mem { --mem: var(--ds-violet, #5e5ce6); display: grid; gap: 14px; min-width: 0; }
+.mem .page-head, .mem .section-head { margin-bottom: 0; }
+.mem-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(250px, 1fr); gap: 16px; align-items: start; }
+.mem-main, .mem-side { display: grid; gap: 14px; min-width: 0; }
+.mem-banner { display: flex; gap: 8px; align-items: center; margin: 0; padding: 11px 14px; border-radius: var(--calm-r-row, 14px); background: color-mix(in srgb, var(--mem) 9%, var(--calm-solid, #fff)); color: var(--calm-ink, #1d1d1f); font-size: 13px; }
+.mem-banner svg { color: var(--mem); flex: none; }
+.mem-note { margin: 0; font-size: 13.5px; color: var(--calm-ink2, #6e6e73); }
+.mem .mem-danger { color: var(--calm-red-text, #d70015); }
+
+.mem-empty { display: flex; align-items: center; gap: 14px; padding: 20px 22px; }
+.mem-empty p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--calm-ink2, #6e6e73); }
+.mem-orb { flex: none; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #5e5ce6, #bf5af2); }
+
+.mem-group { padding: 8px 10px 6px; }
+.mem-group-head { display: flex; align-items: center; gap: 9px; padding: 8px 12px 6px; }
+.mem-group-head h3 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.01em; color: var(--calm-ink, #1d1d1f); }
+.mem-ico { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; color: var(--mem); background: color-mix(in srgb, var(--mem) 12%, transparent); }
+.mem-count { font-size: 12px; font-weight: 600; color: var(--calm-ink3-text, #8a8a8f); }
+.mem-link { margin-left: auto; border: 0; background: none; padding: 4px 6px; font: inherit; font-size: 12.5px; color: var(--mem); cursor: pointer; border-radius: 8px; }
+.mem-link:hover:not(:disabled) { background: color-mix(in srgb, var(--mem) 10%, transparent); }
+.mem-row .calm-row-t { white-space: normal; overflow: visible; line-height: 1.4; font-size: 14.5px; }
+.mem-row .calm-row-t small { display: block; margin: 3px 0 0; font-size: 12px; }
+.mem-del { width: 30px; height: 30px; border: 0; border-radius: 9px; display: grid; place-items: center; background: transparent; color: var(--calm-ink2, #6e6e73); cursor: pointer; transition: background-color var(--motion-micro, 120ms) ease, color var(--motion-micro, 120ms) ease; }
+.mem-del:hover:not(:disabled) { background: color-mix(in srgb, var(--calm-red, #ff3b30) 12%, transparent); color: var(--calm-red-text, #d70015); }
+.mem-del:focus-visible, .mem-link:focus-visible { outline: 2px solid var(--mem); outline-offset: 1px; }
+.mem-del:disabled, .mem-link:disabled { opacity: .5; cursor: progress; }
+.mem-who { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--calm-ink3-text, #8a8a8f); }
+
+.mem-how ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.mem-how li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; font-size: 13px; line-height: 1.45; color: var(--calm-ink2, #6e6e73); }
+.mem-how li svg { color: var(--mem); margin-top: 2px; }
+.mem-how li b { color: var(--calm-ink, #1d1d1f); font-weight: 600; }
+.mem-admin .calm-card-head { margin-bottom: 4px; }
+.mem-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; }
+.mem-switch + .mem-switch { box-shadow: 0 -1px 0 var(--calm-fill, rgba(0, 0, 0, .05)); }
+.mem-switch > div { display: grid; gap: 2px; min-width: 0; }
+.mem-switch b { font-size: 14px; font-weight: 600; color: var(--calm-ink, #1d1d1f); }
+.mem-switch span { font-size: 12.5px; line-height: 1.4; color: var(--calm-ink2, #6e6e73); }
+.mem .switch.on { background: var(--mem); }
+
+@media (max-width: 900px) { .mem-grid { grid-template-columns: minmax(0, 1fr); } }

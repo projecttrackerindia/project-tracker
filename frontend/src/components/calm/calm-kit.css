@@ -83,10 +83,14 @@ a.calm-row:focus-visible, button.calm-row:focus-visible { outline: 2px solid var
 .calm-orb { width: 16px; height: 16px; border-radius: 50%; flex: none; background: var(--calm-orb); box-shadow: 0 0 10px rgba(163, 92, 255, .45); }
 
 /* CalmJourney: dots on a thin line; labels wrap onto two lines; the current step haloed */
-.calm-journey { overflow-x: auto; scrollbar-width: none; padding: 6px 0 2px; }
+.calm-journey { overflow-x: auto; scrollbar-width: none; padding: 6px 0 2px; overscroll-behavior-x: contain; scroll-behavior: smooth; }
+.calm-journey.fade-r { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent); }
+.calm-journey.fade-l { -webkit-mask-image: linear-gradient(90deg, transparent, #000 44px); mask-image: linear-gradient(90deg, transparent, #000 44px); }
+.calm-journey.fade-l.fade-r { -webkit-mask-image: linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
+@media (prefers-reduced-motion: reduce) { .calm-journey { scroll-behavior: auto; } }
 .calm-journey::-webkit-scrollbar { display: none; }
-.calm-journey-in { position: relative; min-width: calc(var(--n) * 84px); }
-.calm-journey ol { list-style: none; margin: 0; padding: 16px 0 4px; display: grid; grid-template-columns: repeat(var(--n), minmax(84px, 1fr)); }
+.calm-journey-in { position: relative; min-width: calc(var(--n) * var(--calm-step-w, 112px)); }
+.calm-journey ol { list-style: none; margin: 0; padding: 16px 0 4px; display: grid; grid-template-columns: repeat(var(--n), minmax(var(--calm-step-w, 112px), 1fr)); }
 .calm-journey-rail, .calm-journey-done { position: absolute; top: 22px; height: 2px; border-radius: 2px; left: calc(50% / var(--n)); }
 .calm-journey-rail { right: calc(50% / var(--n)); background: var(--calm-fill-2); }
 .calm-journey-done { background: var(--calm-journey-c, var(--calm-p1)); opacity: .6; transition: width var(--motion-emphasised) var(--ease-standard); }
@@ -96,14 +100,18 @@ a.calm-row:focus-visible, button.calm-row:focus-visible { outline: 2px solid var
 .calm-step.done .calm-step-dot { background: var(--calm-journey-c, var(--calm-p1)); box-shadow: none; }
 .calm-step.current .calm-step-dot { width: 20px; height: 20px; margin-top: -3px; background: var(--calm-journey-c, var(--calm-p1)); box-shadow: 0 0 0 6px color-mix(in srgb, var(--calm-journey-c, var(--calm-p1)) 18%, transparent); }
 .calm-step.current { color: var(--calm-ink); font-weight: 600; }
-.calm-step-label { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 112px; overflow-wrap: anywhere; font-weight: inherit; }
+.calm-step-label { display: block; white-space: normal; word-break: normal; overflow-wrap: normal; hyphens: none; text-wrap: balance; font-weight: inherit; }
 .calm-step-sub { display: block; font-size: 11px; color: var(--calm-ink3-text); font-weight: 400; margin-top: -6px; }
 .calm-step.current .calm-step-sub { color: var(--calm-ink2); }
-.calm-step-sub { display: inline-flex; align-items: center; gap: 5px; }
+.calm-step-sub { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.calm-step-sub .late { color: var(--calm-late); }
 .calm-step-av { display: inline-flex; }
 .calm-step-extra:empty { display: none; }
 
 /* CalmSheet: a side or bottom sheet over the blurred page */
+:root, html[data-theme='light'] { --calm-late: #b45309; }
+html[data-theme='dark'] { --calm-late: #ffb340; }
+.calm-scrim.clear { -webkit-backdrop-filter: none; backdrop-filter: none; background: color-mix(in srgb, var(--calm-ink) 6%, transparent); }
 .calm-scrim { position: fixed; inset: 0; z-index: 95; background: var(--calm-scrim); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 .calm-sheet { position: fixed; z-index: 96; background: var(--calm-solid); color: var(--calm-ink); border-radius: var(--calm-r-hero); box-shadow: var(--calm-sh-sheet); display: flex; flex-direction: column; min-height: 0; outline: none; }
 .calm-sheet.side { right: 24px; top: 24px; bottom: 24px; width: min(var(--calm-sheet-w, 560px), calc(100vw - 48px)); }

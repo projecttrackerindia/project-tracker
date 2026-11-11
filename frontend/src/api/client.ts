@@ -3,6 +3,7 @@ import { saveFile } from '../lib/native';
 import { lensHeaders } from '../lib/lensState';
 import { mutationCommitted } from '../lib/mutationEffects';
 import { writeSucceeded } from '../lib/optimistic';
+import { isSessionLocked, markLocked, waitForUnlock } from './lockState';
 import { enqueue, isCreate, resolveIds, isNetworkFailure, isQueueable, newTempId, recordId, type OutboxEntry } from '../lib/outbox';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
@@ -41,6 +42,7 @@ export const setAuthLostHandler = (fn: () => void) => { onAuthLost = fn; };
 let tabWorkspaceId: string | null = null;
 let onWorkspaceMismatch: ((tokenWorkspace: string | null) => void) | null = null;
 export const setTabWorkspace = (id: string | null) => { tabWorkspaceId = id; };
+export const getTabWorkspace = () => tabWorkspaceId;
 export const setWorkspaceMismatchHandler = (fn: (tokenWorkspace: string | null) => void) => { onWorkspaceMismatch = fn; };
 
 // A 403 PERMISSION_DENIED / MODULE_ACCESS_DENIED means the app offered something the person may no longer do: the server marks it with
@@ -117,6 +119,29 @@ export const refreshWasRefused = () => lastRefreshRefused;
 export const transientStatus = (status: number) => status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The refresh index.html started for a signed-in visit, handed out once (later refreshes are the app's own). */
+function takeEarlyRefresh(): Promise<Response | null> | null {
+  const w = typeof window !== 'undefined' ? (window as Window & { __ptRefresh?: Promise<Response | null> }) : null;
+  const p = w?.__ptRefresh ?? null;
+  if (w) delete w.__ptRefresh;
+  return p;
+}
+
+type EarlyReads = { token: string } & Record<string, Promise<Response | null> | string>;
+/**
+ * A read index.html started as soon as its early refresh answered (/me and /shell/summary, see index.html), handed out once to the same
+ * request from the app, and only while the access token is still the one it was made with.
+ */
+async function takeEarlyRead(path: string): Promise<Response | null> {
+  const w = typeof window !== 'undefined' ? (window as Window & { __ptEarly?: Promise<EarlyReads | null> }) : null;
+  if (!w?.__ptEarly) return null;
+  const early = await w.__ptEarly.catch(() => null);
+  const res = early && early.token === accessToken && typeof early[path] === 'object' ? early[path] as Promise<Response | null> : null;
+  if (early && res) delete early[path];
+  if (!early || (!early['/me'] && !early['/shell/summary'])) delete w.__ptEarly;
+  return res ? res.catch(() => null) : null;
+}
+
 // One in-flight refresh shared by every caller (page bootstrap, parallel 401s, React StrictMode double-invoke).
 let refreshing: Promise<AuthResponse | null> | null = null;
 export function refreshSession(): Promise<AuthResponse | null> {
@@ -130,13 +155,17 @@ export function refreshSession(): Promise<AuthResponse | null> {
         // A refresh that is not answered is tried again a couple of times before giving up (without signing out).
         for (let attempt = 0; ; attempt++) {
           let res: Response | null = null;
-          try { res = await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers }); } catch { res = null; }
+          // The page's first refresh may already be in flight from index.html (started before the scripts loaded): use that answer once.
+          const early = attempt === 0 && !BASE ? takeEarlyRefresh() : null;
+          try { res = early ? await early : await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include', headers }); } catch { res = null; }
           if (res && !transientStatus(res.status)) {
             const { data, error } = await parse(res);
             if (error || !data) {
               lastRefreshRefused = true;
               // Signed out because the account signed in on another device ("Single active session"): the sign-in page says so once.
               if (error?.code === 'SESSION_REPLACED') { try { sessionStorage.setItem('pm_signed_out_reason', error.message); } catch { /* storage unavailable */ } }
+              // Locked after inactivity: not signed out. The lock screen takes over and waiting requests go out once it is unlocked.
+              if (error?.code === 'SESSION_IDLE_LOCKED') { lastRefreshRefused = false; markLocked(); }
               return null;
             }
             lastRefreshRefused = false;
@@ -193,6 +222,8 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   // Started before the session was confirmed (a warm start shows the page at once): wait for the refresh that is running instead of
   // being refused and sent again.
   if (auth && !accessToken && refreshing && !path.startsWith('/auth/')) await refreshing.catch(() => null);
+  // Locked after inactivity: the request waits for the unlock (the page and what was typed stay as they are) and fails on a sign-out.
+  if (auth && isSessionLocked() && !path.startsWith('/auth/') && !(await waitForUnlock())) throw new ApiError(401, 'Signed out.', [{ code: 'SESSION_IDLE_LOCKED', message: 'Signed out.' }]);
   const workspaceAtStart = tabWorkspaceId;
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -204,7 +235,8 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
 
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api/v1${path}`, {
+    const early = method === 'GET' && auth && !BASE && (path === '/me' || path === '/shell/summary') ? await takeEarlyRead(path) : null;
+    res = early ?? await fetch(`${BASE}/api/v1${path}`, {
       method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
@@ -222,14 +254,38 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
     return data as T;
   }
 
+  // A date moved later without a reason: the shared "Reason for extending" sheet asks for one and the same request is sent again with it.
+  // One place for every surface (task and plan sheets, action items, timeline and calendar drags, quick-add, Aura).
+  if (error.status === 422 && error.code === 'DATE_EXTENSION_REASON_REQUIRED' && onExtensionReason && (body === undefined || (body !== null && typeof body === 'object' && !Array.isArray(body)))) {
+    const b = (body ?? {}) as Record<string, unknown>;
+    if (!b.extensionReason) {
+      const reason = await onExtensionReason({ message: error.message, method, path, body: b });
+      if (reason) return send<T>(method, path, { ...b, extensionReason: reason, ...(b.dueDateReason ? {} : { dueDateReason: reason }) }, opts, idempotencyKey);
+      error.message = 'The date was not moved.';
+      (error as ApiError & { cancelled?: boolean }).cancelled = true;
+    }
+  }
+
+  if (error.status === 401 && auth && retry && !path.startsWith('/auth/') && (error.code === 'SESSION_IDLE_LOCKED' || isSessionLocked())) {
+    markLocked();
+    if (await waitForUnlock()) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey);
+    throw error;
+  }
   if (error.status === 401 && auth && retry && !path.startsWith('/auth/')) {
     const renewed = await refreshSession();
+    if (!renewed && isSessionLocked()) { if (await waitForUnlock()) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey); throw error; }
     if (renewed) return send<T>(method, path, body, { ...opts, retry: false }, idempotencyKey);
     // Signed out only when the server refused the refresh; when it could not be reached the session stays and this request fails.
     if (lastRefreshRefused) { accessToken = null; onAuthLost?.(); }
   }
   throw error;
 }
+
+/** What the reason sheet is told about a refused date change. */
+export interface ExtensionAsk { message: string; method: string; path: string; body: Record<string, unknown> }
+let onExtensionReason: ((ask: ExtensionAsk) => Promise<string | null>) | null = null;
+/** Set by the app shell: shows the "Reason for extending" sheet and resolves with the reason (null when cancelled). */
+export const setExtensionReasonHandler = (fn: ((ask: ExtensionAsk) => Promise<string | null>) | null) => { onExtensionReason = fn; };
 
 type QueuedHandler = (method: string, path: string, body: unknown, workspaceId: string | null, tempId?: string) => unknown;
 let onQueued: QueuedHandler | null = null;
@@ -264,6 +320,7 @@ export const del = <T = void>(path: string) => api<T>('DELETE', path);
 /** After a 401: renew the session and send again, or, when it cannot be renewed, end it in the app the same way api() does. */
 async function renewOrLose(refused: Response, send: () => Promise<Response>): Promise<Response> {
   if (await refreshSession()) return send();
+  if (isSessionLocked()) return (await waitForUnlock()) ? send() : refused;
   if (lastRefreshRefused) { accessToken = null; onAuthLost?.(); }
   return refused;
 }

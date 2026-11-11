@@ -93,6 +93,7 @@ public static class DependencyInjection
         services.AddSingleton<ProjectManagement.Application.Services.EntitlementCache>();
         services.AddSingleton<ProjectManagement.Application.Services.HotReadCache>();
         services.AddSingleton<IHotReadInvalidator>(sp => sp.GetRequiredService<ProjectManagement.Application.Services.HotReadCache>());
+        services.AddSingleton<ProjectManagement.Application.Services.SessionCache>();
 
         // Data-protection keys live in the database: cookies and protected tokens survive redeploys and work across servers.
         Microsoft.AspNetCore.DataProtection.DataProtectionBuilderExtensions.SetApplicationName(services.AddDataProtection(), "projecttracker");
@@ -119,6 +120,7 @@ public static class DependencyInjection
         services.AddHttpClient("google-calendar", c => c.Timeout = TimeSpan.FromSeconds(20))
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(()=>new SocketsHttpHandler{AllowAutoRedirect=false});
         services.AddHttpClient("slack", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient("import-sources", c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient("voice-speech", c => c.Timeout = TimeSpan.FromSeconds(25));
         services.AddHttpClient("support-whatsapp", c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient("pwned-passwords", c => c.Timeout = TimeSpan.FromSeconds(5));
@@ -207,6 +209,10 @@ public static class DependencyInjection
         services.AddHostedService<SlaWorker>();
         services.Configure<TimesheetNudgeOptions>(config.GetSection(TimesheetNudgeOptions.Section));
         services.AddHostedService<TimesheetNudgeWorker>();
+        services.Configure<SlipFixOptions>(config.GetSection(SlipFixOptions.Section));
+        services.AddHostedService<SlipFixWorker>();
+        services.Configure<RecurringWorkOptions>(config.GetSection(RecurringWorkOptions.Section));
+        services.AddHostedService<RecurringWorkWorker>();
         services.Configure<MailWatchOptions>(config.GetSection(MailWatchOptions.Section));
         services.AddHostedService<MailWatchWorker>();
         services.Configure<AttendanceOptions>(config.GetSection(AttendanceOptions.Section));

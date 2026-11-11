@@ -19,6 +19,8 @@ import { NotificationsOverview } from './NotificationsOverview';
 import './settings-mac.css';
 import { leafHref, PLACE_LEAVES, PLACE_OF, useWorkspaceSections, type SettingsPlace, type WorkspaceSection } from './sections';
 import { NotificationCenterPage } from '../notifications/NotificationCenter';
+import { SmartNotificationsPane } from './SmartNotifications';
+import { FeatureFlagsSection, ProblemReportsSection } from './FeatureFlagsAdmin';
 import { AiSettings, type AiTab } from './AiControlCentre';
 import { timeAgo } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
@@ -32,6 +34,7 @@ import { OrgSecurityPanel } from '../organization/OrgSecurityPanel';
 import { MemberSecurityPanel } from '../organization/MemberSecurityPanel';
 import { SignInHistory } from './SignInHistory';
 import { ApprovalHistory, SingleSessionRow, WorkspaceSessionPolicyRow, sessionLine } from '../auth/SessionApproval';
+import { IdlePolicyRow } from './IdlePolicyRow';
 import { ProjectVisibilityPanel } from '../organization/ProjectVisibilityPanel';
 import { ProjectGroupsPage } from '../projects/ProjectGroupsPage';
 import { TimelineTemplatesSettings } from '../projects/TimelineTemplates';
@@ -54,6 +57,7 @@ import { LabelSettings } from './LabelSettings';
 import { SsoSettings } from './SsoSettings';
 import { PROVIDER_ICON } from '../auth/AuthPages';
 import { AiProfileCard } from '../ai/AiInstructions';
+import { AuraMemory } from './AuraMemory';
 import { MyAiProviderCard } from '../ai/OwnAiKey';
 import { LastChanged, LatestChanges, SectionHistory, SetupHealthCard, useSettingJump } from './SettingsCenter';
 import { NotificationDefaultsSection } from './NotificationDefaults';
@@ -164,11 +168,11 @@ export function SettingsPage() {
   const wsSecurity = places.includes('security');
 
   const inWorkspace = place === 'general' || place === 'fields' || place === 'timelines';
-  const notifTabs: SubTab[] = [{ id: 'delivery', label: 'Every event' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
+  const notifTabs: SubTab[] = [{ id: 'smart', label: 'Smart' }, { id: 'delivery', label: 'Every event' }, { id: 'device', label: 'This device' }, { id: 'schedule', label: 'Schedule & time zone' }, { id: 'history', label: 'History' },
     ...leaves.filter((l) => PLACE_LEAVES.notifications.includes(l.id)).map((l) => ({ id: l.id, label: l.id === 'notifications' ? 'Member defaults' : l.label }))];
   const tabs: SubTab[] = place === 'profile'
     ? [{ id: 'profile', label: 'Profile' },
-      ...(!isPlatformAdmin ? [{ id: 'mobile', label: 'Mobile app' }, { id: 'accounts', label: 'Connected accounts' }, { id: 'assistant', label: 'Aura' }] : [])]
+      ...(!isPlatformAdmin ? [{ id: 'mobile', label: 'Mobile app' }, { id: 'accounts', label: 'Connected accounts' }, { id: 'assistant', label: 'Aura' }, { id: 'memory', label: 'Aura memory' }] : [])]
     : place === 'notifications' ? [{ id: 'overview', label: 'Overview' }, ...notifTabs]
       : place === 'ai' ? []
       : place === 'security' ? [{ id: 'account', label: 'Your account' }, ...(wsSecurity ? leaves.filter((l) => PLACE_LEAVES.security.includes(l.id)).sort((a, b) => PLACE_LEAVES.security.indexOf(a.id) - PLACE_LEAVES.security.indexOf(b.id)).map((l) => ({ id: l.id, label: l.label })) : [])]
@@ -266,6 +270,7 @@ function ProfileTab({ sub }: { sub: string }) {
   switch (sub) {
     case 'mobile': return <MobileAppSection />;
     case 'accounts': return <ConnectedAccountsSection />;
+    case 'memory': return <div data-setting="account.auraMemory"><AuraMemory /></div>;
     case 'assistant': return <><PageHead title="Aura" sub="How Aura, your assistant, works with you: what it learned, your own notes, and the organisation’s AI account." /><div data-setting="account.ai"><AiProfileCard /><MyAiProviderCard /></div></>;
     default: return <ProfileSection />;
   }
@@ -275,6 +280,7 @@ function NotificationsTab({ sub }: { sub: string }) {
   switch (sub) {
     case 'notifications': return <NotificationDefaultsSection />;
     case 'reminders': return <><PageHead title="Escalation" sub="Everyone gets reminders about their own work on every plan. Here: what happens when work stays overdue." /><div data-setting="reminders.escalation"><ReminderPolicySettings /><LastChanged k="reminders.escalation" section="reminders" /></div><SectionHistory section="reminders" /></>;
+    case 'smart': return <SmartNotificationsPane />;
     case 'device': return <NotificationCenterPage section="devices" />;
     case 'schedule': return <NotificationCenterPage section="schedule" />;
     case 'history': return <NotificationCenterPage section="inbox" />;
@@ -522,7 +528,7 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'members': return <MembersSection />;
     case 'access': return <Navigate to="/people/roles" replace />;
     case 'visibility': return <><PageHead title="Project visibility" sub="Whether everyone sees every project, or each team sees its own." /><div data-setting="access.projectVisibility"><ProjectVisibilityPanel /><LastChanged k="access.projectVisibility" section="visibility" /></div><SectionHistory section="visibility" /></>;
-    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><RolesMovedCard /><OrgSecurityPanel /><SGroup label="Sessions"><WorkspaceSessionPolicyRow /></SGroup><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
+    case 'security': return <><PageHead title="Sign-in rules" sub="Rules every member's sign-in must meet in this workspace, on top of their own account security." /><RolesMovedCard /><OrgSecurityPanel /><SGroup label="Sessions"><IdlePolicyRow /><WorkspaceSessionPolicyRow /></SGroup><div data-setting="security.members"><MemberSecurityPanel /></div><SectionHistory section="security" /></>;
     case 'sso': return <><SsoSettings /><SectionHistory section="sso" /></>;
     case 'billing': return <><BillingPage /><SectionHistory section="billing" /></>;
     case 'audit': return <AuditPage />;
@@ -543,6 +549,8 @@ function SettingsSection({ id }: { id: WorkspaceSection }) {
     case 'notifications': case 'reminders': return <NotificationsTab sub={id} />;
     case 'holidays': return <HolidaysSection />;
     case 'attendance': return <AttendanceSettings />;
+    case 'features': return <FeatureFlagsSection />;
+    case 'problem-reports': return <ProblemReportsSection />;
     case 'data-location': return <DataLocationSection />;
     case 'status-page': return <StatusPageSection />;
     case 'data': return <><PageHead title="Data & retention" sub="How long history is kept, and a full export of everything." /><DataSettings /><SectionHistory section="data" /></>;

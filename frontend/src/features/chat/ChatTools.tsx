@@ -1,3 +1,4 @@
+import { Select } from '../../components/Select';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../api/client';
@@ -291,9 +292,9 @@ export function PollDialog({ conversation, onClose }: { conversation: Conversati
       </div>
       <label className="check"><input type="checkbox" checked={multiple} onChange={(e) => setMultiple(e.target.checked)} /> People may choose more than one</label>
       <label className="field"><span>Closes</span>
-        <select className="input" value={closesIn ?? ''} onChange={(e) => setClosesIn(e.target.value ? Number(e.target.value) : null)}>
+        <Select className="input" value={closesIn ?? ''} onChange={(e) => setClosesIn(e.target.value ? Number(e.target.value) : null)}>
           <option value="">When I close it</option><option value="1">In 1 hour</option><option value="4">In 4 hours</option><option value="24">In a day</option><option value="72">In 3 days</option>
-        </select></label>
+        </Select></label>
     </Modal>
   );
 }

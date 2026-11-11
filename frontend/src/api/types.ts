@@ -8,7 +8,7 @@ export type StatusCategory = 'Todo' | 'Active' | 'Done' | 'Cancelled';
 export type StageStatus = 'Pending' | 'InProgress' | 'Completed' | 'Delayed';
 export type ProjectHealth = 'OnTrack' | 'AtRisk' | 'Delayed' | 'Completed' | 'Cancelled' | 'Archived';
 export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Expired';
-export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry' | 'AgentAlert' | 'AgentDigest' | 'TimesheetReminder' | 'Support' | 'Call';
+export type NotificationType = 'TaskAssigned' | 'Mention' | 'Comment' | 'DueSoon' | 'Overdue' | 'Invitation' | 'Subscription' | 'Security' | 'ReportReady' | 'Issue' | 'Approval' | 'ServiceLevel' | 'Message' | 'Reminder' | 'Nudge' | 'Briefing' | 'PortfolioDigest' | 'Document' | 'Meeting' | 'TaskUpdated' | 'ProjectUpdated' | 'CertificationExpiry' | 'AgentAlert' | 'AgentDigest' | 'TimesheetReminder' | 'Support' | 'Call' | 'ManagerDigest';
 
 export interface ApiErrorItem { code: string; message: string; field?: string | null }
 export interface Paged<T> { items: T[]; page: number; pageSize: number; totalItems: number; totalPages: number }
@@ -141,6 +141,8 @@ export interface Project {
   projectGroupId: string | null; projectGroupName: string | null; projectType: ProjectType; deliveryMethod: DeliveryMethod;
   /** When the project last changed (list only; the sidebar's pinned projects fall back to the most recently updated). */
   updatedAt?: string | null;
+  /** How many days the due date has moved later in total (every recorded extension). */
+  totalSlipDays?: number; extensionCount?: number;
 }
 /** A follow-up for a project, with an owner, a due date and a priority (on the project's Actions tab and the Portfolio page). */
 export type ActionItemStatus = 'Open' | 'InProgress' | 'Completed';
@@ -182,6 +184,8 @@ export interface Stage {
   locked: boolean; lockedBy: string | null;
   /** Issues found in this stage: the open (unresolved) ones keep it from completing. */
   openIssues: number; totalIssues: number;
+  /** A team that owns the stage (its members are told when it reaches them). */
+  ownerTeamId?: string | null; ownerTeamName?: string | null;
 }
 /** What the timeline shows for a stage: its status, or Locked while it waits for the stage before it. */
 export type StageDisplayStatus = StageStatus | 'Locked';
@@ -191,10 +195,26 @@ export interface TimelineTemplate {
   isCustom?: boolean; id?: string | null; weights?: number[] | null;
 }
 export interface ProjectMember { userId: string; name: string; email: string; role: Role | null }
-export interface ProjectDetail { project: Project; statuses: WorkflowStatus[]; stages: Stage[]; members: ProjectMember[] }
+/** Promised vs likely finish (from stage work, owner load and past slips), the ring numbers and one fix. */
+export interface ProjectForecast {
+  promised: string | null; forecast: string | null; slipDays: number; reason: string | null; currentStageId: string | null; currentStage: string | null;
+  currentOwner: UserRef | null; daysLeft: number | null; journeyPct: number; timeUsedPct: number; workDonePct: number; stageIndex: number; stageCount: number;
+  suggestedOwner: UserRef | null; suggestedOwnerOpenTasks: number; suggestedForecast: string | null;
+  confidence?: ForecastConfidence | null;
+}
+/** How sure the finish forecast is. `confidencePct` is set only when enough finished projects exist to calibrate it; otherwise it is an early estimate. */
+export interface ForecastConfidence {
+  band: 'high' | 'medium' | 'low' | 'early' | 'none'; label: string; confidencePct: number | null; calibrated: boolean; comparableProjects: number; withinDays: number;
+}
+/** How often past finish forecasts were right (heuristic). Hidden by the server until enough completions are verified. */
+export interface ForecastScoreboard {
+  visible: boolean; verified: number; minimumVerified: number; withinDays: number; meanAbsoluteErrorDays: number | null; percentWithinDays: number | null; note: string;
+}
+export interface ProjectDetail { project: Project; statuses: WorkflowStatus[]; stages: Stage[]; members: ProjectMember[]; forecast?: ProjectForecast | null }
 export interface Label { id: string; name: string; color: string }
 
 export interface Task {
+  /** Rough size (S/M/L/XL) used by Load when there is no estimate. */ size?: 'S' | 'M' | 'L' | 'XL' | null;
   id: string; projectId: string; projectKey: string; projectName: string; number: number; key: string; title: string; description: string | null;
   statusId: string; statusName: string; statusCategory: StatusCategory; statusColor: string; priority: Priority;
   assignee: UserRef | null; reporter: UserRef | null; startDate: string | null; dueDate: string | null;
@@ -222,7 +242,10 @@ export interface AppNotification { id: string; type: NotificationType; title: st
   /** A meeting's start (UTC) and where to join it, for meeting reminders. */ startsAt?: string | null; joinLink?: string | null;
   /** Why a reminder came, in a few words ("Due today · no time set"). */ reason?: string | null;
   /** It was (or is about to be) e-mailed too. */ emailed?: boolean;
-  /** A Plan sheet change notice whose change still stands: Undo puts the task back. */ canUndo?: boolean }
+  /** A Plan sheet change notice whose change still stands: Undo puts the task back. */ canUndo?: boolean;
+  /** Urgent rings and pops up; normal only adds to the quiet badge (older servers send nothing: treated as before). */ priority?: 'urgent' | 'normal';
+  /** What it is about ("project:{id}", "chat:{id}", "item:{id}") and that thing's name, for grouping updates. */ groupKey?: string | null; groupLabel?: string | null;
+  /** About a project or thread the person muted: it stays in the centre but never rings. */ muted?: boolean }
 export type NotificationCategory = 'messages' | 'reminders' | 'meetings' | 'work';
 export type NotificationAction = 'done' | 'take' | 'reply' | 'approve' | 'reject' | 'snooze';
 /** Unread overall and in each lane of the inbox. */
@@ -280,6 +303,9 @@ export interface CalendarEvent {
   dueAt?: string | null; slaBreachAt?: string | null; slaState?: SlaState | null;
 }
 export interface SearchHit { type: string; id: string; title: string; subtitle: string | null; projectId: string | null; taskId: string | null }
+/** One related result of the ask bar: found by words, by meaning or both, with a short excerpt and where it opens. Only what the person may open. */
+export interface MeaningHit { kind: string; id: string; title: string; key: string | null; link: string; excerpt: string; via: 'words' | 'meaning' | 'both'; at: string | null }
+export interface MeaningSearch { items: MeaningHit[]; meaning: boolean }
 export interface ReportSummary {
   days: number;
   totals: { total: number; completed: number; pending: number; inProgress: number; overdue: number; cancelled: number; completionRate: number };
@@ -609,7 +635,7 @@ export interface ImportPreview {
   /** Things worth checking that do not stop the import (e.g. the file was not UTF-8). */
   warnings?: string[] | null;
 }
-export interface ImportResult { created: number; skipped: number; labelsCreated: number; errors: ImportError[] }
+export interface ImportResult { created: number; skipped: number; labelsCreated: number; errors: ImportError[]; batchId?: string | null }
 
 // ---- custom fields
 export type CustomFieldType = 'Text' | 'Number' | 'Date' | 'Dropdown' | 'Checkbox';

@@ -32,8 +32,13 @@ echo "== Database (Cloud SQL for PostgreSQL 18, daily backups kept 14 days, poin
 if ! gcloud sql instances describe "$DB_INSTANCE" >/dev/null 2>&1; then
   gcloud sql instances create "$DB_INSTANCE" --database-version=POSTGRES_18 --edition=ENTERPRISE --tier="$DB_TIER" --region="$REGION" \
     --storage-type=SSD --storage-size=10 --storage-auto-increase --availability-type=zonal \
-    --backup-start-time=20:30 --retained-backups-count=14 --enable-point-in-time-recovery
+    --backup-start-time=20:30 --retained-backups-count=14 --enable-point-in-time-recovery \
+    --ssl-mode=ENCRYPTED_ONLY
 fi
+# The database refuses a connection that is not encrypted. The app is unaffected: it reaches the database through the Cloud SQL Auth
+# Proxy, which makes its own TLS tunnel, so the "SSL Mode=Disable" in the connection string is only the hop from the app to the proxy
+# beside it. Set every time rather than only at creation, so an instance made before this line is brought up to it as well.
+gcloud sql instances patch "$DB_INSTANCE" --quiet --ssl-mode=ENCRYPTED_ONLY >/dev/null
 gcloud sql databases describe "$DB_NAME" --instance="$DB_INSTANCE" >/dev/null 2>&1 || gcloud sql databases create "$DB_NAME" --instance="$DB_INSTANCE"
 if [ ! -s "$STATE/db-password" ]; then
   openssl rand -base64 30 | tr -d '/+=\n' > "$STATE/db-password"; chmod 600 "$STATE/db-password"

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m as motion } from 'framer-motion';
 import { Icon } from '../Icon';
 import { lockScroll } from '../../lib/scrollLock';
 import { useIsMobile } from '../../lib/mobile';
@@ -12,29 +12,34 @@ import './calm-kit.css';
  * rises as a centred 880px sheet (insights, summaries). On a phone both become a bottom sheet with a grab handle. Escape and the scrim
  * close it; focus moves into the sheet and back to where it was.
  */
-export function CalmSheet({ open, onClose, title, sub, children, kind = 'side', width, label, actions }: {
+export function CalmSheet({ open, onClose, title, sub, children, kind = 'side', width, label, actions, clear, className = '' }: {
+  /** Keep the page visible behind a side panel (no blur, a faint tint): edit-in-place panels. */ clear?: boolean; className?: string;
   open: boolean; onClose: () => void; title?: ReactNode; sub?: ReactNode; children: ReactNode; kind?: 'side' | 'bottom'; width?: number; label?: string; actions?: ReactNode;
 }) {
   const phone = useIsMobile();
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
+  // The latest onClose, so a parent passing a new function each render does not re-run the effect (which would pull focus back to the
+  // sheet and blur whatever field is being edited inside it).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const back = document.activeElement as HTMLElement | null;
     const release = lockScroll();
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); } };
     window.addEventListener('keydown', key);
     requestAnimationFrame(() => ref.current?.focus());
     return () => { release(); window.removeEventListener('keydown', key); back?.focus?.(); };
-  }, [open, onClose]);
+  }, [open]);
   const motionProps = phone || kind === 'bottom' ? presets.sheet : presets.panel;
   if (typeof document === 'undefined') return null;
   return createPortal(
     <AnimatePresence>
       {open && (
         <>
-          <motion.div key="scrim" className="calm-scrim" {...presets.fade} onClick={onClose} aria-hidden="true" />
-          <motion.div key="sheet" ref={ref} className={`calm-sheet ${kind}`} role="dialog" aria-modal="true" tabIndex={-1}
+          <motion.div key="scrim" className={`calm-scrim${clear ? ' clear' : ''}`} {...presets.fade} onClick={onClose} aria-hidden="true" />
+          <motion.div key="sheet" ref={ref} className={`calm-sheet ${kind} ${className}`.trim()} role="dialog" aria-modal="true" tabIndex={-1}
             aria-labelledby={title ? id : undefined} aria-label={title ? undefined : label}
             style={width ? ({ '--calm-sheet-w': `${width}px` } as React.CSSProperties) : undefined} {...motionProps}>
             <span className="calm-sheet-grab" aria-hidden="true" />

@@ -1,0 +1,124 @@
+/* Aura invoked (AuraSurface.tsx), to the approved design (load/v2.html: .mark, .glow, .askbar, .ans): the viewport's edge glows, the page
+   blurs and dims, one pill at the bottom, suggestions above it, answers and results float as frosted cards. Transform and opacity only. */
+.aura-x { --aura-blue: #2563eb; --aura-conic: conic-gradient(from 90deg, #5b8cff, #a06bff, #ff5fa2, #ff9a4d, #ffd25a, #3ee0a1, #5b8cff);
+  --aura-glass: rgba(255, 255, 255, .88); --aura-card: rgba(255, 255, 255, .92); --aura-ink: #0f172a; --aura-ink-2: #64748b; --aura-ph: #334155; }
+html[data-theme='dark'] .aura-x, html[data-theme='dark'] .groot-chat.card { --aura-glass: rgba(38, 38, 42, .86); --aura-card: rgba(38, 38, 42, .92); --aura-ink: #f5f5f7; --aura-ink-2: #a1a1aa; --aura-ph: #c7c7cc; --aura-blue: #3b82f6; }
+@media (prefers-color-scheme: dark) { html:not([data-theme='light']) .aura-x, html:not([data-theme='light']) .groot-chat.card { --aura-glass: rgba(38, 38, 42, .86); --aura-card: rgba(38, 38, 42, .92); --aura-ink: #f5f5f7; --aura-ink-2: #a1a1aa; --aura-ph: #c7c7cc; --aura-blue: #3b82f6; } }
+
+.aura-x { position: fixed; inset: 0; z-index: 1190; pointer-events: none; }
+.aura-x > * { transition: opacity 200ms ease; }
+.aura-x > .aura-x-scrim { pointer-events: auto; }
+.aura-x[data-leaving] > * { opacity: 0; pointer-events: none; }
+.aura-x-scrim { position: fixed; inset: 0; z-index: 1190; background: rgba(246, 244, 255, .42); -webkit-backdrop-filter: blur(9px) saturate(1.1); backdrop-filter: blur(9px) saturate(1.1);
+  animation: aura-x-fade 220ms ease-out both; }
+html[data-theme='dark'] .aura-x-scrim { background: rgba(12, 12, 20, .5); }
+
+/* The edge glow: a rim of turning colour (a big conic layer rotating behind a frame-shaped mask) and a soft inner light. */
+.aura-x-glow { position: fixed; inset: 0; z-index: 1195; pointer-events: none; animation: aura-x-fade 320ms ease-out both; }
+.aura-x-rim { position: absolute; inset: 0; padding: 6px; overflow: hidden; filter: blur(3px);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.aura-x-rim > i { position: absolute; left: 50%; top: 50%; width: 150vmax; height: 150vmax; margin: -75vmax 0 0 -75vmax;
+  background: conic-gradient(from 200deg, #5b8cff, #a06bff, #ff5fa2, #ff9a4d, #ffd25a, #3ee0a1, #5b8cff); animation: aura-ring-turn 10s linear infinite; will-change: transform; }
+.aura-x-glow::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 36px rgba(160, 107, 255, .45), inset 0 0 90px rgba(255, 95, 162, .2), inset 0 0 140px rgba(91, 140, 255, .15);
+  animation: aura-x-breathe 4s ease-in-out infinite; }
+.aura-x[data-voice='listening'] .aura-x-rim > i { animation-duration: 3.2s; }
+
+/* The column: answers and results (stage), suggestions, then the pill. */
+.aura-x-col { position: fixed; z-index: 1210; top: 0; bottom: 0; left: 50%; width: min(640px, calc(100vw - 32px)); transform: translateX(-50%); display: flex; flex-direction: column;
+  padding: 24px 0 28px; pointer-events: none; }
+.aura-x-col > * { pointer-events: auto; }
+.aura-x-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; padding-bottom: 12px; pointer-events: auto; }
+.aura-x-chips { display: flex; gap: 6px; justify-content: safe center; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 12px; min-height: 46px; flex: none; }
+.aura-x-chips::-webkit-scrollbar { display: none; }
+.aura-x-chip { flex: none; padding: 7px 12px; border: 0; border-radius: 999px; background: var(--aura-glass); color: var(--aura-ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, .06); animation: aura-x-rise 260ms cubic-bezier(.2, 0, 0, 1) both; }
+.aura-x-chip:hover { background: #fff; } html[data-theme='dark'] .aura-x-chip:hover { background: rgba(58, 58, 62, .95); }
+.aura-x-chip:focus-visible, .aura-x-mic:focus-visible, .aura-s-open:focus-visible, .aura-x-stop:focus-visible { outline: 2px solid var(--aura-blue); outline-offset: 2px; }
+
+.aura-x-bar { position: relative; display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 10px 12px 10px 14px; border-radius: 999px; background: var(--aura-glass);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: 0 10px 40px rgba(15, 23, 42, .18); flex: none; animation: aura-x-rise 280ms cubic-bezier(.2, 0, 0, 1) both; }
+.aura-x-bar::before { content: ''; position: absolute; inset: -2px; border-radius: 999px; padding: 2px; background: var(--aura-conic); pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.aura-x-bar input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--aura-ink); font: inherit; font-size: 16px; }
+.aura-x-bar input::placeholder { color: var(--aura-ph); opacity: 1; }
+.aura-s-open { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; flex: none; }
+.aura-x-mic { width: 34px; height: 34px; margin-left: auto; border: 0; border-radius: 50%; background: #0f172a; color: #fff; display: grid; place-items: center; cursor: pointer; flex: none;
+  touch-action: none; -webkit-touch-callout: none; user-select: none; transition: transform 160ms ease; }
+.aura-x-mic:active { transform: scale(.92); }
+.aura-x-mic.send { background: var(--aura-blue); }
+html[data-theme='dark'] .aura-x-mic:not(.send) { background: #f5f5f7; color: #0f172a; }
+.aura-x-stop { width: 34px; height: 34px; margin-left: auto; border: 0; border-radius: 50%; background: #ef4444; display: grid; place-items: center; cursor: pointer; flex: none; }
+.aura-x-stop span { width: 11px; height: 11px; border-radius: 2px; background: #fff; }
+
+/* Voice: the live words above, a colour wave in the bar. */
+.aura-x-wave { flex: 1; display: flex; align-items: center; gap: 4px; height: 30px; }
+.aura-x-wave i { width: 4px; height: 26px; border-radius: 2px; transform-origin: center; animation: aura-x-wave 900ms ease-in-out infinite; }
+.aura-x-wave i:nth-child(1) { background: #ff5fa2; animation-delay: -.1s; } .aura-x-wave i:nth-child(2) { background: #a06bff; animation-delay: -.5s; }
+.aura-x-wave i:nth-child(3) { background: #5b8cff; animation-delay: -.3s; } .aura-x-wave i:nth-child(4) { background: #3ee0a1; animation-delay: -.7s; }
+.aura-x-wave i:nth-child(5) { background: #ff9a4d; animation-delay: -.2s; }
+.aura-x-wave[data-beat='1'] i { animation-duration: 620ms; }
+.aura-x-heard { text-align: center; padding: 0 8px; }
+.aura-x-said { margin: 0 0 14px; font-size: clamp(22px, 3vw, 30px); font-weight: 600; line-height: 1.25; letter-spacing: -.01em; color: var(--aura-ink); animation: aura-x-fade 200ms ease-out both; }
+.aura-x-listen { margin: 0; font-size: 15px; color: var(--aura-ink-2); }
+
+/* Results inline, in a frosted card on the same surface. */
+.aura-x-card { background: var(--aura-card); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-radius: 22px; box-shadow: 0 10px 40px rgba(15, 23, 42, .14); color: var(--aura-ink);
+  display: flex; flex-direction: column; max-height: 100%; min-height: 0; overflow: hidden; animation: aura-x-rise 240ms cubic-bezier(.2, 0, 0, 1) both; }
+.aura-s-chips { display: flex; gap: 6px; padding: 12px 12px 6px; overflow-x: auto; scrollbar-width: none; flex: none; }
+.aura-s-chips::-webkit-scrollbar { display: none; }
+.aura-s-chips button { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: rgba(120, 120, 128, .12); color: inherit; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.aura-s-chips button.on { background: rgba(37, 99, 235, .12); color: var(--aura-blue); }
+.aura-s-chips small { font-size: 11px; opacity: .65; }
+.aura-s-body { overflow-y: auto; padding: 0 12px 12px; overscroll-behavior: contain; min-height: 0; }
+.aura-s-body h4 { margin: 10px 6px 6px; font-size: 12px; font-weight: 600; color: var(--aura-ink-2); }
+.aura-s-group { list-style: none; margin: 0; padding: 0; }
+.aura-s-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 6px 8px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.aura-s-row[data-sel="true"] { background: rgba(120, 120, 128, .12); }
+.aura-s-mark { width: 28px; height: 28px; border-radius: 8px; flex: none; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 650; }
+.aura-s-row.ask .siri-orb { margin: 0 4px; }
+.aura-s-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.aura-s-t b { font-weight: 500; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aura-s-t small { font-size: 12.5px; color: var(--aura-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aura-s-empty { margin: 8px 6px 12px; font-size: 14px; color: var(--aura-ink-2); }
+.aura-s-t small.aura-s-ex { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin-top: 2px; }
+.aura-s-note { margin: 4px 6px 10px; font-size: 12px; color: var(--aura-ink-2); }
+
+/* The answer: GrootChat in card mode. The question as a blue bubble, the answer as a frosted card with the ring, sources and one action. */
+html body .groot-chat.card { z-index: 1205; background: none; box-shadow: none; border: 0; border-radius: 0; overflow: visible; -webkit-backdrop-filter: none; backdrop-filter: none;
+  width: var(--aura-cap-w, 600px); max-height: calc(100vh - var(--aura-cap-gap, 100px) - 24px); transition: opacity 180ms ease; }
+html.aura-finding .groot-chat.card { opacity: 0 !important; pointer-events: none; }
+html body .groot-chat.card .gc-body { padding: 4px 6px 20px; overflow-y: auto; scrollbar-width: none; }
+html body .groot-chat.card .gc-turn { gap: 16px; margin: 0; }
+html body .groot-chat.card .gc-me { align-self: flex-end; max-width: 85%; display: block; }
+html body .groot-chat.card .gc-me::before { content: none; }
+html body .groot-chat.card .gc-me p { padding: 10px 20px; border-radius: 20px; background: var(--aura-blue, #2563eb); color: #fff; font-size: 15px; box-shadow: 0 6px 20px rgba(37, 99, 235, .25); }
+html body .groot-chat.card .gc-groot { background: var(--aura-card, #fff); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-radius: 22px; padding: 16px 18px;
+  box-shadow: 0 10px 40px rgba(15, 23, 42, .14); color: var(--aura-ink, inherit); gap: 8px; }
+html body .groot-chat.card .gc-who { display: flex; }
+html body .groot-chat.card .gc-groot > .gc-steps { display: none; }
+html body .groot-chat.card .gc-md { font-size: 15px; line-height: 1.45; }
+html body .groot-chat.card .gc-md p:last-child { margin-bottom: 0; }
+html body .groot-chat.card .gc-md a { color: var(--aura-blue, #2563eb); }
+html body .groot-chat.card .gc-src { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0; font-size: 13px; color: var(--aura-ink-2, #64748b); background: none; padding: 0; }
+html body .groot-chat.card .gc-src > span { margin-right: 4px; } html body .groot-chat.card .gc-src > span::after { content: ':'; }
+html body .groot-chat.card .gc-s { border: 0; background: none; padding: 0; color: inherit; font: inherit; font-size: 13px; cursor: pointer; box-shadow: none; }
+html body .groot-chat.card .gc-s:hover { text-decoration: underline; }
+html body .groot-chat.card .gc-s + .gc-s::before { content: '·'; margin: 0 6px; }
+html body .groot-chat.card .gc-follow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 4px; }
+html body .groot-chat.card .gc-follow .gc-chip.sm { padding: 0; background: none; box-shadow: none; color: var(--aura-blue, #2563eb); font-size: 15px; font-weight: 600; border-radius: 0; }
+html body .groot-chat.card .gc-follow .gc-chip.sm:first-child { padding: 10px 18px; border-radius: 12px; background: var(--aura-blue, #2563eb); color: #fff; }
+html body .groot-chat.card .gc-follow .gc-chip.sm:hover { transform: none; opacity: .9; }
+
+/* Phone: the bar at the bottom edge, full width. */
+.aura-x.phone .aura-x-col { width: calc(100vw - 24px); padding: calc(16px + env(safe-area-inset-top)) 0 calc(12px + env(safe-area-inset-bottom)); }
+.aura-x.phone .aura-x-chips { justify-content: flex-start; }
+.aura-x.phone .aura-x-bar { min-height: 56px; }
+
+@keyframes aura-x-fade { from { opacity: 0; } }
+@keyframes aura-x-rise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes aura-x-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
+@keyframes aura-x-wave { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .aura-x-rim > i, .aura-x-glow::after, .aura-x-wave i { animation: none !important; }
+  .aura-x-bar, .aura-x-chip, .aura-x-card, .aura-x-said { animation-name: aura-x-fade !important; }
+}

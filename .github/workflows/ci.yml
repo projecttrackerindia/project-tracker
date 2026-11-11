@@ -75,7 +75,7 @@ jobs:
   api-postgres:
     name: API tests on PostgreSQL
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16
@@ -194,10 +194,22 @@ jobs:
           DOMAIN=example.com ACME_EMAIL=ci@example.com docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env config -q
       - name: Caddyfile is valid
         run: docker run --rm -e DOMAIN=example.com -e ACME_EMAIL=ci@example.com -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+      - name: Production and staging compose files are valid (Google Cloud)
+        run: |
+          cd deploy/gcp && touch api.env meetbot.env
+          DOMAIN=example.com ACME_EMAIL=ci@example.com IMAGES=r/p TAG=t DB_CONNECTION=x docker compose -f docker-compose.yml config -q
+          DOMAIN=staging.example.com ACME_EMAIL=ci@example.com IMAGES=r/p TAG=t DB_CONNECTION=x STAGING_DB_PASSWORD=ci \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml config -q
+          docker run --rm -e DOMAIN=example.com -e ACME_EMAIL=ci@example.com -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+          docker run --rm -e DOMAIN=staging.example.com -e ACME_EMAIL=ci@example.com -v "$PWD/Caddyfile.staging:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+      - name: Release script (tag pinning and automatic rollback) behaves
+        run: bash deploy/gcp/test-vm-release.sh
+      - name: Uptime check script behaves
+        run: bash deploy/ops/test-uptime-check.sh
       - name: Shell scripts parse
         run: |
           for f in deploy/*.sh; do sh -n "$f" && echo "ok $f"; done
-          for f in deploy/gcp/*.sh deploy/gcp/calls/*.sh; do bash -n "$f" && echo "ok $f"; done
+          for f in deploy/gcp/*.sh deploy/gcp/calls/*.sh deploy/ops/*.sh; do bash -n "$f" && echo "ok $f"; done
       - name: Calls server files are valid (compose and Caddyfile)
         run: |
           CALLS_HOST=calls.example.com ACME_EMAIL=ci@example.com docker compose -f deploy/gcp/calls/docker-compose.yml config -q

@@ -180,10 +180,16 @@ public sealed class FakeEmbedder : ProjectManagement.Application.Features.Ai.IAi
     public bool Configured { get; set; } = true;
     public string Model => "fake-embedding-1";
     public int Calls { get; private set; }
+    /// <summary>When true the model "fails" (a network error), so the fall-back to words alone can be tested.</summary>
+    public bool Throw { get; set; }
+    /// <summary>The most texts any one call carried (the index must keep its batches bounded).</summary>
+    public int MaxBatch { get; private set; }
 
     public Task<IReadOnlyList<float[]>> EmbedAsync(IReadOnlyList<string> texts, bool query, CancellationToken ct)
     {
         Calls++;
+        MaxBatch = Math.Max(MaxBatch, texts.Count);
+        if (Throw) throw new HttpRequestException("The embedding model answered 503.");
         return Task.FromResult<IReadOnlyList<float[]>>(texts.Select(Vector).ToList());
     }
 

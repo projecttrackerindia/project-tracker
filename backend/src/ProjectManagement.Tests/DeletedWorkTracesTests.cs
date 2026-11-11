@@ -133,7 +133,10 @@ public class DeletedWorkTracesTests(ApiFactory factory)
 
         var marker = "Numbat" + Guid.NewGuid().ToString("N")[..8];
         var first = await w.Owner.Post($"/api/v1/projects/{w.Project}/action-items", new { title = $"{marker} send minutes", assigneeId = w.Dev.UserId, dueDate = Iso(3) });
-        var second = await w.Owner.Post($"/api/v1/projects/{w.Project}/action-items", new { title = $"{marker} send minutes", assigneeId = w.Dev.UserId, dueDate = Iso(3) });
+        // The API no longer saves the same item twice (it hands back the first copy), so the older duplicate is made by renaming another row.
+        var again = await w.Owner.Post($"/api/v1/projects/{w.Project}/action-items", new { title = $"{marker} send minutes", assigneeId = w.Dev.UserId, dueDate = Iso(3) });
+        Assert.Equal(S(first.Data!["id"]), S(again.Data!["id"]));
+        var second = await w.Owner.Post($"/api/v1/projects/{w.Project}/action-items", new { title = $"{marker} send minutes copy", assigneeId = w.Dev.UserId, dueDate = Iso(3) });
         var different = await w.Owner.Post($"/api/v1/projects/{w.Project}/action-items", new { title = $"{marker} book room", assigneeId = w.Dev.UserId, dueDate = Iso(3) });
         Assert.True(first.Ok && second.Ok && different.Ok);
         var firstId = Guid.Parse(S(first.Data!["id"]));
@@ -150,6 +153,7 @@ public class DeletedWorkTracesTests(ApiFactory factory)
         {
             db.Notifications.Add(new Notification { TenantId = tenant, UserId = w.Dev.UserId, Type = NotificationType.ProjectUpdated, Title = $"{marker} legacy", Link = $"/projects/{old}?tab=actions&action={orphanId}", InApp = true });
             db.SaveChanges();
+            db.Database.ExecuteSqlRaw($"UPDATE \"WorkItems\" SET \"Title\" = '{marker} send minutes', \"CreatedAt\" = (SELECT \"CreatedAt\" FROM \"WorkItems\" WHERE \"Id\" = '{firstId}') + interval '1 second' WHERE \"Id\" = '{secondId}'");
             return db.Database.ExecuteSqlRaw($"UPDATE \"Projects\" SET \"IsDeleted\" = TRUE, \"DeletedAt\" = now() WHERE \"Id\" = '{old}'");
         });
 

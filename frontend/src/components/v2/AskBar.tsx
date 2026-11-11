@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { SiriOrb } from '../aura/SiriOrb';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { insightApi, projectApi } from '../../api/endpoints';
 import { Icon, type IconName } from '../Icon';
 import { useWsQuery } from '../../lib/hooks';
 import { useAi, useAssistant } from '../../features/ai/Assistant';
 import { AuraOrb } from '../aura/AuraOrb';
+import { toggleAuraSearch, useAuraSearch } from '../aura/AuraSearch';
 import { dismissAura, invokeAura, openGroot, useAuraInvoke, useGroot } from '../groot/store';
 import { useAuraMood } from '../aura/mood';
 import { AURA_FRAME_MS, AURA_MOODS, auraReduced } from '../aura/auraEngine';
@@ -46,9 +48,9 @@ export function Toolbar() {
   return (
     <div ref={bar} className="v2-tb shell-head" role="toolbar" aria-label="Your day">
       <span className="v2-tb-sp" />
-      <AttendanceCapsule />
-      <NotificationBell />
+      <AttendanceCapsule ring />
       <AuraOrbButton />
+      <NotificationBell />
       <AvatarMenu />
     </div>
   );
@@ -76,13 +78,13 @@ function useWhere() {
 /** The Aura orb in the header: a click (or ⌘K) opens the floating Aura panel, which grows from it. */
 export function AuraOrbButton() {
   const ai = useAi();
-  const open = useGroot((s) => s.open && !s.card);
+  const open = useAuraSearch((s) => s.open);
   const where = useWhere();
-  if (!ai) return null;
+  void ai;
   return (
     <button type="button" className={`shell-hb shell-orb${open ? ' on' : ''}`} data-aura-entry="" aria-label={`Aura (${AURA_KEY})`} title={`Aura ${AURA_KEY}`} aria-expanded={open}
-      onClick={() => { haptic(); toggleAura(where); }}>
-      <span className="calm-orb" aria-hidden="true" />
+      onClick={() => { haptic(); toggleAuraSearch(where); }}>
+      <SiriOrb state={open ? 'listening' : undefined} />
     </button>
   );
 }
@@ -97,9 +99,11 @@ export function AuraKeys() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k' || e.altKey) return;
       if (e.shiftKey) { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); return; }
-      if (!ai) return;
       e.preventDefault(); e.stopImmediatePropagation();
-      toggleAura(where.current);
+      // The Aura panel open: ⌘K puts it away; otherwise it toggles Aura search.
+      const g = useGroot.getState();
+      if (g.open && !g.card) { g.close(); return; }
+      toggleAuraSearch(where.current);
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
@@ -110,13 +114,13 @@ export function AuraKeys() {
 /** Aura in the phone's top bar: the orb opens the Aura bottom sheet. */
 export function AuraPhoneOrb() {
   const ai = useAi();
-  const open = useGroot((s) => s.open && !s.card);
+  const open = useAuraSearch((s) => s.open);
   const where = useWhere();
-  if (!ai) return null;
+  void ai;
   return (
     <button type="button" className={`m-icon m-aura-orb${open ? ' on' : ''}`} data-aura-entry="" aria-label="Aura" aria-expanded={open}
-      onClick={() => { haptic(); toggleAura(where); }}>
-      <AuraOrb size={24} label={null} />
+      onClick={() => { haptic(); toggleAuraSearch(where); }}>
+      <SiriOrb size={26} state={open ? 'listening' : undefined} />
     </button>
   );
 }

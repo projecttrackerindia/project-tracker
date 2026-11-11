@@ -1294,7 +1294,7 @@ public partial class AiWorkspaceTests(ApiFactory factory)
 
         // Rewriting an existing task: title, description, dates and estimate.
         var key = factory.WithDb(db => db.Tasks.IgnoreQueryFilters().Include(t => t.Project).Where(t => t.Id == task.Id).Select(t => t.Project!.Key + "-" + t.Number).Single());
-        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_update_work", new { key, title = "Implement GO DIGIT Policy ID, Mode and Type changes", description = "Rewritten scope.", start_date = Iso(1), estimate_hours = 8 }));
+        Chat.Script.Enqueue(_ => FakeAiChat.UseTool("propose_update_work", new { key, title = "Implement GO DIGIT Policy ID, Mode and Type changes", description = "Rewritten scope.", start_date = Iso(1), estimate_hours = 8, reason = "Requirements arrived a day late" }));
         Chat.Script.Enqueue(_ => FakeAiChat.Say("Prepared."));
         var edit = await Ask(o.Owner, "Make that task title and description more professional and give it 8 hours");
         var ecard = edit.Last("action")["action"]!;

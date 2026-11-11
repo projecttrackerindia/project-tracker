@@ -15,6 +15,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Mailbox/MailWatch.cs", // the background mail watcher: lists every connected IMAP mailbox with its own workspace and owner; each alert is created for that owner in that workspace only
         "ProjectManagement.Application/Features/Time/PlannedLeaveService.cs", // exact tenant/request tombstone check after person authorization; no cross-tenant read
         "ProjectManagement.Api/Middleware/Middleware.cs",
+        "ProjectManagement.Application/Features/Insights/AuraServices.cs", // AuraFridayJob: the background worker lists owners of active projects with their own workspace; each notice is created for that owner in that workspace only
         "ProjectManagement.Application/Features/Platform/StatusPageService.cs", // the public status page is opened without signing in: found by its unique slug, then only that page's workspace (named in every query); a slug's uniqueness across workspaces is an existence check
         "ProjectManagement.Application/Features/Vault/VaultService.Sealed.cs", // who has access to a sealed collection now: memberships of the whole workspace (named explicitly), so people outside the caller's project view never look like they lost access
         "ProjectManagement.Application/Features/Vault/SecretLinkPublic.cs", // a self-destructing link is opened without signing in: found by the hash of its token (unique across workspaces); its workspace's name and the sender's name only
@@ -39,6 +40,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Ai/AiSemanticIndex.cs", // background embedding across workspaces; every search hit is re-opened with the reader's own access
         "ProjectManagement.Application/Features/Ai/AiToolbox.cs",
         "ProjectManagement.Application/Features/Ai/AiWatchService.cs", // the background watch check reads each watch's target by id, for its own tenant only, and notifies only the watch's owner
+        "ProjectManagement.Application/Features/Ai/ForecastScoring.cs", // the weekly forecast snapshots are read across workspaces by the job, and every row is scored and shown only inside its own tenant
+        "ProjectManagement.Application/Features/Ai/SlipFix.cs", // the 3-hourly job lists active workspaces, then reads each one's projects and Aura chat by tenant id; cards go only to that project's owner
         "ProjectManagement.Application/Features/Ai/AiUsageService.cs",
         "ProjectManagement.Application/Features/Auth/AccountDeletionService.cs", // the signed-in person's own account, the workspaces they own (count only) and the platform administrators' e-mail addresses
         "ProjectManagement.Application/Features/Billing/BillingMailer.cs", // billing e-mails are sent from webhooks and background jobs with no signed-in workspace: it reads only that workspace's name and its owner's address
@@ -82,6 +85,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Integrations/IncomingWebhookService.cs", // anonymous incoming webhook: the address is found by the token in its URL (and its secret, when set); everything after runs in that workspace as the member who set it up
         "ProjectManagement.Application/Features/Chat/ChatService.Upgrades.cs", // scheduled send: finds due rows (ids, workspace and sender only), then sends each as its sender inside that workspace
         "ProjectManagement.Application/Features/Issues/IssueService.cs",
+        "ProjectManagement.Application/Features/Notes/NoteService.cs", // Undo of a delete: the signed-in owner's own deleted note, by id, current tenant id and owner id named
         "ProjectManagement.Application/Features/Notifications/NotificationService.cs", // the e-mail worker (no signed-in workspace): pending notices, and for a Plan sheet change notice its kept change, task, project and statuses, each looked up by id with the notice's own tenant id named
         "ProjectManagement.Application/Features/Notifications/PushService.cs",
         "ProjectManagement.Application/Features/Organization/AccessService.cs",
@@ -104,6 +108,8 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Quality/QualityService.cs", // next TC-n number: max over this workspace's own cases (tenant id named explicitly), including deleted ones so keys are never reused
         "ProjectManagement.Application/Features/Projects/ActionItemService.cs", // restoring an action item from the bin (deleted rows are filtered out otherwise), checked against its project and tenant
         "ProjectManagement.Application/Features/Reminders/PortfolioDigestService.cs",
+        "ProjectManagement.Application/Features/Recurring/RecurrenceService.cs", // the background job lists active series across workspaces, then works inside each one's scope; task numbers count deleted tasks, as TaskService does
+        "ProjectManagement.Application/Features/Recurring/ManagerDigestService.cs", // the Monday e-mail (no signed-in workspace): every query names the tenant and the owner explicitly
         "ProjectManagement.Application/Features/Reminders/ReminderEngine.cs",
         "ProjectManagement.Application/Features/Reminders/DueReminderRules.cs", // the reminder engine (no signed-in workspace): whether the reminded person touched one item, by its id and their id only (existence checks)
         "ProjectManagement.Application/Features/Reminders/ReminderService.cs", // the signed-in person's own organization zone, by the current tenant id only
@@ -117,6 +123,7 @@ public class QueryFilterBypassGuardTests
         "ProjectManagement.Application/Features/Work/WorkTaskService.cs",
         "ProjectManagement.Application/Features/Workspaces/WorkspaceService.cs",
         "ProjectManagement.Application/Services/EntitlementService.cs",
+        "ProjectManagement.Application/Services/SessionCache.cs", // the sign-in lookup moved out of the request pipeline unchanged: one session by exact id+user, and the idle minutes of that session's own workspace settings row
         "ProjectManagement.Application/Services/WorkspaceExecutionPrincipal.cs", // reconstructs current membership and project scope for a saved principal; active tenant and exact user checks
         "ProjectManagement.Infrastructure/Workers/AiTraceRetentionWorker.cs", // background cleanup: only expired operational traces; no content or business writes
         "ProjectManagement.Infrastructure/Persistence/AppDbContext.Audit.cs",

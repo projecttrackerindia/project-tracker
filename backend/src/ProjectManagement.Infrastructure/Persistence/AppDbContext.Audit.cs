@@ -61,13 +61,21 @@ public partial class AppDbContext
     private readonly List<NotificationAnnouncement> pendingNotifications = [];
     private bool pendingPlanInvalidation;
     private readonly HashSet<Guid> pendingHotReads = [];
+    private bool pendingAccessInvalidation;
 
     // ------------------------------------------------------------------ audit stamping & write guard
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         Stamp();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        var accessChanged = sessionCache is { Enabled: true } && ChangeTracker.Entries().Any(ProjectManagement.Application.Services.SessionCache.Affects);
+        var saved = base.SaveChanges(acceptAllChangesOnSuccess);
+        if (accessChanged)
+        {
+            if (Database.CurrentTransaction is not null) pendingAccessInvalidation = true;
+            else sessionCache!.InvalidateAllAsync().GetAwaiter().GetResult();
+        }
+        return saved;
     }
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
@@ -75,6 +83,8 @@ public partial class AppDbContext
         Stamp();
         // Remember what changes a workspace's plan or entitlements *before* saving (the tracker is cleared afterwards).
         var tenants = new HashSet<Guid>(); var plansChanged = false;
+        // The same for anything that decides who gets in: remembered access is cleared once the change is committed.
+        var accessChanged = sessionCache is { Enabled: true } && ChangeTracker.Entries().Any(ProjectManagement.Application.Services.SessionCache.Affects);
         if (entitlementCache is { Enabled: true })
         {
             foreach (var e in ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
@@ -90,7 +100,10 @@ public partial class AppDbContext
             RealtimeEntityChanges.Collect(ChangeTracker, current.UserId));
         if (changes is { Count: > 0 }) changes = await ResolveCommentProjectsAsync(changes, cancellationToken);
         // New notifications (in the bell): their recipients' open tabs hear of them once committed, instead of at the next poll.
-        var created = notificationFeed is null ? null : ChangeTracker.Entries<Notification>().Where(e => e.State == EntityState.Added && e.Entity.InApp)
+        var created = notificationFeed is null ? null : ChangeTracker.Entries<Notification>().Where(e => e.Entity.InApp && (e.State == EntityState.Added
+                // A change folded into a recent unread notice (WorkChangeNotices, bursts within 2 min) is news too: the open bell re-reads it.
+                || (e.State == EntityState.Modified && e.Property(n => n.Title).IsModified && e.Entity.ArchivedAt == null && e.Entity.ReadAt == null
+                    && e.Entity.DedupeKey != null && e.Entity.DedupeKey.StartsWith("work-change:"))))
             .Select(e => new NotificationAnnouncement(e.Entity.TenantId, e.Entity.UserId, e.Entity.Id, e.Entity.Type, e.Entity.InApp)).ToList();
         // Every workspace this save touches loses its cached hot reads once committed (alongside the realtime change events).
         var touched = hotReads is null ? null : ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
@@ -101,6 +114,7 @@ public partial class AppDbContext
             if (touched is not null) pendingHotReads.UnionWith(touched);
             if (created is not null) pendingNotifications.AddRange(created);
             pendingPlanInvalidation |= plansChanged;
+            pendingAccessInvalidation |= accessChanged;
             pendingTenantInvalidations.UnionWith(tenants);
             if (changes is not null) pendingChanges.AddRange(changes);
             return saved;
@@ -111,7 +125,8 @@ public partial class AppDbContext
             foreach (var t in tenants) await entitlementCache.InvalidateTenantAsync(t, cancellationToken);
         }
         if (touched is { Count: > 0 }) await InvalidateHotReadsAsync(touched);
-        if (changes is { Count: > 0 }) changeFeed!.Publish(changes);
+        if (accessChanged) await sessionCache!.InvalidateAllAsync(cancellationToken);
+        if (changes is { Count: > 0 }) { ProjectManagement.Application.Features.Load.LoadCache.Bump(changes); changeFeed!.Publish(changes); }
         if (created is { Count: > 0 }) notificationFeed!.Announce(created);
         return saved;
     }
@@ -138,6 +153,7 @@ public partial class AppDbContext
     {
         var tenants = pendingTenantInvalidations.ToArray();
         var plansChanged = pendingPlanInvalidation;
+        var accessChanged = pendingAccessInvalidation;
         var changes = pendingChanges.ToArray();
         var created = pendingNotifications.ToArray();
         var touched = pendingHotReads.ToArray();
@@ -148,7 +164,8 @@ public partial class AppDbContext
             if (plansChanged) entitlementCache.InvalidateAllPlans();
             foreach (var tenant in tenants) await entitlementCache.InvalidateTenantAsync(tenant, ct);
         }
-        if (changes.Length > 0) changeFeed?.Publish(changes);
+        if (accessChanged && sessionCache is not null) await sessionCache.InvalidateAllAsync(ct);
+        if (changes.Length > 0) { ProjectManagement.Application.Features.Load.LoadCache.Bump(changes); changeFeed?.Publish(changes); }
         if (created.Length > 0) notificationFeed?.Announce(created);
     }
 
@@ -159,6 +176,7 @@ public partial class AppDbContext
         pendingNotifications.Clear();
         pendingPlanInvalidation = false;
         pendingHotReads.Clear();
+        pendingAccessInvalidation = false;
     }
 
     /// <summary>Never fails a save that has committed: a cache that cannot be told only keeps an answer until its short lifetime ends.</summary>

@@ -1,3 +1,4 @@
+import { loadLateStyles } from './lib/lateStyles';
 import { createContext, lazy, Suspense, useContext, useEffect, useReducer, useRef, useState, type ComponentType } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { orgFromPath, firstSegment } from './lib/orgPath';
@@ -44,7 +45,9 @@ function Moved({ to, prefix, rename, keep }: { to: string; prefix?: string; /** 
 function page<K extends string>(load: () => Promise<Record<K, ComponentType<any>>>, name: K) {
   // Signed-in destinations may warm on navigation intent; sign-in pages are excluded.
   if (load !== loadAuthPages) registerPage(load, ({ WorkPage: ['/work'], ProjectsHome: ['/work/projects'], TalkPage: ['/messages'], LibraryPage: ['/library'], InsightsPage: ['/insights'], PeoplePage: ['/people'], SettingsPage: ['/settings'], DeskPage: ['/desk'], QualityPage: ['/quality'], ApprovalsPage: ['/approvals'], DeskIntegrations: ['/desk/integrations'], MailPage: ['/mail'], MeetingsPage: ['/meetings'], NotesPage: ['/notes'], TimePage: ['/time'], RemindersPlace: ['/reminders'], ActivityPage: ['/activity'] } as Record<string, string[]>)[name] ?? []);
-  return lazy(() => load().then((m) => ({ default: m[name] })));
+  // Every page but Today also waits for the late global styles (lib/lateStyles.ts); Today is the first screen and does not use them.
+  const styles = load === loadHome ? () => Promise.resolve() : loadLateStyles;
+  return lazy(() => Promise.all([load(), styles()]).then(([m]) => ({ default: m[name] })));
 }
 // The sign-in pages (and the form and validation libraries only they use) are not needed by someone already signed in. They are fetched
 // straight away when the address is one of them, alongside the session check rather than after it.
@@ -104,10 +107,12 @@ const LegalPage = page(() => import('./features/legal/LegalPage'), 'LegalPage');
 const UnsubscribePage = page(() => import('./features/auth/UnsubscribePage'), 'UnsubscribePage');
 const ApprovePage = page(() => import('./features/auth/ApprovePage'), 'ApprovePage');
 const ReminderActionPage = page(() => import('./features/reminders/ActionPage'), 'ReminderActionPage');
+const MiniWindow = lazy(() => import('./features/desktop/MiniWindow'));
 const SecretLinkPage = page(() => import('./features/vault/SecretLinkPage'), 'SecretLinkPage');
 const PublicStatusPage = page(() => import('./features/platform/PublicStatusPage'), 'PublicStatusPage');
 /** The public landing page: "/" for someone signed out, and /welcome for anyone. */
 const LandingPage = lazy(() => import('./features/landing/LandingPage'));
+const FeedbackSheets = lazy(() => import('./features/feedback/Feedback'));
 const landingFallback = <div style={{ minHeight: '100vh', background: '#000' }} />;
 const Landing = () => <Suspense fallback={landingFallback}><LandingPage /></Suspense>;
 /** "Try it free" on the website: the sign-up page, with whatever the link carried. */
@@ -432,6 +437,7 @@ function AppRoutes({ scoped }: { scoped: boolean }) {
       <Route path="/privacy" element={<LegalPage type="privacy" />} />
       {/* Done / snooze from a reminder e-mail or push notification: the link's one-time key stands in for signing in. */}
       <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><ReminderActionPage /></Suspense>} />
+      <Route path="/mini" element={<Suspense fallback={null}><MiniWindow /></Suspense>} />
       {/* A one-time secret from the vault: opened without signing in; the key is in the link's #fragment and never reaches a server. */}
       <Route path="/s/:token" element={<Suspense fallback={<PageLoader />}><SecretLinkPage /></Suspense>} />
       {/* A workspace's public API status page: no account needed. */}
@@ -615,6 +621,8 @@ export default function App() {
       {/* Outside the router and the error screen: a newer release is worth knowing about everywhere, signed in or not, and most of all when
           a page of the old one fails to load. */}
       <UpdateBanner />
+      {/* Report a problem and What's new: sheets opened from anywhere (the ⋯ menu, Settings, a shake), loaded after the page. */}
+      <Suspense fallback={null}><FeedbackSheets /></Suspense>
     </>
   );
 }
