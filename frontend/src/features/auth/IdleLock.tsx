@@ -6,6 +6,7 @@ import { idleApi, idleLabel, type LockState } from '../../api/endpoints.idle';
 import { isSessionLocked, markLocked, markUnlocked, onLockChange } from '../../api/lockState';
 import { Face } from '../../components/Face';
 import { Icon } from '../../components/Icon';
+import { useAfterFirstPaint } from '../../lib/afterFirstPaint';
 import { countdown, createIdleLock, type IdleLock, type IdlePhase } from '../../lib/idleLock';
 import { passkeysSupported, requestPasskey, wasCancelled } from '../../lib/passkeys';
 import { useAuth, useWorkspaceId } from '../../stores/auth';
@@ -21,7 +22,9 @@ const SIGNED_OUT_REASON = 'pm_signed_out_reason';
  */
 export function IdleLockHost() {
   const wid = useWorkspaceId();
-  const policy = useQuery({ queryKey: ['idle-policy', wid], queryFn: idleApi.policy, enabled: !!wid, staleTime: 5 * 60_000, retry: false });
+  // The lock time is not needed to draw the first screen: until it arrives the default below applies, so the read waits for the first paint.
+  const painted = useAfterFirstPaint();
+  const policy = useQuery({ queryKey: ['idle-policy', wid], queryFn: idleApi.policy, enabled: !!wid && painted, staleTime: 5 * 60_000, retry: false });
   const minutes = policy.data?.minutes ?? 30;
   const [phase, setPhase] = useState<IdlePhase>(isSessionLocked() ? 'locked' : 'active');
   const [left, setLeft] = useState(0);

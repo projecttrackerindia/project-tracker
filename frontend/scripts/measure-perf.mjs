@@ -40,6 +40,12 @@ for (const [name, url] of pages) {
     let data = [];
     if (ep.endsWith('/auth/refresh')) data = { accessToken: `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`, expiresAt: '2099-01-01T00:00:00Z', user };
     else if (ep === '/api/v1/me') data = me;
+    // The frame's one call, with every part the server really sends: without it the app falls back to a request per badge and per switch,
+    // and the counts below would measure a fallback path no signed-in person takes.
+    else if (ep === '/api/v1/shell/summary') data = {
+      workspaceId: ws.id, notifications: { unread: 0, bundles: [] }, approvals: { needsMe: 0 }, chatUnread: { total: 0, byRoom: [] },
+      reminders: { due: 0, upcoming: 0 }, featureFlags: { flags: {} }, aiStatus: { allowed: false, available: false }, timer: { entry: null },
+    };
     else if (ep === '/api/v1/me/fingerprint') data = { fingerprint: me.fingerprint };
     else if (ep === '/api/v1/workspace') data = { ...ws, aiDisabled: true };
     else if (ep.endsWith('/avatar') || ep.endsWith('/file')) return route.fulfill({ status: 404, body: '' });
@@ -48,10 +54,15 @@ for (const [name, url] of pages) {
   const page = await ctx.newPage();
   const t0 = Date.now();
   await page.goto(origin + url);
+  // The first screen's own reads: what the person waits for. Reads the frame defers until after the first paint land after this mark and
+  // are counted in apiOnLoad but not here, so the two numbers together show both the critical path and the total.
+  const firstScreen = new Promise((r) => setTimeout(() => r(log.api.length), 1000));
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(1500);
+  const apiFirstScreen = await firstScreen;
   const loadMs = Date.now() - t0;
   const firstLoad = log.api.length;
+  const onLoadList = [...log.api];
   const assets = [...log.assets.values()];
   log.api.length = 0;
   await page.evaluate(([wid, fam]) => window.dispatchEvent(new CustomEvent('pm:mutation-committed', { detail: { workspaceId: wid, families: fam } })), [ws.id, families]);
@@ -66,7 +77,7 @@ for (const [name, url] of pages) {
     await page.waitForTimeout(1500);
     apiOnRefocus = log.api.length;
   }
-  results.push({ apiOnRefocus, page: name, assets: assets.length, gzipKB: +(assets.reduce((a, b) => a + b, 0) / 1024).toFixed(1), apiOnLoad: firstLoad, apiAfterTaskEdit: afterEdit.length, settledMs: loadMs, afterEdit, ...(process.env.ASSETS ? { assetList: [...log.assets].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([f, n]) => `${f} ${(n / 1024).toFixed(1)}`) } : {}) });
+  results.push({ apiOnRefocus, page: name, assets: assets.length, gzipKB: +(assets.reduce((a, b) => a + b, 0) / 1024).toFixed(1), apiOnLoad: firstLoad, apiFirstScreen, apiAfterTaskEdit: afterEdit.length, settledMs: loadMs, afterEdit, ...(process.env.ONLOAD ? { onLoad: onLoadList } : {}), ...(process.env.ASSETS ? { assetList: [...log.assets].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([f, n]) => `${f} ${(n / 1024).toFixed(1)}`) } : {}) });
   await ctx.close();
 }
 await browser.close();
