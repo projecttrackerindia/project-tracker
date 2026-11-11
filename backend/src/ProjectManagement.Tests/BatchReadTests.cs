@@ -12,6 +12,8 @@ namespace ProjectManagement.Tests;
 public class BatchReadTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private static JsonNode At(JsonNode? data, int i) => data!.AsArray()[i]!;
+    /// <summary>The reads as the app asks for them: a GET, because a batch of reads changes nothing.</summary>
+    private static string Q(params string[] reads) => "?" + string.Join("&", reads.Select(r => "read=" + Uri.EscapeDataString(r)));
 
     private async Task<TestClient> MemberAsync(string name)
     {
@@ -30,7 +32,7 @@ public class BatchReadTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var direct = await owner.Get("/api/v1/shell/summary");
         Assert.True(direct.Ok, direct.ToString());
 
-        var batch = await owner.Post("/api/v1/batch", new { reads = new[] { "/api/v1/shell/summary", "/api/v1/me" } });
+        var batch = await owner.Get("/api/v1/batch" + Q("/api/v1/shell/summary", "/api/v1/me"));
         Assert.True(batch.Ok, batch.ToString());
         Assert.Equal(2, batch.Data!.AsArray().Count);
 
@@ -51,7 +53,7 @@ public class BatchReadTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var direct = await member.Get("/api/v1/platform/admin/tenants");
         Assert.True(direct.Status is HttpStatusCode.Forbidden or HttpStatusCode.NotFound or HttpStatusCode.Unauthorized, direct.ToString());
 
-        var batch = await member.Post("/api/v1/batch", new { reads = new[] { "/api/v1/platform/admin/tenants" } });
+        var batch = await member.Get("/api/v1/batch" + Q("/api/v1/platform/admin/tenants"));
         Assert.True(batch.Ok, batch.ToString());
         var one = At(batch.Data, 0);
         Assert.Equal((int)direct.Status, (int)one["status"]!);
@@ -63,7 +65,7 @@ public class BatchReadTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var owner = await TestClient.RegisterAsync(factory, "Batch Limits");
         await owner.CreateOrgAsync("Batch Limits Org");
 
-        var batch = await owner.Post("/api/v1/batch", new { reads = new[] { "/health", "/api/v1/batch", "/api/v1/../../etc/passwd" } });
+        var batch = await owner.Get("/api/v1/batch" + Q("/health", "/api/v1/batch", "/api/v1/../../etc/passwd"));
         Assert.True(batch.Ok, batch.ToString());
         foreach (var i in new[] { 0, 1, 2 })
             Assert.Equal(400, (int)At(batch.Data, i)["status"]!);
@@ -75,7 +77,7 @@ public class BatchReadTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var owner = await TestClient.RegisterAsync(factory, "Batch Partial");
         await owner.CreateOrgAsync("Batch Partial Org");
 
-        var batch = await owner.Post("/api/v1/batch", new { reads = new[] { "/api/v1/me", "/api/v1/does-not-exist", "/api/v1/shell/summary" } });
+        var batch = await owner.Get("/api/v1/batch" + Q("/api/v1/me", "/api/v1/does-not-exist", "/api/v1/shell/summary"));
         Assert.True(batch.Ok, batch.ToString());
         Assert.Equal(200, (int)At(batch.Data, 0)["status"]!);
         Assert.Equal(404, (int)At(batch.Data, 1)["status"]!);
@@ -88,7 +90,7 @@ public class BatchReadTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var owner = await TestClient.RegisterAsync(factory, "Batch Too Many");
         await owner.CreateOrgAsync("Batch Too Many Org");
         var many = Enumerable.Repeat("/api/v1/me", 40).ToArray();
-        var batch = await owner.Post("/api/v1/batch", new { reads = many });
+        var batch = await owner.Get("/api/v1/batch" + Q(many));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, batch.Status);
     }
 }

@@ -7,8 +7,6 @@ using ProjectManagement.Api.Filters;
 
 namespace ProjectManagement.Api.Controllers.Shell;
 
-/// <param name="Reads">The read paths to answer, in order, each as it would be called on its own ("/api/v1/dashboard").</param>
-public record BatchRequest(IReadOnlyList<string>? Reads);
 /// <param name="Path">The path asked for, echoed so the caller can match answers to questions without relying on order.</param>
 /// <param name="Status">What that read answered, exactly as a direct call would have.</param>
 /// <param name="Body">The answer's body, or null when it had none.</param>
@@ -33,10 +31,11 @@ public class BatchController(BatchPipeline pipeline, ILogger<BatchController> lo
     public const int MaxReads = 25;
     private const int MaxBodyBytes = 2_000_000;
 
-    [HttpPost]
-    public async Task<IActionResult> Post([FromBody] BatchRequest req, CancellationToken ct)
+    /// <param name="read">The read paths to answer, in order, each as it would be called on its own ("/api/v1/dashboard").</param>
+    [HttpGet]
+    public async Task<IActionResult> Get([FromQuery] string[]? read, CancellationToken ct)
     {
-        var reads = req.Reads ?? [];
+        var reads = (IReadOnlyList<string>)(read ?? []);
         if (reads.Count == 0) return Ok(Array.Empty<BatchAnswer>());
         if (reads.Count > MaxReads) throw new ValidationException("reads", $"A batch may ask for at most {MaxReads} reads at once.");
         if (!pipeline.Ready) throw new AppException(503, "BATCH_UNAVAILABLE", "Batched reads are not available on this server.");
