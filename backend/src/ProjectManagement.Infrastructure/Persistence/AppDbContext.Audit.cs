@@ -60,6 +60,7 @@ public partial class AppDbContext
     private readonly List<ChangeEvent> pendingChanges = [];
     private readonly List<NotificationAnnouncement> pendingNotifications = [];
     private bool pendingPlanInvalidation;
+    private readonly HashSet<Guid> pendingHotReads = [];
     private bool pendingAccessInvalidation;
 
     // ------------------------------------------------------------------ audit stamping & write guard
@@ -104,9 +105,13 @@ public partial class AppDbContext
                 || (e.State == EntityState.Modified && e.Property(n => n.Title).IsModified && e.Entity.ArchivedAt == null && e.Entity.ReadAt == null
                     && e.Entity.DedupeKey != null && e.Entity.DedupeKey.StartsWith("work-change:"))))
             .Select(e => new NotificationAnnouncement(e.Entity.TenantId, e.Entity.UserId, e.Entity.Id, e.Entity.Type, e.Entity.InApp)).ToList();
+        // Every workspace this save touches loses its cached hot reads once committed (alongside the realtime change events).
+        var touched = hotReads is null ? null : ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .Select(e => (e.Entity as ITenantScoped)?.TenantId ?? Guid.Empty).Where(t => t != Guid.Empty).ToHashSet();
         var saved = await SaveChainedAsync(acceptAllChangesOnSuccess, cancellationToken);
         if (Database.CurrentTransaction is not null)
         {
+            if (touched is not null) pendingHotReads.UnionWith(touched);
             if (created is not null) pendingNotifications.AddRange(created);
             pendingPlanInvalidation |= plansChanged;
             pendingAccessInvalidation |= accessChanged;
@@ -119,6 +124,7 @@ public partial class AppDbContext
             if (plansChanged) entitlementCache.InvalidateAllPlans();
             foreach (var t in tenants) await entitlementCache.InvalidateTenantAsync(t, cancellationToken);
         }
+        if (touched is { Count: > 0 }) await InvalidateHotReadsAsync(touched);
         if (accessChanged) await sessionCache!.InvalidateAllAsync(cancellationToken);
         if (changes is { Count: > 0 }) { ProjectManagement.Application.Features.Load.LoadCache.Bump(changes); changeFeed!.Publish(changes); }
         if (created is { Count: > 0 }) notificationFeed!.Announce(created);
@@ -150,7 +156,9 @@ public partial class AppDbContext
         var accessChanged = pendingAccessInvalidation;
         var changes = pendingChanges.ToArray();
         var created = pendingNotifications.ToArray();
+        var touched = pendingHotReads.ToArray();
         DiscardTransactionEffects();
+        if (touched.Length > 0) await InvalidateHotReadsAsync(touched);
         if (entitlementCache is not null)
         {
             if (plansChanged) entitlementCache.InvalidateAllPlans();
@@ -167,7 +175,15 @@ public partial class AppDbContext
         pendingChanges.Clear();
         pendingNotifications.Clear();
         pendingPlanInvalidation = false;
+        pendingHotReads.Clear();
         pendingAccessInvalidation = false;
+    }
+
+    /// <summary>Never fails a save that has committed: a cache that cannot be told only keeps an answer until its short lifetime ends.</summary>
+    private async Task InvalidateHotReadsAsync(IReadOnlyCollection<Guid> tenants)
+    {
+        try { await hotReads!.InvalidateAsync(tenants, CancellationToken.None); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
     }
 
     /// <summary>

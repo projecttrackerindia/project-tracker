@@ -67,6 +67,10 @@ public static class DependencyInjection
             else o.UseNpgsql(connection);
         });
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+        // Reads that may lag a moment (reports, insights, search, portfolio aggregates, exports) go to a read replica when
+        // ConnectionStrings:ReadOnly is set; otherwise they use the primary. The replica context refuses every write.
+        services.AddSingleton(new ReadReplicaSettings(provider, config.GetConnectionString("ReadOnly")));
+        services.AddScoped<IReadDb, ReadReplicaDb>();
 
         // Shared cache: Redis when Redis:ConnectionString is set (needed to run several API servers), otherwise in-process memory.
         services.Configure<ProjectManagement.Application.Services.CacheOptions>(config.GetSection(ProjectManagement.Application.Services.CacheOptions.Section));
@@ -87,6 +91,8 @@ public static class DependencyInjection
         else
             services.AddSingleton<ProjectManagement.Application.Features.Ai.IAiRequestLimiter, MemoryAiRequestLimiter>();
         services.AddSingleton<ProjectManagement.Application.Services.EntitlementCache>();
+        services.AddSingleton<ProjectManagement.Application.Services.HotReadCache>();
+        services.AddSingleton<IHotReadInvalidator>(sp => sp.GetRequiredService<ProjectManagement.Application.Services.HotReadCache>());
         services.AddSingleton<ProjectManagement.Application.Services.SessionCache>();
 
         // Data-protection keys live in the database: cookies and protected tokens survive redeploys and work across servers.

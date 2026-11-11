@@ -57,6 +57,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Maintenance__Enabled", "false");
         Environment.SetEnvironmentVariable("Notifications__EmailWorkerEnabled", "false"); // tests drive the dispatcher explicitly
         Environment.SetEnvironmentVariable("Reports__WorkerEnabled", "false"); // tests run the report processor explicitly
+        Environment.SetEnvironmentVariable("Cache__HotReadSeconds", "0"); // tests change data directly; HotReadCacheTests switch it on themselves
         Environment.SetEnvironmentVariable("Cache__EntitlementSeconds", "0"); // most tests change plans directly in the database; cache tests switch it on themselves
         Environment.SetEnvironmentVariable("Webhooks__WorkerEnabled", "false"); // tests run the webhook processor explicitly
         Environment.SetEnvironmentVariable("Sla__WorkerEnabled", "false"); // tests run the service-level monitor explicitly

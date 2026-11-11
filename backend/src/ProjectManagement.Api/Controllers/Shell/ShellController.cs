@@ -25,7 +25,7 @@ namespace ProjectManagement.Api.Controllers.Shell;
 public class ShellController(ICurrentContext ctx, NotificationService notifications, ApprovalService approvals, ChatService chat, ReminderService reminders,
     FeatureFlagService flags, AiAssistant assistant, TimeService time, ILogger<ShellController> log) : ApiControllerBase
 {
-    [HttpGet("summary")]
+    [HttpGet("summary"), HotRead]
     public async Task<IActionResult> Summary(CancellationToken ct)
     {
         var workspaceId = ctx.RequireTenantId();
