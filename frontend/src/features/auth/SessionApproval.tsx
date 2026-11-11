@@ -10,7 +10,7 @@ import {
 import { Icon } from '../../components/Icon';
 import { Badge, PageLoader } from '../../components/ui';
 import { AuthLayout } from '../../layouts/AuthLayout';
-import { useAfterFirstPaint } from '../../lib/afterPaint';
+import { useAfterFirstPaint } from '../../lib/afterFirstPaint';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { haptic } from '../../lib/mobile';
 import { usePageTitle } from '../../lib/title';
@@ -200,7 +200,8 @@ export function SessionApprovalHost() {
   const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
   useEffect(() => { const f = () => setVisible(document.visibilityState === 'visible'); document.addEventListener('visibilitychange', f); return () => document.removeEventListener('visibilitychange', f); }, []);
   // Approving a new device is never the first thing on the screen, so this waits for the first paint and the poll below follows it.
-  const policy = useQuery({ queryKey: ['session-policy'], queryFn: sessionApprovalApi.policy, enabled: !!wid && useAfterFirstPaint(), staleTime: 5 * 60_000 });
+  const painted = useAfterFirstPaint();
+  const policy = useQuery({ queryKey: ['session-policy'], queryFn: sessionApprovalApi.policy, enabled: !!wid && painted, staleTime: 5 * 60_000 });
   const on = !!policy.data?.effective;
   const q = useQuery({ queryKey: ['session-approval', 'pending'], queryFn: sessionApprovalApi.pending, enabled: !!wid && on && visible, refetchInterval: 8000, refetchIntervalInBackground: false });
   const [live, setLive] = useState<ApprovalPrompt[]>([]);
