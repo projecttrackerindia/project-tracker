@@ -178,6 +178,13 @@ public class NotificationPipelineTests(ApiFactory factory)
         Assert.Equal((await admin.Get("/api/v1/chat/unread")).Data!.ToJsonString(), d["chatUnread"]!.ToJsonString());
         Assert.Equal((await admin.Get("/api/v1/reminders/counts")).Data!.ToJsonString(), d["reminders"]!.ToJsonString());
 
+        // The parts the frame reads before it can draw: the same answer as each one's own endpoint, so the app can stop asking for them.
+        Assert.Equal((await admin.Get("/api/v1/feature-flags/mine")).Data!.ToJsonString(), d["featureFlags"]!.ToJsonString());
+        Assert.Equal((await admin.Get("/api/v1/ai/status")).Data!.ToJsonString(), d["aiStatus"]!.ToJsonString());
+        // No timer is running: the part is still there, saying so, rather than missing and sending the app to /timer.
+        Assert.NotNull(d["timer"]);
+        Assert.Null(d["timer"]!["entry"]?.GetValue<object?>());
+
         // Someone in another workspace sees only their own numbers.
         var (_, otherAdmin, _, _) = await TeamAsync("Elsewhere");
         var theirs = (await otherAdmin.Get("/api/v1/shell/summary")).Data!;
