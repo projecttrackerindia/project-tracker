@@ -224,10 +224,10 @@ export async function api<T = void>(method: string, path: string, body?: unknown
  * batched read cannot be cancelled by itself. If the batch request fails for any reason, every read in it is simply sent the old way,
  * so this can make things faster but never breaks them.
  */
-const BATCH_WINDOW_MS = 12, BATCH_MAX = 25;
+const BATCH_MAX = 25;
 type Waiting = { path: string; headers: Record<string, string>; resolve: (r: Response) => void; reject: (e: unknown) => void };
 let waiting: Waiting[] = [];
-let batchTimer: ReturnType<typeof setTimeout> | null = null;
+let queued = false;
 
 const canBatch = (method: string, path: string, opts: Options, auth: boolean) =>
   method === 'GET' && auth && !BASE && !opts.signal && !path.startsWith('/batch') && !path.startsWith('/auth/');
@@ -235,8 +235,10 @@ const canBatch = (method: string, path: string, opts: Options, auth: boolean) =>
 function readLater(path: string, headers: Record<string, string>): Promise<Response> {
   return new Promise((resolve, reject) => {
     waiting.push({ path, headers, resolve, reject });
-    if (waiting.length >= BATCH_MAX) { if (batchTimer) clearTimeout(batchTimer); batchTimer = null; void flushReads(); }
-    else if (!batchTimer) batchTimer = setTimeout(() => { batchTimer = null; void flushReads(); }, BATCH_WINDOW_MS);
+    // The next microtask, not a timer: a screen's reads are started together while it renders, so they are all here by then, and no
+    // read waits any real time for the ones beside it. A timer, however short, delays every read by it and can reorder a read against
+    // code that expects it to have finished.
+    if (!queued) { queued = true; queueMicrotask(() => { queued = false; void flushReads(); }); }
   });
 }
 
@@ -246,7 +248,7 @@ const sendOne = (w: Waiting) =>
 async function flushReads() {
   const take = waiting.splice(0, BATCH_MAX);
   if (!take.length) return;
-  if (waiting.length && !batchTimer) batchTimer = setTimeout(() => { batchTimer = null; void flushReads(); }, 0);
+  if (waiting.length && !queued) { queued = true; queueMicrotask(() => { queued = false; void flushReads(); }); }
   // One read is not worth a batch: it would be the same round trip with another layer around it.
   if (take.length === 1) { void sendOne(take[0]); return; }
   const query = take.map((w) => `read=${encodeURIComponent(`/api/v1${w.path}`)}`).join('&');
