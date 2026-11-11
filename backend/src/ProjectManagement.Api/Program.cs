@@ -13,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 var errorReporter = ProjectManagement.Api.Logging.ErrorReporter.FromConfiguration(builder.Configuration, builder.Environment.EnvironmentName);
 builder.Services.AddSingleton(errorReporter);
 builder.Services.AddSingleton<ProjectManagement.Api.Logging.WebVitalsStore>();
+builder.Services.AddSingleton<ProjectManagement.Api.Batch.BatchPipeline>();
 
 builder.Host.UseSerilog((context, services, cfg) => cfg
     .ReadFrom.Configuration(context.Configuration)
@@ -90,6 +91,15 @@ if (publishDocs)
 }
 
 app.MapControllers();
+// The batch endpoint answers several reads in one request by running each through this same pipeline from routing onwards, so every
+// batched read meets the authorization filters it would have met on its own. The endpoints only exist here, so it is wired here.
+{
+    var branch = ((IApplicationBuilder)app).New();
+    branch.UseRouting();
+    branch.UseAuthorization();
+    branch.UseEndpoints(e => e.MapControllers());
+    app.Services.GetRequiredService<ProjectManagement.Api.Batch.BatchPipeline>().Use(branch.Build());
+}
 app.MapHub<ProjectManagement.Api.Realtime.ChatHub>("/hubs/chat");
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
