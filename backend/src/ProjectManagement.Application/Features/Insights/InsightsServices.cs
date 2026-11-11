@@ -366,12 +366,18 @@ public class SearchService(IReadDb readDb, ICurrentContext ctx, ProjectAccess ac
 
         if (!access.IsRestricted && lv[Modules.Tasks] > 0)
         {
-            var visibleTasks = access.VisibleTasks().Select(t => t.Id);
-            var comments = await db.TaskComments.AsNoTracking().Where(c => EF.Functions.Like(c.Body.ToLower(), SearchText.Pattern(q), SearchText.Escape) && visibleTasks.Contains(c.TaskId))
-                .OrderByDescending(c => c.CreatedAt).Take(PerType)
-                .Select(c => new { c.Id, c.Body, c.TaskId, ProjectId = db.Tasks.Where(t => t.Id == c.TaskId).Select(t => t.ProjectId).FirstOrDefault() })
-                .ToListAsync(ct);
-            hits.AddRange(comments.Select(c => new SearchHit("comment", c.Id, Text.Truncate(c.Body, 90)!, "Comment", c.ProjectId, c.TaskId)));
+            // Comments are read here and their tasks are checked through ProjectAccess, which reads the primary: one query cannot span two
+            // contexts. So the matching comments come first, from wherever reads go, and the few tasks they name are then checked for
+            // visibility. Visibility is still ProjectAccess's answer and is never re-stated here, which is what keeps it right.
+            var matches = await db.TaskComments.AsNoTracking().Where(c => EF.Functions.Like(c.Body.ToLower(), SearchText.Pattern(q), SearchText.Escape))
+                .OrderByDescending(c => c.CreatedAt).Take(PerType * 10)
+                .Select(c => new { c.Id, c.Body, c.TaskId }).ToListAsync(ct);
+            var taskIds = matches.Select(c => c.TaskId).Distinct().ToList();
+            var allowed = taskIds.Count == 0 ? [] : await access.VisibleTasks().AsNoTracking().Where(t => taskIds.Contains(t.Id))
+                .Select(t => new { t.Id, t.ProjectId }).ToListAsync(ct);
+            var projectOf = allowed.ToDictionary(t => t.Id, t => t.ProjectId);
+            hits.AddRange(matches.Where(c => projectOf.ContainsKey(c.TaskId)).Take(PerType)
+                .Select(c => new SearchHit("comment", c.Id, Text.Truncate(c.Body, 90)!, "Comment", projectOf[c.TaskId], c.TaskId)));
         }
 
         var labels = lv[Modules.Tasks] == 0 && lv[Modules.Projects] == 0 ? [] : await db.Labels.AsNoTracking().Where(l => EF.Functions.Like(l.Name.ToLower(), SearchText.Pattern(q), SearchText.Escape)).OrderBy(l => l.Name).Take(PerType).ToListAsync(ct);
@@ -379,11 +385,17 @@ public class SearchService(IReadDb readDb, ICurrentContext ctx, ProjectAccess ac
 
         // Files, by name: only those of projects (and tasks) the person can see.
         var seesTasks = lv[Modules.Tasks] > 0;
-        var files = lv[Modules.Projects] == 0 ? [] : await db.Attachments.AsNoTracking()
-            .Where(a => EF.Functions.Like(a.FileName.ToLower(), SearchText.Pattern(q), SearchText.Escape) && access.VisibleProjects().Any(p => p.Id == a.ProjectId)
-                        && (a.TaskId == null || (seesTasks && access.VisibleTasks().Any(t => t.Id == a.TaskId))))
-            .OrderByDescending(a => a.CreatedAt).Take(PerType)
+        // As with comments: the files are read from wherever reads go, and the projects and tasks they belong to are then checked through
+        // ProjectAccess on the primary. One query cannot span both contexts, and visibility stays ProjectAccess's answer.
+        var found = lv[Modules.Projects] == 0 ? [] : await db.Attachments.AsNoTracking()
+            .Where(a => EF.Functions.Like(a.FileName.ToLower(), SearchText.Pattern(q), SearchText.Escape))
+            .OrderByDescending(a => a.CreatedAt).Take(PerType * 10)
             .Select(a => new { a.Id, a.FileName, a.ProjectId, a.TaskId, a.SizeBytes }).ToListAsync(ct);
+        var fileProjects = found.Select(a => a.ProjectId).Distinct().ToList();
+        var okProjects = fileProjects.Count == 0 ? [] : await access.VisibleProjects().AsNoTracking().Where(p => fileProjects.Contains(p.Id)).Select(p => p.Id).ToListAsync(ct);
+        var fileTasks = found.Where(a => a.TaskId != null).Select(a => a.TaskId!.Value).Distinct().ToList();
+        var okTasks = !seesTasks || fileTasks.Count == 0 ? [] : await access.VisibleTasks().AsNoTracking().Where(t => fileTasks.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct);
+        var files = found.Where(a => okProjects.Contains(a.ProjectId) && (a.TaskId == null || okTasks.Contains(a.TaskId.Value))).Take(PerType).ToList();
         hits.AddRange(files.Select(f => new SearchHit("file", f.Id, f.FileName, f.SizeBytes >= 1024 * 1024 ? $"{f.SizeBytes / 1048576.0:0.#} MB" : $"{Math.Max(1, f.SizeBytes / 1024)} KB", f.ProjectId, f.TaskId)));
         return new SearchResultDto(hits);
     }
