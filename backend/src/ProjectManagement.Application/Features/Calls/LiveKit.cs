@@ -15,6 +15,11 @@ namespace ProjectManagement.Application.Features.Calls;
 public class CallsOptions
 {
     public const string Section = "Calls";
+    /// <summary>
+    /// Where calls are held: "meet" puts them on Google Meet, "livekit" on our own media server. Empty means whichever is configured,
+    /// which keeps an installation that was set up before this setting existed working exactly as it did.
+    /// </summary>
+    public string? Provider { get; set; }
     public string? Url { get; set; }
     public string? ApiUrl { get; set; }
     public string? ApiKey { get; set; }
@@ -23,7 +28,12 @@ public class CallsOptions
     public int MaxParticipants { get; set; } = 50;
     /// <summary>How long a join pass is good for; a call that runs longer reconnects with a fresh one.</summary>
     public int TokenHours { get; set; } = 6;
-    public bool Configured => !string.IsNullOrWhiteSpace(Url) && !string.IsNullOrWhiteSpace(ApiKey) && (ApiSecret?.Length ?? 0) >= 32;
+    /// <summary>Calls are held on Google Meet: no media server of our own is involved, so none has to be configured or paid for.</summary>
+    public bool UseMeet => string.Equals(Provider, "meet", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Our own media server is set up and is what calls use.</summary>
+    public bool LiveKitConfigured => !string.IsNullOrWhiteSpace(Url) && !string.IsNullOrWhiteSpace(ApiKey) && (ApiSecret?.Length ?? 0) >= 32;
+    /// <summary>Calls can be held at all. On Meet this needs no media server; otherwise it needs ours.</summary>
+    public bool Configured => UseMeet || LiveKitConfigured;
     public string ServerApi => (string.IsNullOrWhiteSpace(ApiUrl) ? (Url ?? "").Replace("wss://", "https://").Replace("ws://", "http://") : ApiUrl!).TrimEnd('/');
 }
 

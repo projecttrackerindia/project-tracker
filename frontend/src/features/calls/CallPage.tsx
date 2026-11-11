@@ -40,6 +40,9 @@ export function CallPage({ id, audio = false }: { id: string; /** A voice call: 
     setJoining(true);
     try {
       const j = await callsApi.join(id);
+      // A call held on Google Meet: the link is the whole of it. Leave for Meet in a new tab and stay on this page, which keeps showing
+      // who is in the call and, afterwards, its notes. The server has already recorded that this person joined.
+      if (!j.token && j.url.startsWith('https://')) { window.open(j.url, '_blank', 'noopener,noreferrer'); setJoining(false); void info.refetch(); return; }
       // A private call: the room key is opened on this device and given to LiveKit's encryption worker before anything is sent.
       if (j.e2ee) {
         if (!j.keyCipher) throw new Error('The host has not shared the call key yet. Try again in a moment.');

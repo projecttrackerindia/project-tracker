@@ -12,9 +12,12 @@ using ProjectManagement.Application.Services;
 using ProjectManagement.Domain.Entities;
 using ProjectManagement.Domain.Enums;
 
+using ProjectManagement.Application.Features.Integrations;
+
 namespace ProjectManagement.Application.Features.Calls;
 
-public record CallsStatusDto(bool Available, int MaxParticipants);
+/// <summary>Whether calls can be held here, how many people fit, and what holds them: "meet" (Google Meet) or "inapp" (our own media server).</summary>
+public record CallsStatusDto(bool Available, int MaxParticipants, string Provider = "inapp");
 /// <param name="Private">End-to-end encrypted: media is encrypted in the browsers; no notetaker, recording or transcript. A call in a private chat is always private.</param>
 /// <param name="KeyCipher">Private calls: the room key, encrypted on the caller's device for each invited person's devices.</param>
 public record StartCallRequest(string? Title, Guid? ProjectId, Guid? MeetingId, Guid? ConversationId, IReadOnlyList<Guid>? Invite, bool Agent = false, Guid? WorkspaceMeetingId = null,
@@ -32,12 +35,13 @@ public record CallJoinDto(Guid CallId, string Url, string Token, string Room, st
 /// admit it), it hears each person separately, and its notes, minutes and follow-ups arrive like those of any other meeting.
 /// </summary>
 public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, IOptions<CallsOptions> options, ILiveKitRooms rooms, ProjectAccess access,
-    NotificationService notifications, Recorder recorder, AgentMeetingService agentMeetings, ILogger<CallService> log, ProjectManagement.Application.Features.Chat.IChatNotifier? liveFeed = null)
+    NotificationService notifications, Recorder recorder, AgentMeetingService agentMeetings, ILogger<CallService> log, ProjectManagement.Application.Features.Chat.IChatNotifier? liveFeed = null,
+    ProjectManagement.Application.Features.Integrations.GoogleMeetingClient? meetings = null)
 {
     private CallsOptions O => options.Value;
     public const int MaxInvite = 100, MaxLiveHours = 12;
 
-    public CallsStatusDto Status() => new(O.Configured, O.MaxParticipants);
+    public CallsStatusDto Status() => new(O.Configured, O.MaxParticipants, O.UseMeet ? "meet" : "inapp");
 
     private void RequireConfigured()
     {
@@ -103,11 +107,23 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
 
         var now = clock.Now;
         var room = $"pt-{tenant.ToString("N")[..8]}-{Convert.ToHexString(RandomNumberGenerator.GetBytes(12)).ToLowerInvariant()}";
-        try { await rooms.CreateAsync(room, O.MaxParticipants, 600, ct); }
-        catch (HttpRequestException ex) { log.LogWarning(ex, "The media server did not open a room"); throw new AppException(502, "CALLS_SERVER_UNREACHABLE", "The call server could not be reached. Try again in a moment."); }
+        string? meetUrl = null, meetEventId = null;
+        if (O.UseMeet)
+        {
+            // The Meet link is made in the caller's own Google account, as a real Calendar event. That is deliberate: the meeting lands in
+            // their calendar, Google's own invitations and attendance apply, and the organization keeps the record where its retention and
+            // compliance rules already reach, rather than here.
+            var created = await CreateMeetAsync(me, title, now, ct);
+            meetUrl = created.MeetUri; meetEventId = created.EventId;
+        }
+        else
+        {
+            try { await rooms.CreateAsync(room, O.MaxParticipants, 600, ct); }
+            catch (HttpRequestException ex) { log.LogWarning(ex, "The media server did not open a room"); throw new AppException(502, "CALLS_SERVER_UNREACHABLE", "The call server could not be reached. Try again in a moment."); }
+        }
 
         var call = new CallRoom { TenantId = tenant, Title = title, RoomName = room, Kind = kind, ProjectId = projectId, MeetingId = meetingId, ConversationId = conversationId, WorkspaceMeetingId = req.WorkspaceMeetingId,
-            StartedBy = me, StartedAt = now, Status = "live", CreatedAt = now, IsPrivate = isPrivate, E2eeKeyCipher = keyCipher };
+            StartedBy = me, StartedAt = now, Status = "live", CreatedAt = now, IsPrivate = isPrivate, E2eeKeyCipher = keyCipher, MeetUrl = meetUrl, MeetEventId = meetEventId };
         db.CallRooms.Add(call);
         db.CallParticipants.Add(new CallParticipant { TenantId = tenant, CallId = call.Id, UserId = me, Role = "host", CreatedAt = now });
         foreach (var u in invite) db.CallParticipants.Add(new CallParticipant { TenantId = tenant, CallId = call.Id, UserId = u, Role = "member", InvitedAt = now, CreatedAt = now });
@@ -121,6 +137,12 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         // Open tabs ring straight away over the live connection (the incoming-call card with Answer / Decline), on any page.
         await TellAsync(tenant, invite, CallEvents.Incoming, new { callId = call.Id, title, kind, fromId = me, fromName = starter, projectId, conversationId, startedAt = now, isPrivate }, ct);
 
+        if (req.Agent && O.UseMeet)
+        {
+            // The agent joins a room on our own media server; a call on Meet has none. Minutes for a Meet call come from Meet's own
+            // transcript, the same way they do for a scheduled Google meeting, so the call goes ahead and the person is told plainly.
+            return (await GetAsync(call.Id, ct)) with { AgentStatus = "The assistant does not join calls held on Google Meet. Its minutes come from the Meet transcript after the call." };
+        }
         if (req.Agent)
         {
             if (projectId is not { } agentProject) throw new ValidationException("agent", "The project agent can join calls in a project. Start the call from the project.");
@@ -226,6 +248,34 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
             people.OrderByDescending(p => p.Role == "host").ThenBy(p => p.DisplayName).Select(p => new CallPersonDto(p.UserId, p.DisplayName, p.Role, p.JoinedAt is not null && p.LeftAt is null, p.JoinedAt)).ToList(), call.IsPrivate);
     }
 
+    /// <summary>
+    /// The Google Meet link a call is held on, made as a Calendar event in the caller's own Google account. The event is short and carries no
+    /// attendees: who is invited, who is rung and who joined is this product's record, and duplicating it into Calendar would send a second set
+    /// of invitations for a call that is already ringing on everyone's screen.
+    /// </summary>
+    private async Task<CreatedGoogleMeeting> CreateMeetAsync(Guid me, string title, DateTime now, CancellationToken ct)
+    {
+        if (meetings is null) throw new ConflictException("Calls on Google Meet are not set up on this installation yet.", "CALLS_UNAVAILABLE");
+        try
+        {
+            return await meetings.CreateEventAsync(me, title, null, now, now.AddHours(1), "UTC", [], ct);
+        }
+        catch (GoogleApiException ex) when (ex.Status is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+        {
+            throw new ConflictException("Connect your Google account to start a call on Google Meet.", "CALLS_GOOGLE_REQUIRED");
+        }
+        catch (InvalidOperationException)
+        {
+            // No connected Google account to act for: the same thing to the person, said the same way.
+            throw new ConflictException("Connect your Google account to start a call on Google Meet.", "CALLS_GOOGLE_REQUIRED");
+        }
+        catch (Exception ex) when (ex is GoogleApiException or HttpRequestException)
+        {
+            log.LogWarning(ex, "Google did not create the Meet for a call");
+            throw new AppException(502, "CALLS_SERVER_UNREACHABLE", "We couldn't create the Google Meet right now. Please try again.");
+        }
+    }
+
     private async Task<bool> CanEndAsync(CallRoom call, CancellationToken ct) =>
         call.Status == "live" && (call.StartedBy == ctx.UserId || ctx.Role is TenantRole.Owner or TenantRole.Admin
             || await db.CallParticipants.AnyAsync(p => p.CallId == call.Id && p.UserId == ctx.UserId && p.Role == "host", ct));
@@ -242,6 +292,10 @@ public class CallService(IAppDbContext db, ICurrentContext ctx, AppClock clock, 
         if (row is null) db.CallParticipants.Add(row = new CallParticipant { TenantId = call.TenantId, CallId = id, UserId = me, Role = "member", CreatedAt = now });
         row.JoinedAt ??= now;
         await db.SaveChangesAsync(ct);
+        // A call on Google Meet: the link is the pass. Nobody mints a token, and the browser leaves for Meet rather than opening our own
+        // call screen. The participant row is still written above, so the call log, who joined and the minutes are unchanged.
+        if (call.MeetUrl is { Length: > 0 } meet)
+            return new CallJoinDto(call.Id, meet, "", "", Identity(me), call.Title, call.AgentEnabled, now.AddHours(MaxLiveHours));
         var ttl = TimeSpan.FromHours(Math.Clamp(O.TokenHours, 1, 12));
         var metadata = JsonSerializer.Serialize(new { userId = me, role = row.Role });
         var token = LiveKitTokens.Mint(O.ApiKey!, O.ApiSecret!, Identity(me), person.DisplayName, new LiveKitGrant(Room: call.RoomName, RoomJoin: true), ttl, new DateTimeOffset(now, TimeSpan.Zero), metadata);
