@@ -33,6 +33,12 @@ services:
     restart: unless-stopped
     depends_on: [cloudsql, redis]
     env_file: [api.env]
+    environment:
+      # Which service makes the link when someone starts a call. "meet" creates a Google Meet in the organiser's
+      # calendar; "inapp" uses our own media server, which calls.sh sets up. This travels with the release so the
+      # setting is in version control rather than hand-written into api.env on the server, where nothing records
+      # why it was changed. A value in environment: wins over the same name in api.env.
+      Calls__Provider: ${CALLS_PROVIDER:-meet}
     volumes: ["files:/app/data/files"]    # only used once: files copied from Railway's disk are moved into the bucket at start-up
     logging: *log
 
