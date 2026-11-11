@@ -128,10 +128,31 @@ async function pressQuick(tag, action, text) {
   const post = (body) => net.fetch(new URL(`/api/v1/notification-actions/${encodeURIComponent(k.qa)}`, BASE).href, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'omit',
   });
+  if (plan.prompt) { replyCard(tag, action, k); return; }
   if (plan.body && plan.open) post(plan.body).catch(() => undefined);
   if (plan.open) { go(k.link); return; }
   quickKeys.delete(tag);
   try { const res = await post(plan.body); if (!res.ok) go(k.link); } catch { go(k.link); }
+}
+/** Reply / Reject from a Windows toast: a small card beside the tray takes the words, then sends through the key (the main window stays put). */
+let card = null;
+function replyCard(tag, action, k) {
+  if (card && !card.isDestroyed()) card.close();
+  const wa = screen.getPrimaryDisplay().workArea, w = 360, h = 186;
+  card = new BrowserWindow({ width: w, height: h, x: wa.x + wa.width - w - 12, y: wa.y + wa.height - h - 12, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, show: false,
+    title: action === 'reject' ? 'Reject' : 'Reply', backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#ffffff',
+    webPreferences: { preload: path.join(__dirname, 'reply-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
+  const me = card;
+  me.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  me.webContents.on('will-navigate', (e) => e.preventDefault());
+  const html = quick.replyCardHtml({ action, title: k.title || 'Project Tracker', body: k.body || '', dark: nativeTheme.shouldUseDarkColors });
+  me.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`).catch(() => undefined);
+  me.once('ready-to-show', () => { me.show(); me.focus(); });
+  const onSend = (e, text) => { if (e.sender !== me.webContents) return; done(); me.close(); void pressQuick(tag, action, String(text || '')); };
+  const onCancel = (e) => { if (e.sender !== me.webContents) return; done(); me.close(); };
+  const done = () => { ipcMain.removeListener('reply-send', onSend); ipcMain.removeListener('reply-cancel', onCancel); };
+  ipcMain.on('reply-send', onSend); ipcMain.on('reply-cancel', onCancel);
+  me.on('closed', () => { done(); if (card === me) card = null; });
 }
 function open(link) {
   const q = quick.parseQuickLink(link);
@@ -344,7 +365,7 @@ else {
       if (tag && shown.has(tag)) { try { shown.get(tag).close(); } catch { /* already gone */ } }
       // Quick actions (urgent notices only): buttons that work with the window closed, through the notice's one-time key.
       const buttons = tag && settings().quickActions !== false ? quick.buttonsFor(n.qa, n.actions) : [];
-      if (buttons.length) { quickKeys.set(tag, { qa: n.qa, link }); if (quickKeys.size > 200) quickKeys.delete(quickKeys.keys().next().value); }
+      if (buttons.length) { quickKeys.set(tag, { qa: n.qa, link, title, body }); if (quickKeys.size > 200) quickKeys.delete(quickKeys.keys().next().value); }
       const options = { title, body, silent: n.silent === true, urgency: n.urgent ? 'critical' : 'normal', timeoutType: n.urgent ? 'never' : 'default' };
       if (buttons.length && MAC) {
         // macOS: the buttons are in the notice's menu; Reply is the native inline reply field.

@@ -44,6 +44,7 @@ import { Fab } from '../components/shell/Fab';
 import { ApprovalRequestHost } from '../features/approvals/host';
 import '../components/shell/shell.css';
 import { MotionConfig } from 'framer-motion';
+import { hasNativeQuick } from '../features/native/nativeQuick';
 import { AttendanceHost } from '../features/attendance/AttendanceHost';
 import { AuraWatcher } from '../components/aura/AuraWatcher';
 import { AuraSearchHost } from '../components/aura/AuraSearch';
@@ -59,6 +60,7 @@ const CalmCreateHost = calmCreateLoad ? lazy(() => calmCreateLoad().then((m) => 
 
 // Sheets (their code arrives the first time they open) and background hosts (mounted once the page has painted): kept out of the
 // shell's first download so a phone on a slow network shows the page sooner. Each reads its state from a store, so nothing is missed.
+const NativeQuickHost = lazy(() => import('../features/native/NativeQuickHost'));
 const NewSheetHost = lazy(() => import('../components/v2/NewSheet').then((m) => ({ default: m.NewSheetHost })));
 const ScheduleHost = lazy(() => import('../features/meet/ScheduleSheet').then((m) => ({ default: m.ScheduleHost })));
 const GrootChatHost = lazy(() => import('../components/groot/GrootChat').then((m) => ({ default: m.GrootChatHost })));
@@ -238,6 +240,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <AfterFirstPaint><AlertsSetup /></AfterFirstPaint>
       <ComposerSlot />
       {!admin && <AttendanceHost />}
+      {!admin && hasNativeQuick() && <Suspense fallback={null}><NativeQuickHost /></Suspense>}
       {!admin && <AuraWatcher />}
       {!admin && <AfterFirstPaint><ChangeUndoPrompt /></AfterFirstPaint>}
       {!admin && <AfterFirstPaint><TourGate /></AfterFirstPaint>}

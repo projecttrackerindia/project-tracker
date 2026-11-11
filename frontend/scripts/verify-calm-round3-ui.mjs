@@ -234,9 +234,10 @@ try {
     // Repeat: the isolated RepeatField in the task sheet opens a small editor (weekly on days, ends after N) that saves through PUT /recurrence.
     {
       const rep = page.getByTestId('repeat-field'); await rep.scrollIntoViewIfNeeded(); await rep.click();
-      await page.getByLabel('How often').selectOption('weekly');
+      const choose = async (name, opt) => { await page.getByRole('button', { name: new RegExp(`^${name}:`) }).click(); await page.getByRole('option', { name: opt, exact: true }).click(); };
+      await choose('How often', 'Weekly');
       await page.getByRole('group', { name: 'On these days' }).getByRole('button', { name: 'Thu' }).click();
-      await page.getByLabel('Ends').selectOption('after');
+      await choose('Ends', 'After');
       const recurDir = path.resolve('test-results/recurring'); await fs.mkdir(recurDir, { recursive: true });
       if (phone) await fitsPhoneX(page, `repeat ${tag}`);
       await page.waitForTimeout(1200); await page.screenshot({ path: path.join(recurDir, `repeat-field-${tag}.png`), animations: 'disabled' });
