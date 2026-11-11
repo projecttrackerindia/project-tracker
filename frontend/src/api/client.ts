@@ -215,6 +215,61 @@ export async function api<T = void>(method: string, path: string, body?: unknown
   return send<T>(method, path, body, opts);
 }
 
+
+/**
+ * Several reads in one request (POST /batch). Every screen opens by asking the same two dozen questions, and on a phone each one costs
+ * its own connection. Reads started within a few milliseconds of each other go together instead.
+ *
+ * Only plain reads: anything with its own abort signal, anything not signed in, and the batch call itself go on their own, because a
+ * batched read cannot be cancelled by itself. If the batch request fails for any reason, every read in it is simply sent the old way,
+ * so this can make things faster but never breaks them.
+ */
+const BATCH_MAX = 25;
+type Waiting = { path: string; headers: Record<string, string>; resolve: (r: Response) => void; reject: (e: unknown) => void };
+let waiting: Waiting[] = [];
+let queued = false;
+
+const canBatch = (method: string, path: string, opts: Options, auth: boolean) =>
+  method === 'GET' && auth && !BASE && !opts.signal && !path.startsWith('/batch') && !path.startsWith('/auth/');
+
+function readLater(path: string, headers: Record<string, string>): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    waiting.push({ path, headers, resolve, reject });
+    // The next microtask, not a timer: a screen's reads are started together while it renders, so they are all here by then, and no
+    // read waits any real time for the ones beside it. A timer, however short, delays every read by it and can reorder a read against
+    // code that expects it to have finished.
+    if (!queued) { queued = true; queueMicrotask(() => { queued = false; void flushReads(); }); }
+  });
+}
+
+const sendOne = (w: Waiting) =>
+  fetch(`${BASE}/api/v1${w.path}`, { method: 'GET', headers: w.headers, credentials: 'include' }).then(w.resolve, w.reject);
+
+async function flushReads() {
+  const take = waiting.splice(0, BATCH_MAX);
+  if (!take.length) return;
+  if (waiting.length && !queued) { queued = true; queueMicrotask(() => { queued = false; void flushReads(); }); }
+  // One read is not worth a batch: it would be the same round trip with another layer around it.
+  if (take.length === 1) { void sendOne(take[0]); return; }
+  const query = take.map((w) => `read=${encodeURIComponent(`/api/v1${w.path}`)}`).join('&');
+  // The paths travel in the address, so a long enough set would be cut off by a proxy before it arrived. Well under any limit it goes
+  // together; over it, each read goes on its own, which is only what would have happened anyway.
+  if (query.length > 3500) { for (const w of take) void sendOne(w); return; }
+  try {
+    const res = await fetch(`${BASE}/api/v1/batch?${query}`, { method: 'GET', headers: take[0].headers, credentials: 'include' });
+    if (!res.ok) throw new Error(`batch ${res.status}`);
+    const parsed = await res.json();
+    const answers: { path: string; status: number; body: unknown }[] = parsed?.data ?? parsed;
+    if (!Array.isArray(answers) || answers.length !== take.length) throw new Error('batch shape');
+    take.forEach((w, i) => {
+      const a = answers[i];
+      const text = a.body === null || a.body === undefined ? '' : JSON.stringify(a.body);
+      w.resolve(new Response(text, { status: a.status, headers: { 'Content-Type': 'application/json' } }));
+    });
+  }
+  catch { for (const w of take) void sendOne(w); }   // the old way, every time: batching is only ever an optimisation
+}
+
 async function send<T>(method: string, path: string, body: unknown, opts: Options, idempotencyKey?: string): Promise<T> {
   // Something created offline and saved since: its temporary id in an address means the server's id.
   if (path.includes('offline-')) path = resolveIds(path);
@@ -236,9 +291,9 @@ async function send<T>(method: string, path: string, body: unknown, opts: Option
   let res: Response;
   try {
     const early = method === 'GET' && auth && !BASE && (path === '/me' || path === '/shell/summary') ? await takeEarlyRead(path) : null;
-    res = early ?? await fetch(`${BASE}/api/v1${path}`, {
+    res = early ?? (canBatch(method, path, opts, auth) ? await readLater(path, headers) : await fetch(`${BASE}/api/v1${path}`, {
       method, headers, credentials: 'include', signal, body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    }));
   } catch (e) {
     // No connection: a small edit to the person's own work waits in the outbox and the page shows it at once (see lib/outbox.ts).
     if (auth && !opts.noQueue && !signal?.aborted && isQueueable(method, path) && isNetworkFailure(e)) {

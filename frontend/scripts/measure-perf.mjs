@@ -20,6 +20,18 @@ const me = { user, workspaces: [ws], fingerprint: 'preview', pendingConsent: [],
 const { mutationFamilies } = await import(path.resolve('src/lib/mutationEffects.ts'));
 const families = mutationFamilies('PATCH', '/tasks/' + g(500));
 
+/** What each read answers, used both for a direct call and inside a batch, so the two cannot drift apart. */
+const mockFor = (ep) => {
+  if (ep === '/api/v1/me') return me;
+  if (ep === '/api/v1/me/fingerprint') return { fingerprint: me.fingerprint };
+  if (ep === '/api/v1/workspace') return { ...ws, aiDisabled: true };
+  if (ep === '/api/v1/shell/summary') return {
+    workspaceId: ws.id, notifications: { unread: 0, bundles: [] }, approvals: { needsMe: 0 }, chatUnread: { total: 0, byRoom: [] },
+    reminders: { due: 0, upcoming: 0 }, featureFlags: { flags: {} }, aiStatus: { allowed: false, available: false }, timer: { entry: null },
+  };
+  return [];
+};
+
 const pages = [['Home', '/preview-org/'], ['My work', '/preview-org/work'], ['Plan sheet', '/preview-org/work/projects?view=portfolio&mode=sheet'], ['Messages', '/preview-org/messages'], ['Calendar', '/preview-org/?tab=calendar']];
 const browser = await chromium.launch({ ...(process.env.PM_BROWSER_EXECUTABLE ? { executablePath: process.env.PM_BROWSER_EXECUTABLE } : {}), headless: true });
 const results = [];
@@ -37,7 +49,14 @@ for (const [name, url] of pages) {
       return route.fulfill({ contentType: { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' }[path.extname(file)] || 'application/octet-stream', body, headers: ep.startsWith('/assets/') ? {} : { 'content-security-policy': csp } });
     }
     log.api.push(`${req.method()} ${ep}${u.search}`);
-    let data = [];
+    // The app asks for a screen's shared reads in one request (POST /batch). Answering it the way the server does keeps these counts
+    // honest: without it the app falls back to a request per read, which is not what a signed-in person gets.
+    if (ep === '/api/v1/batch') {
+      const reads = u.searchParams.getAll('read');
+      const answers = reads.map((p) => ({ path: p, status: 200, body: { data: mockFor(p.split('?')[0]) } }));
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: answers }) });
+    }
+    let data = mockFor(ep);
     if (ep.endsWith('/auth/refresh')) data = { accessToken: `x.${Buffer.from(JSON.stringify({ wid: ws.id, exp: 4102444800 })).toString('base64url')}.x`, expiresAt: '2099-01-01T00:00:00Z', user };
     else if (ep === '/api/v1/me') data = me;
     // The frame's one call, with every part the server really sends: without it the app falls back to a request per badge and per switch,
