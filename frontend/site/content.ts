@@ -438,3 +438,71 @@ export const FAQ: { q: string; a: string }[] = [
   { q: 'Can I take my data with me?', a: 'Yes. Owners can export everything as files in one zip at any time, and set how long history is kept.' },
   { q: 'Does it support single sign-on?', a: 'Yes, on Business and Enterprise: OpenID Connect and SAML 2.0, with SCIM provisioning to add and remove people automatically.' },
 ];
+
+/** Comparison pages: what people search before they switch. Fair about the other product - a page that misstates a rival is corrected in public. */
+DETAILS.push(
+  {
+    path: '/compare/jira-alternative/', title: 'Jira Alternative for Teams in India | ProjectTracker', h1: 'A Jira alternative for teams who also answer customers',
+    lead: 'Jira is built for software engineering. ProjectTracker runs the project and the customer work in one place, priced in rupees, with an AI employee on your phone line.',
+    description: 'ProjectTracker as a Jira alternative: projects, a support desk with service levels, API documentation and an AI employee that answers calls and WhatsApp. Priced per person in rupees, with a free plan and Indian support.',
+    sections: [
+      { title: 'Where teams outgrow Jira', text: 'Jira tracks engineering work very well. The trouble starts when the rest of the company needs the same picture.',
+        points: ['Support tickets live in a second product, so a bug a customer reported is two records in two tools', 'Non-engineers find the vocabulary hard: epics, sprints and workflow schemes before a first task', 'Time, approvals and documentation each arrive as another paid add-on', 'Pricing is per user in dollars, which moves with the exchange rate'] },
+      { title: 'What ProjectTracker puts in one workspace', text: 'The work, the people asking for it and the record of what was decided.',
+        points: ['Projects with boards, lists, timelines, sprints, milestones and dependencies', 'A support desk in the same workspace, with response and resolution targets that warn before they slip', 'Timesheets with approvals, workload by person and weekly capacity', 'DocTracker for APIs, architecture and documents, with sensitive values masked by default'] },
+      { title: 'The part Jira has no answer for', text: 'Your customers do not raise a ticket. They call, or they message on WhatsApp.',
+        points: ['An AI employee answers calls and WhatsApp in Telugu, Hindi, Tamil, Kannada and English', 'It checks who is calling before sharing anything personal, then raises a ticket with the full record', 'A notetaker joins your meetings and writes the minutes, decisions and owners', 'Ask your workspace questions from inside Claude or ChatGPT, signed in as you'] },
+      { title: 'Where Jira is still the better choice', text: 'We would rather you chose well than chose us.',
+        points: ['Deep engineering workflow: release trains, complex permission schemes, hundreds of engineers', 'You depend on the Atlassian Marketplace, or on Confluence and Bitbucket being tightly joined', 'Your teams already know Jira well and the cost of moving outweighs what you would gain', 'If that is you, Jira is the right tool and we will say so'] },
+    ],
+    related: ['/features/operations/', '/features/ai-employee/', '/pricing/'],
+  },
+  {
+    path: '/compare/asana-alternative/', title: 'Asana Alternative for Indian Teams | ProjectTracker', h1: 'An Asana alternative that also runs your support desk',
+    lead: 'Asana is a polished way to plan work. ProjectTracker plans the work and handles the customers it comes from, in rupees, from India.',
+    description: 'ProjectTracker as an Asana alternative: projects and timelines, a support desk with service levels, timesheets with approvals, and an AI employee for calls and WhatsApp. Rupee pricing and a free plan.',
+    sections: [
+      { title: 'What Asana does well', text: 'Credit where it is due, because this matters to your decision.',
+        points: ['A clean, calm interface that people pick up quickly', 'A large template library for marketing and operations workflows', 'Mature reporting dashboards and goal tracking', 'If planning is all you need, Asana is a fine answer'] },
+      { title: 'Where it stops short for service teams', text: 'Planning is one half of a services business.',
+        points: ['No support desk: customer requests go to a separate help-desk product', 'Time tracking and approvals are not part of the core product', 'Nothing answers a phone call or a WhatsApp message', 'Pricing is per user in dollars, and the free plan is small'] },
+      { title: 'What you get instead', text: 'One workspace for the project, the customer and the record.',
+        points: ['Projects, boards, timelines, sprints and a portfolio view that ranks projects by risk with reasons', 'A support queue with service-level targets, built into the same workspace', 'Timesheets with approvals, workload and weekly capacity, so work is shared out before people are buried', 'An AI employee on calls and WhatsApp, and a notetaker in your meetings'] },
+      { title: 'Practical differences for an Indian team', text: 'The things that only matter once you are paying.',
+        points: ['Priced per person in rupees, so your bill does not move with the exchange rate', 'Support in your time zone, from the people who build the product', 'Indian languages in the AI employee, not just English', 'A free plan to start, with no card'] },
+    ],
+    related: ['/features/portfolio/', '/features/timesheets-and-workload/', '/pricing/'],
+  },
+  {
+    path: '/compare/clickup-alternative/', title: 'ClickUp Alternative: Simpler, and It Answers Calls | ProjectTracker', h1: 'A ClickUp alternative without the setup project',
+    lead: 'ClickUp can do almost anything once it is configured. ProjectTracker works on day one, and covers the customer side ClickUp leaves out.',
+    description: 'ProjectTracker as a ClickUp alternative: projects, a support desk with service levels, timesheets, API documentation and an AI employee for calls and WhatsApp. Rupee pricing, a free plan and Indian support.',
+    sections: [
+      { title: 'The honest case for ClickUp', text: 'It is a genuinely capable product.',
+        points: ['An enormous feature surface: docs, whiteboards, goals, dashboards, automations', 'Very configurable, with custom fields and statuses almost everywhere', 'Good value if you use a large share of what it offers', 'If you have someone who enjoys configuring tools, it rewards them'] },
+      { title: 'The cost people report', text: 'The feature surface is also the problem.',
+        points: ['Setting it up becomes a project of its own before anyone tracks real work', 'Teams switch off features they never learned, and pay for them anyway', 'New joiners face a lot of surface before their first task', 'Still no answer for the phone call or the WhatsApp message that started the work'] },
+      { title: 'What ProjectTracker chooses not to do', text: 'Fewer choices, made well, so the tool disappears behind the work.',
+        points: ['Sensible defaults: a project, tasks, owners and dates work immediately', 'Five access levels and job-role profiles instead of a permissions matrix to design', 'An assistant that answers from your own projects in plain words', 'The support desk, timesheets and documentation are part of the product, not modules to assemble'] },
+      { title: 'What is here that is not there', text: 'The reason teams move, rather than a longer feature list.',
+        points: ['An AI employee that answers calls and WhatsApp in Indian languages and raises the ticket itself', 'A notetaker that turns a meeting into minutes, decisions and owners', 'DocTracker: every project’s APIs and documents, scored for what is missing', 'Priced per person in rupees'] },
+    ],
+    related: ['/features/ai-assistant/', '/features/doctracker/', '/pricing/'],
+  },
+  {
+    path: '/compare/trello-alternative/', title: 'Trello Alternative for Growing Teams | ProjectTracker', h1: 'A Trello alternative for when the board is not enough',
+    lead: 'Trello is the easiest board there is. ProjectTracker is what you move to when you need dates, time, approvals and customers in the same place.',
+    description: 'ProjectTracker as a Trello alternative: boards plus timelines, dependencies, timesheets, approvals, a support desk and an AI employee for calls and WhatsApp. Free to start, priced in rupees.',
+    sections: [
+      { title: 'Trello is right until it is not', text: 'Most teams start on a board, and they should.',
+        points: ['Nothing is faster for a small, informal list of work', 'Almost no learning curve, and a generous free plan', 'If a board is all your team needs, stay on Trello', 'The question is what happens at the next step'] },
+      { title: 'The signs you have outgrown a board', text: 'They tend to arrive together.',
+        points: ['Cards have due dates nobody can see across projects', 'You cannot tell what is blocked by what, or what will slip', 'Time spent, approvals and invoices live in spreadsheets beside the board', 'Customer requests arrive by phone and WhatsApp and never reach the board at all'] },
+      { title: 'What you move up to', text: 'The board stays. Everything around it arrives.',
+        points: ['The same board, plus lists, timelines, sprints, milestones and task dependencies', 'A portfolio view that ranks every project by risk, with the reasons and a finish-date forecast', 'Timesheets with approvals, workload by person and weekly capacity', 'A support desk with service-level targets, in the same workspace'] },
+      { title: 'Moving without a disruption', text: 'A step up should not cost you a month.',
+        points: ['Start free, with no card, and bring one project across first', 'Desktop and mobile apps, passkeys and sign-in by tapping a number on your phone', 'Reminders, a daily briefing and one notification centre in each person’s working hours', 'Support in your time zone from the people who build it'] },
+    ],
+    related: ['/solutions/free-project-tracker/', '/features/portfolio/', '/pricing/'],
+  },
+);

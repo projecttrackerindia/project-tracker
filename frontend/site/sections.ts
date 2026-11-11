@@ -19,9 +19,15 @@ export const header = (active = '') => `<div class="progress" aria-hidden="true"
 <nav class="nav" aria-label="Main">${NAV.map((n) => `<a href="${n.href}"${n.href === active ? ' aria-current="page"' : ''}>${n.label}</a>`).join('')}</nav>
 <div class="actions"><a class="btn btn-glass" href="/login">Sign in</a><a class="btn btn-primary" href="/register">Get started ${arrowUp}</a></div></div></header>`;
 
+/** A footer column of detail pages: the page's own name, without the "| ProjectTracker" the browser tab carries. */
+const footerLinks = (keep: (d: DetailPage) => boolean) =>
+  DETAILS.filter(keep).map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('');
+
 export const footer = () => `<footer><div class="wrap"><div class="cols">
 <div><a class="brand" href="/">${logoMark('lg2')}${SITE.name}</a><p style="margin-top:14px;max-width:22em">${esc(SITE.tagline)}.</p></div>
-<div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${DETAILS.map((d) => `<li><a href="${d.path}">${esc(d.title.split(' | ')[0].replace(/ and /g, ' & '))}</a></li>`).join('')}</ul></div>
+<div><h4>Product</h4><ul>${NAV.map((n) => `<li><a href="${n.href}">${n.label}</a></li>`).join('')}${footerLinks((d) => d.path.startsWith('/features/'))}</ul></div>
+<div><h4>Solutions</h4><ul>${footerLinks((d) => d.path.startsWith('/solutions/'))}</ul></div>
+<div><h4>Compare</h4><ul>${footerLinks((d) => d.path.startsWith('/compare/'))}</ul></div>
 <div><h4>Resources</h4><ul><li><a href="/docs/">Help Center</a></li><li><a href="/blog/">Blog</a></li>${GUIDES.slice(0, 3).map((g) => `<li><a href="${g.path}">${esc(g.h1)}</a></li>`).join('')}</ul></div>
 <div><h4>Account</h4><ul><li><a href="/login">Sign in</a></li><li><a href="/register">Create account</a></li></ul></div>
 <div><h4>Contact</h4><ul><li><a href="mailto:${SITE.supportEmail}">${SITE.supportEmail}</a></li><li><a href="tel:${SITE.phoneHref}">${SITE.phone}</a></li><li><a href="/about/">About us</a></li><li><span style="opacity:.75">Sales, billing, help and security</span></li></ul></div>
