@@ -394,3 +394,13 @@ a.mw-pill { display: inline-flex; align-items: center; text-decoration: none; }
 @media (max-width: 900px) { .ms-2col { grid-template-columns: minmax(0, 1fr); } .ms-overlay.modal-overlay { padding: 0; align-items: flex-end; } .ms-overlay .modal.lg { width: 100%; } }
 .ms-overlay .modal.lg { max-height: calc(100dvh - 40px); } @media (max-width: 900px) { .ms-overlay .modal.lg { max-height: 92dvh; } }
 .ms-2col > .ms { position: relative; z-index: 1; } .ms-avail { position: relative; z-index: 0; }
+
+/* The scheduled-and-ready card is short, but .ms-overlay stretches the scheduling sheet to the full height of the
+   window. Without its own rule the success card inherits that height and stands in a third of a screen of empty
+   space, so it is centred and sized to its content instead. */
+.ms-ready-overlay.modal-overlay { justify-content: center; align-items: center; padding: 20px; }
+.ms-ready-overlay .modal { width: min(460px, calc(100vw - 40px)); max-width: 460px; max-height: calc(100dvh - 40px); }
+@media (max-width: 900px) {
+  .ms-ready-overlay.modal-overlay { align-items: flex-end; padding: 0; }
+  .ms-ready-overlay .modal { width: 100%; max-width: none; max-height: 92dvh; }
+}

@@ -220,7 +220,7 @@ export function ScheduleSheet({ open, onClose }: { open: ScheduleOpen; onClose: 
   };
 
   const heading = kind === 'scrum' ? 'Schedule a stand-up' : 'Schedule a meeting';
-  if (ready) return <Modal title={heading} onClose={onClose} className="ms-overlay"><SheetReady ready={ready} video={video} videoUrl={videoUrl} onClose={onClose} /></Modal>;
+  if (ready) return <Modal title={heading} onClose={onClose} className="ms-overlay ms-ready-overlay"><SheetReady ready={ready} video={video} videoUrl={videoUrl} onClose={onClose} /></Modal>;
   if (needsConnect) return (
     <Modal title={heading} onClose={onClose} className="ms-overlay">
       <div className="gm-connect"><Icon name="video" size={34} /><p>{needsConnect}</p>
@@ -394,7 +394,7 @@ function SheetReady({ ready, video, videoUrl, onClose }: { ready: Ready; video: 
   return (
     <div className="gm-ready" data-testid="meeting-ready">
       <Icon name="checkCircle" size={34} />
-      <h4>{ours ? ready.providerName ?? 'Meeting' : 'Meeting'} ready</h4>
+      <h4>{ready.providerName ?? 'Meeting'} ready</h4>
       <p className="muted">{ready.title}</p>
       {video !== 'none' && (ours
         ? <Link className="btn btn-primary btn-lg" to={link} onClick={onClose}><Icon name="video" size={16} /> Join Meeting</Link>
