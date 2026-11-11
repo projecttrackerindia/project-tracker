@@ -334,6 +334,22 @@ DETAILS.push(
     ],
     related: ['/features/ai-employee/', '/pricing/'],
   },
+  {
+    path: '/solutions/project-tracking-software/', title: 'Project Tracking Software for Delivery Teams | ProjectTracker', h1: 'Project tracking software that keeps the whole delivery in one place',
+    lead: 'See every project, who owns what, what is late and where the hours went \u2014 without stitching four tools together.',
+    description: 'Project tracking software for teams: projects, tasks, boards, timelines and a portfolio view, with timesheets, workload and reports. Hosted in India, priced per person in rupees, free for one person.',
+    sections: [
+      { title: 'Track the work, not the tool', text: 'One place for the plan and for what actually happened.',
+        points: ['Projects with tasks, owners, priorities, due dates and dependencies', 'Boards, lists and timelines, and a portfolio view across every project', 'A calendar and reminders, so a deadline is never only in someone\u2019s head', 'Activity on every item: what changed, who changed it and when'] },
+      { title: 'See what is slipping, early', text: 'The question is rarely what is done. It is what is about to be late.',
+        points: ['Overdue and at-risk work surfaced on the portfolio view', 'Workload per person, so an overloaded week is visible before it fails', 'Reports on progress, time logged and where the effort went', 'Service levels for support work, counted in your working hours and holidays'] },
+      { title: 'Time, without the nagging', text: 'Timesheets that people actually fill in.',
+        points: ['Log time against the task, from the task', 'A running timer, and a week grid for filling in afterwards', 'Approvals for managers, and billable time kept separate', 'Reports by project, person or client'] },
+      { title: 'Made for how Indian teams work', text: 'Priced, hosted and supported here.',
+        points: ['\u20b9449 per person for Pro and \u20b9999 for Business, with yearly and team discounts', 'Hosted on Google Cloud in Mumbai, with daily backups', 'An AI employee that answers calls and WhatsApp in Telugu, Hindi, Tamil, Kannada and English', 'Free for one person, with no card, for as long as you like'] },
+    ],
+    related: ['/solutions/free-project-tracker/', '/pricing/', '/features/'],
+  },
 );
 
 /** The plan comparison. From the plan catalog (DatabaseInitializer): keep it in step with that. A tick is true, a dash is not included. */
