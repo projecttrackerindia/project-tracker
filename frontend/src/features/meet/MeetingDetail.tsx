@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { SiriOrb } from '../../components/aura/SiriOrb';
 import { Link } from 'react-router-dom';
 import { ApiError } from '../../api/client';
-import { delegateApi, meetingApi } from '../../api/endpoints';
+import { meetingApi } from '../../api/endpoints';
 import type { MeetingParticipant } from '../../api/types';
 import { Icon } from '../../components/Icon';
 import { Badge, ErrorState, Field, Modal, PageLoader } from '../../components/ui';
@@ -11,7 +11,7 @@ import { formatDate, formatTime } from '../../lib/format';
 import { invalidateWorkspace, useWsQuery } from '../../lib/hooks';
 import { useAuth, useModule, useWorkspaceId } from '../../stores/auth';
 import { confirmDialog, toast } from '../../stores/ui';
-import { BriefModal, DelegateModal, ReportModal } from '../command/CommandParts';
+import { BriefModal, DelegateModal } from '../command/CommandParts';
 import { meetApi, type MeetItem, type Rsvp } from './meetApi';
 import { wallInZone, zonedTimeToUtc } from './timezone';
 import { MeetingCapture, OccurrenceEditor } from './MeetingWork';
@@ -19,6 +19,7 @@ import { CalmCard, CalmHero } from '../../components/calm';
 import { Face } from '../../components/Face';
 import { connectApi } from './meetApi';
 import { dayWord, hm } from './meetFormat';
+import { MeetingRecord } from './MeetingRecord';
 import './meet.css';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.errors[0]?.message ?? e.message : fallback);
@@ -59,12 +60,10 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
   const projectQ = useWsQuery(['meetings', 'one', id], () => meetingApi.get(id), { enabled: kind === 'project' });
   const workspaceQ = useWsQuery(['meetings', 'workspace', id], () => meetingApi.workspaceGet(id), { enabled: kind === 'workspace' });
   const feed = useWsQuery(['meet', 'feed', 'upcoming', 'all'], () => meetApi.feed({ from: new Date(Date.now() - 3 * 60 * 60_000).toISOString(), to: new Date(Date.now() + 30 * DAY).toISOString() }), { staleTime: 30_000 });
-  const calendar = useWsQuery(['agent', 'meetings'], () => delegateApi.meetings(), { enabled: projects && role !== 'Guest' && kind === 'project', staleTime: 60_000 });
   const [busy, setBusy] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [delegate, setDelegate] = useState<{ meetingId: string; at: string; title?: string } | null>(null);
   const [brief, setBrief] = useState<{ meetingId: string; at?: string | null } | null>(null);
-  const [report, setReport] = useState<string | null>(null);
   const [addingId, setAddingId] = useState('');
   const loading = kind === 'project' ? projectQ.isLoading : workspaceQ.isLoading;
   const failed = kind === 'project' ? projectQ.error : workspaceQ.error;
@@ -78,7 +77,6 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
   const canManage = kind === 'project' ? (isOrganizer || session?.canManage) : !!w?.canManage;
   const ours = base?.provider === 'ours';
   const eligible = useWsQuery(['meetings', 'participants', p?.projectId ?? 'none'], () => meetingApi.participants(p!.projectId), { enabled: !!p && !!canManage && p.status === 'Scheduled' });
-  const delegation = (calendar.data ?? []).find((c) => c.meetingId === id && (!session || Math.abs(new Date(c.startUtc).getTime() - new Date(session.start).getTime()) < 60_000));
   const refresh = () => { void invalidateWorkspace(wid, 'meet'); void invalidateWorkspace(wid, 'meetings'); void invalidateWorkspace(wid, 'calendar'); void invalidateWorkspace(wid, 'reminders'); };
 
   const run = async (key: string, fn: () => Promise<unknown>, done: string) => {
@@ -182,9 +180,6 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
           {base.status === 'Scheduled' && (
             <div className="mt-detail-actions">
               {kind === 'project' && p && session && projects && role !== 'Guest' && <>
-                {delegation?.delegationId && delegation.delegationStatus !== 'cancelled'
-                  ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReport(delegation.delegationId!)}><Icon name="agent" size={14} />{delegation.delegationStatus === 'reported' ? 'Agent report' : 'Agent going for you'}</button>
-                  : !isOrganizer && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDelegate({ meetingId: id, at: session.start, title })}><Icon name="agent" size={14} />Send the agent in my place</button>}
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBrief({ meetingId: id, at: session.start })}><Icon name="note" size={14} />Brief</button>
               </>}
               {canManage && kind === 'project' && base.isScrum && <button type="button" className="btn btn-ghost btn-sm" disabled={busy === 'summary'} onClick={() => void run('summary', () => meetingApi.standupSummary(id), 'Stand-up summary posted to the project chat.')}><Icon name="message" size={14} />Post stand-up summary</button>}
@@ -199,7 +194,6 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
       )}
       {delegate && <DelegateModal target={delegate} onClose={() => setDelegate(null)} onDone={() => { setDelegate(null); void invalidateWorkspace(wid, 'agent'); }} />}
       {brief && <BriefModal meetingId={brief.meetingId} at={brief.at} onClose={() => setBrief(null)} onDelegate={(d) => { setBrief(null); setDelegate(d); }} />}
-      {report && <ReportModal id={report} onClose={() => setReport(null)} />}
     </>
   );
   if (page) {
@@ -211,6 +205,7 @@ export function MeetingDetail({ kind, id, at, onClose, onProject, inline = false
           <nav className="mz-crumb" aria-label="Breadcrumb"><button type="button" onClick={onClose}>Meetings</button><span>›</span><b>{title}</b></nav>
           <CalmHero title={`${title}.`} second={second} />
           <CalmCard className="mz-card mt-dcard">{content}</CalmCard>
+          {kind === 'project' && base?.status === 'Scheduled' && <MeetingRecord meetingId={id} title={title} />}
         </div>
         <aside className="mz-side mz-detail-side">
           <CalmCard className="mz-card">

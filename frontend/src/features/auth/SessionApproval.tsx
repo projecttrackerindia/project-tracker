@@ -229,11 +229,15 @@ export function SessionApprovalHost() {
     tick(); const t = setInterval(tick, 1000); return () => clearInterval(t);
   }, [item?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // After allowing, this device is signed out as soon as the new one is in: check every couple of seconds (a 401 ends the session here).
+  // After allowing, the device used longest ago is signed out as soon as the new one is in. That is this one only when it is the oldest (a 401
+  // ends the session here), so check a few times and then let go: the sheet never stays up waiting for a sign-out that is not coming.
   useEffect(() => {
     if (after !== 'allowed') return;
     let n = 0;
-    const t = setInterval(() => { if (++n > 30) { clearInterval(t); setAfter(null); return; } void meApi.fingerprint().catch(() => undefined); }, 2000);
+    const t = setInterval(() => {
+      if (++n > 3) { clearInterval(t); setAfter(null); toast('Allowed. The new device is signed in.'); return; }
+      void meApi.fingerprint().catch(() => undefined);
+    }, 1500);
     return () => clearInterval(t);
   }, [after]);
 
@@ -242,7 +246,7 @@ export function SessionApprovalHost() {
       <div className="sa-sheet" role="status" aria-live="polite">
         <span className="sa-device ok" aria-hidden="true"><Icon name="tick" size={30} /></span>
         <h2>Allowed</h2>
-        <p className="sa-lede">The new device is signing in. This device will sign out in a moment.</p>
+        <p className="sa-lede">The new device is signing in. This device stays signed in unless it was the one used longest ago.</p>
       </div>
     </div>
   );
