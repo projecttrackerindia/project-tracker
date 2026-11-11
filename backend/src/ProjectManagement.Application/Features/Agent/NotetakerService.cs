@@ -416,6 +416,28 @@ public class NotetakerService(IAppDbContext db, ICurrentContext ctx, AgentMeetin
         return created;
     }
 
+    /// <summary>The minutes of a recording made on the person's own device (no bot): written by the same minutes writer, filed under the meeting's project.</summary>
+    public async Task<MinutesDto> WriteMinutesForRecordingAsync(AgentMeetingBot bot, CancellationToken ct)
+    {
+        var uid = ctx.RequireUserId();
+        if (bot.Kind != "device" || bot.CreatedBy != uid) throw new ForbiddenException("This recording belongs to someone else.", "PERMISSION_DENIED");
+        var existing = await db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(m => m.BotRowId == bot.Id, ct);
+        return existing is not null ? ToDto(existing) : await WriteMinutesAsync(bot, uid, ct);
+    }
+
+    /// <summary>Tasks for the chosen action items (by position in the minutes; all when none are named) of a device recording's minutes.</summary>
+    public async Task<IReadOnlyList<string>> CreateRecordingTasksAsync(AgentMeetingBot bot, IReadOnlyList<int>? items, CancellationToken ct)
+    {
+        var uid = ctx.RequireUserId();
+        if (bot.Kind != "device" || bot.CreatedBy != uid) throw new ForbiddenException("This recording belongs to someone else.", "PERMISSION_DENIED");
+        var row = await db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(m => m.BotRowId == bot.Id, ct) ?? throw new ConflictException("Write the minutes first.", "MINUTES_MISSING");
+        var dto = ToDto(row);
+        var all = dto.Content.ActionItems;
+        var chosen = items is null ? all : all.Where((_, i) => items.Contains(i)).ToList();
+        if (chosen.Count == 0) return [];
+        return await CreateTasksAsync(bot.ProjectId, dto with { Content = dto.Content with { ActionItems = chosen } }, uid, ct);
+    }
+
     /// <summary>The minutes, by email, to the person who sent the notetaker (through the app's own mail, so no mailbox is needed).</summary>
     private async Task EmailOwnerAsync(Guid userId, AgentMeetingBot bot, MinutesDto minutes, IReadOnlyList<string> created, CancellationToken ct)
     {
