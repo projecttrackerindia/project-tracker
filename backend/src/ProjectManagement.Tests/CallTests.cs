@@ -12,6 +12,40 @@ using ProjectManagement.Tests.Infrastructure;
 
 namespace ProjectManagement.Tests;
 
+/// <summary>Which provider holds calls, and whether calls can be offered at all.</summary>
+public class CallProviderTests
+{
+    private static CallsOptions Media() => new() { Url = "wss://calls.example", ApiKey = "key", ApiSecret = new string('s', 40) };
+
+    [Fact]
+    public void Calls_on_Google_Meet_need_no_media_server_of_our_own()
+    {
+        var o = new CallsOptions { Provider = "meet" };
+        Assert.True(o.UseMeet);
+        Assert.False(o.LiveKitConfigured);
+        Assert.True(o.Configured);   // offered, and held on Meet
+    }
+
+    [Fact]
+    public void Without_a_provider_an_installation_behaves_as_it_did()
+    {
+        var withServer = Media();
+        Assert.False(withServer.UseMeet);
+        Assert.True(withServer.Configured);
+
+        var withNothing = new CallsOptions();
+        Assert.False(withNothing.Configured);   // nothing to hold a call on: calls are not offered
+    }
+
+    [Fact]
+    public void Choosing_our_own_server_does_not_fall_back_to_Meet()
+    {
+        var o = Media(); o.Provider = "livekit";
+        Assert.False(o.UseMeet);
+        Assert.True(o.Configured);
+    }
+}
+
 /// <summary>Join passes are signed JWTs for one room; webhooks are accepted only when signed over exactly their body.</summary>
 public class LiveKitTokenTests
 {
