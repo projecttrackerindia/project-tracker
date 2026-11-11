@@ -189,7 +189,7 @@ html body .groot-chat.float .gc-empty { padding-top: 12px; }
 html[data-theme='dark'] .shell-fab-btn { background: #f5f5f7; color: #111; }
 /* the page under the open + stays put; the content keeps room at its foot so the last row is never behind the button */
 @media (min-width: 769px) { html body .v2-shell > .main.v2-main > .content { padding-bottom: 96px; } }
-html.groot-open-float .shell-fab { opacity: 0; pointer-events: none; }
+html.groot-open-float .shell-fab, html.qc-open .shell-fab { opacity: 0; pointer-events: none; }
 /* phone: above the tab bar */
 .m-shell .shell-fab { right: 18px; bottom: calc(var(--m-tab, 62px) + 14px + env(safe-area-inset-bottom, 0px)); }
 .m-shell .shell-fab-btn { width: 52px; height: 52px; }

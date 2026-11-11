@@ -44,6 +44,8 @@ export function QuickCreate({ day: day0, start: start0, end: end0, title: title0
   const [proj, setProj] = useState<string | null>(null);
   const preview = actions.previewSpan;
   useEffect(() => { preview?.(day, start, end); }, [preview, day, start, end]);
+  // The + button sits over this popover's bottom corner (its "…" and Add event buttons): hide it while the popover is open.
+  useEffect(() => { document.documentElement.classList.add('qc-open'); return () => document.documentElement.classList.remove('qc-open'); }, []);
   const items = actions.openItems ?? [];
   const [item, setItem] = useState(items[0] ? `${items[0].type}:${items[0].id}` : '');
   const [busy, setBusy] = useState(false);
