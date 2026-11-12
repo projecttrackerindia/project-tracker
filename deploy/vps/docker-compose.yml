@@ -1,0 +1,97 @@
+# ProjectTracker on one VPS. Copied to /opt/pt on the server with its .env.
+# Caddy (HTTPS) -> web (website + proxy) -> api; PostgreSQL runs here rather than as a managed service.
+#
+# Differences from deploy/gcp/docker-compose.yml, and why:
+#   - the database is a container with a volume, not Cloud SQL behind its proxy. Nothing takes backups for us
+#     any more, so backup.sh is not optional; see README.md.
+#   - logs go to local json files with rotation, not Cloud Logging. Without the size limits a busy week fills
+#     the disk and the server stops, which is a bad way to find out about log rotation.
+#   - no meetbot. Transcripts come from the Google Meet API (GoogleMeetingClient), which needs no browser.
+x-log: &log
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on: [web]
+    # 443/udp is HTTP/3 (QUIC): Caddy serves it by itself; browsers fall back to HTTP/2 over TCP when UDP is blocked.
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data               # the HTTPS certificate: keep this volume
+      - caddy_config:/config
+    logging: *log
+
+  web:
+    image: ${IMAGES}/web:${TAG:-latest}
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      CALLS_ORIGIN: ${CALLS_ORIGIN:-}
+    logging: *log
+
+  api:
+    image: ${IMAGES}/api:${TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+    env_file: [api.env]
+    environment:
+      Calls__Provider: ${CALLS_PROVIDER:-meet}
+    volumes: ["files:/app/data/files"]
+    logging: *log
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
+    logging: *log
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # Not published to the host: only other containers reach it. Exposing 5432 to the internet on a machine with
+    # a public IP is how most self-hosted databases are found and encrypted by someone else.
+    environment:
+      POSTGRES_DB: ${DB_NAME:-projecttracker}
+      POSTGRES_USER: ${DB_USER:-pt}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      # Dumps and restores compare byte-for-byte only when the collation matches; pin it rather than inherit the image default.
+      LANG: C.UTF-8
+    command:
+      - postgres
+      # Sized for KVM 4 (16 GB). shared_buffers ~25% of RAM, effective_cache_size ~50-75%.
+      - -c
+      - shared_buffers=4GB
+      - -c
+      - effective_cache_size=10GB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - max_connections=200
+      # Keeps a day of write-ahead logs around, so a future move to point-in-time recovery needs no downtime.
+      - -c
+      - wal_keep_size=2GB
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pt} -d ${DB_NAME:-projecttracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *log
+
+volumes:
+  caddy_data:
+  caddy_config:
+  files:
+  db_data:
