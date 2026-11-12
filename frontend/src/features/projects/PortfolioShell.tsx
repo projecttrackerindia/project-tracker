@@ -22,6 +22,7 @@ import './planSheetTabs.css';
 import './portfolioShell.css';
 import './portfolioCalm.css';
 import { PortfolioViewsBar } from './PortfolioSavedViews';
+import { zoneToday } from '../../lib/zone';
 export { PortfolioSkeleton } from './portfolioSkeleton';
 
 /**
@@ -118,7 +119,7 @@ export function PortfolioShell({ teamId, baseMenu, filters, children }: {
   // One dataset for the shell and the Plan sheet: its projects (the folder tabs, the colours), people and tasks (the field's suggestions and counts).
   const sheet = useWsQuery(portfolioKeys.sheet(filter), () => portfolioApi.sheet(filter), { staleTime: 30_000, placeholderData: (p) => p });
   const data = sheet.data && !Array.isArray(sheet.data) ? sheet.data : undefined;
-  const today = data?.asOf ?? new Date().toISOString().slice(0, 10);
+  const today = data?.asOf ?? zoneToday();
   const projects = useMemo(() => sheetProjects(data), [data]);
   const work = useMemo(() => (data?.rows ?? []).filter(isWork), [data]);
   const people = useMemo(() => data?.people ?? [], [data]);

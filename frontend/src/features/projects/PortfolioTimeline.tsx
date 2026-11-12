@@ -14,6 +14,7 @@ import {
   dmy, dn, fitRange, iso, mergeMilestones, placeLabel, PX_PER_DAY, slipOf, startOf, statusOf, textW, ticks, TONE, type Zoom,
 } from './timelineLayout';
 import './timeline.css';
+import { zoneToday } from '../../lib/zone';
 
 type GroupBy = 'team' | 'group' | 'owner' | 'status' | 'none';
 const GROUP_LABEL: Record<GroupBy, string> = { team: 'Team', group: 'Project group', owner: 'Owner', status: 'Status', none: 'None' };
@@ -57,7 +58,7 @@ export function PortfolioTimeline({ filter, onRange }: { filter: PortfolioFilter
   const { work } = usePortfolio();
   const [calmWeeks, setCalmWeeks] = useState<6 | 14>(6);
   const lanesRef = useRef<HTMLDivElement>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = zoneToday();
   const [zoom, setZoom] = useState<Zoom>('week');
   const [fit, setFit] = useState(true);
   // A saved view can open the timeline grouped (?tg=owner, "This week by owner").

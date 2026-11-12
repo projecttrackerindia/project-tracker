@@ -1,5 +1,6 @@
 import { del, download, get, post, put } from '../../api/client';
 import type { PortfolioBrief } from '../ai/aiApi';
+import { zoneToday } from '../../lib/zone';
 
 /** What the board shows (projects the person may open); empty values mean no filter. */
 export interface PortfolioFilter { teamId?: string | null; ownerId?: string | null; groupId?: string | null; health?: string | null; dueFrom?: string | null; dueTo?: string | null }
@@ -93,8 +94,8 @@ export const portfolioApi = {
     if (o.mine) p.mine = 'true';
     if (o.meetings === false) p.meetings = 'false';
     if (o.ids?.length) p.ids = o.ids.join(',');
-    return download(`/portfolio/sheet/export?${new URLSearchParams(p)}`, `plan-sheet-${new Date().toISOString().slice(0, 10)}.${o.format}`);
+    return download(`/portfolio/sheet/export?${new URLSearchParams(p)}`, `plan-sheet-${zoneToday()}.${o.format}`);
   },
   export: (f: PortfolioFilter, format: 'xlsx' | 'pdf') =>
-    download(`/portfolio/export?${new URLSearchParams({ ...q(f), format })}`, `portfolio-${new Date().toISOString().slice(0, 10)}.${format}`),
+    download(`/portfolio/export?${new URLSearchParams({ ...q(f), format })}`, `portfolio-${zoneToday()}.${format}`),
 };
