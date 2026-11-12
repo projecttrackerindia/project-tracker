@@ -15,6 +15,12 @@ const ws = { id: '00000000-0000-0000-0000-000000000002', slug: 'preview-org', na
 const pid = '00000000-0000-0000-0000-000000000003';
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const day = (n) => { const d = new Date(`${today}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+/**
+ * The coming Sunday, the last day of the app's week. Fixtures that want an item in "This week" have to say so
+ * this way: a fixed offset like day(5) lands inside the week on a Monday and in Later on a Thursday, so the check
+ * passed or failed depending on which weekday it ran.
+ */
+const endOfWeek = () => day((7 - new Date(`${today}T00:00:00Z`).getUTCDay()) % 7);
 const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
 const people = [['Asha Rao', 'asha'], ['Ravi Kumar', 'ravi'], ['Meera Iyer', 'meera'], ['Jordan Lee', 'jordan']].map(([name, e], i) => ({ id: `30000000-0000-0000-0000-00000000000${i + 1}`, name, email: `${e}@example.test` }));
 const item = (i, kind, title, due, overdue, status = 'In progress', category = 'InProgress', priority = 'Medium') => ({
@@ -27,7 +33,7 @@ const mine = [
   item(2, 'Issue', 'Refund webhook retries twice', day(-1), true, 'Observed / Failed', 'Todo', 'Critical'),
   item(3, 'Task', 'API validation with the bank', today, false, 'To do', 'Todo', 'Medium'),
   item(4, 'ActionItem', 'Share the cut-off times with support', day(3), false, 'Open', 'Todo', 'Low'),
-  item(5, 'Operational', 'Reconcile yesterday’s failed payouts', day(5), false, 'In progress', 'InProgress', 'High'),
+  item(5, 'Operational', 'Reconcile yesterday’s failed payouts', endOfWeek(), false, 'In progress', 'InProgress', 'High'),
   item(6, 'Task', 'Write the release notes', null, false, 'To do', 'Todo', 'Low'),
 ];
 const workload = {

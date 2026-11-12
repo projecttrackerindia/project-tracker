@@ -17,7 +17,7 @@ import { myWorkBucket, weekEndOf, type MyWorkBucket } from '../work/myWorkRules'
 
 type View = 'open' | 'all';
 
-const BUCKET_TITLE: Record<MyWorkBucket, string> = { overdue: 'Overdue', today: 'Due today', week: 'Next 7 days', later: 'Later', none: 'No due date' };
+const BUCKET_TITLE: Record<MyWorkBucket, string> = { overdue: 'Overdue', today: 'Due today', week: 'This week', later: 'Later', none: 'No due date' };
 /** Which part of the open list an item falls in - the same rule as the Focus Stack (work/myWorkRules). */
 const bucketOf = (w: WorkItem, today: string, weekEnd: string): string => BUCKET_TITLE[myWorkBucket(w, today, weekEnd)];
 const BUCKETS = ['Overdue', 'Due today', 'Next 7 days', 'Later', 'No due date'];
