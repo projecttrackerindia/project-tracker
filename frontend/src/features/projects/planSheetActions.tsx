@@ -16,6 +16,7 @@ import { connectApi, type Review, type ReviewItem } from '../meet/meetApi';
 import { addDays, dm } from './planSheet';
 import { Av, Floating } from './planSheetParts';
 import type { Colour } from './planSheetTabs';
+import { zoneToday } from '../../lib/zone';
 
 export type Group = 'meeting' | 'owner' | 'project';
 const REVIEW_DAYS = 7;
@@ -84,7 +85,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
       if (k === 'a') { e.preventDefault(); void decide(cur, 'carry', {}, `Accepted ${cur.key}`); }
       else if (k === 'r') { e.preventDefault(); setReassign({ item: cur, anchor: document.querySelector<HTMLElement>('.rvcard') }); }
       else if (k === 's' && e.shiftKey) { e.preventDefault(); setSnoozeAt({ item: cur, anchor: document.querySelector<HTMLElement>('.rvcard [data-snooze]') ?? document.querySelector<HTMLElement>('.rvcard') }); }
-      else if (k === 's' && !e.shiftKey) { e.preventDefault(); void decide(cur, 'replan', { dueDate: addDays(cur.dueDate ?? new Date().toISOString().slice(0, 10), 1) }, `Snoozed ${cur.key} a day`); }
+      else if (k === 's' && !e.shiftKey) { e.preventDefault(); void decide(cur, 'replan', { dueDate: addDays(cur.dueDate ?? zoneToday(), 1) }, `Snoozed ${cur.key} a day`); }
       else if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); void decide(cur, 'drop', {}, `Discarded ${cur.key}`); }
       else if (k === 'j') setReviewing((x) => Math.min(queue.length - 1, (x ?? 0) + 1));
       else if (k === 'k') setReviewing((x) => Math.max(0, (x ?? 0) - 1));
@@ -98,7 +99,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
   if (review.isError) return <ErrorState error={review.error} retry={() => void review.refetch()} />;
   const row = (i: ReviewItem) => {
     const c = colourOfProject(i.projectId);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = zoneToday();
     return (
       <div key={i.id} className={`ai-row ${isDone(i) ? 'done' : ''} ${cur?.id === i.id ? 'sel' : ''}`} role="row">
         <button type="button" role="checkbox" aria-checked={i.state === 'done'} className={`cb ${i.state === 'done' ? 'on' : ''}`} aria-label={`Done: ${i.title}`} disabled={!i.canEdit || isDone(i)}
@@ -127,7 +128,7 @@ export function ActionItemsTab({ review, colourOfProject, colours, text, people,
           <div className="kbs">
             <button type="button" className="kb on" onClick={() => void decide(cur, 'carry', {}, `Accepted ${cur.key}`)}><kbd>A</kbd> Accept</button>
             <button type="button" className="kb" onClick={(e) => setReassign({ item: cur, anchor: e.currentTarget })}><kbd>R</kbd> Reassign</button>
-            <button type="button" className="kb" onClick={() => void decide(cur, 'replan', { dueDate: addDays(cur.dueDate ?? new Date().toISOString().slice(0, 10), 1) }, `Snoozed ${cur.key} a day`)}><kbd>S</kbd> Snooze</button>
+            <button type="button" className="kb" onClick={() => void decide(cur, 'replan', { dueDate: addDays(cur.dueDate ?? zoneToday(), 1) }, `Snoozed ${cur.key} a day`)}><kbd>S</kbd> Snooze</button>
             <button type="button" className="kb" data-snooze="" aria-haspopup="dialog" onClick={(e) => setSnoozeAt({ item: cur, anchor: e.currentTarget })}><kbd>⇧S</kbd> Snooze to…</button>
             <button type="button" className="kb" onClick={() => void decide(cur, 'drop', {}, `Discarded ${cur.key}`)}><kbd>⌫</kbd> Discard</button>
             <span className="ps3-sp" /><span className="ps3-dim" style={{ fontSize: 11.5 }}><kbd>J</kbd> <kbd>K</kbd> next / previous</span>

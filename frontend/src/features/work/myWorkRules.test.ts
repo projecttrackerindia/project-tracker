@@ -12,8 +12,21 @@ describe('My Work rules (shared by both My Work screens)', () => {
     expect(myWorkBucket({ dueDate: '2026-11-05', isOverdue: false }, today)).toBe('week');
     expect(myWorkBucket({ dueDate: '2026-11-20', isOverdue: false }, today)).toBe('later');
     expect(myWorkBucket({ dueDate: null, isOverdue: false }, today)).toBe('none');
-    expect(weekEndOf(today)).toBe('2026-11-09');
+    expect(weekEndOf(today)).toBe('2026-11-08');           // today is a Monday; the week ends on Sunday
   });
+  it('puts work moved to next week in Later, not This week', () => {
+    // Reported: a task moved to Wed 18 Nov stayed under "This week" on Thu 12 Nov, because the bucket used a
+    // rolling today+7 window while the tab, the Mon-Fri strip and the headline all said "this week".
+    const thu = '2026-11-12';
+    expect(weekEndOf(thu)).toBe('2026-11-15');                                     // Sunday
+    expect(myWorkBucket({ dueDate: '2026-11-18', isOverdue: false }, thu)).toBe('later');
+    expect(myWorkBucket({ dueDate: '2026-11-15', isOverdue: false }, thu)).toBe('week');   // Sunday is still this week
+    expect(myWorkBucket({ dueDate: '2026-11-16', isOverdue: false }, thu)).toBe('later');  // Monday is not
+    // On a Sunday the week ends that same day, so nothing later than today is ever "this week".
+    expect(weekEndOf('2026-11-15')).toBe('2026-11-15');
+    expect(myWorkBucket({ dueDate: '2026-11-16', isOverdue: false }, '2026-11-15')).toBe('later');
+  });
+
   it('counts done today from completedAt in the app zone, not updatedAt', () => {
     // 2026-11-01 20:00 UTC is 2 Nov 01:30 in Kolkata.
     expect(completedToday({ completedAt: '2026-11-01T20:00:00Z' }, today, 'Asia/Kolkata')).toBe(true);

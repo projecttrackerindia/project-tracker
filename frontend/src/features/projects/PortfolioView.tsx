@@ -22,6 +22,7 @@ import { errText } from './projectParts';
 import { useClassic } from '../calm/classic';
 import './portfolio.css';
 import './projectsHome.css';
+import { zoneToday } from '../../lib/zone';
 
 // Each tab is its own chunk: only the one on screen loads.
 const PlanSheetView = lazy(() => import('./PlanSheet').then((m) => ({ default: m.PlanSheetView })));
@@ -173,7 +174,7 @@ function SignOffNote({ done }: { done: { projectId: string; name: string }[] }) 
 /** Under the columns, the room they leave: the next dates and when work lands, each project in its one colour. */
 function BoardPulse({ filter, brief }: { filter: PortfolioFilter; brief: PortfolioBrief }) {
   const { projects } = useProjects(filter, brief);
-  const today = brief.asOf?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  const today = brief.asOf?.slice(0, 10) ?? zoneToday();
   if (projects.length === 0) return null;
   return <PortfolioPulse projects={projects} today={today} kinds={['coming', 'months']} />;
 }

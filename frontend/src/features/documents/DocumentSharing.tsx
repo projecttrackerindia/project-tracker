@@ -14,6 +14,7 @@ import { confirmDialog, toast } from '../../stores/ui';
 import { VISIBILITY } from './docUi';
 import { AccessRequestRow, DecideAccessModal } from './DocumentInbox';
 import type { AccessRequest } from '../../api/types';
+import { zoneToday } from '../../lib/zone';
 
 const LEVELS: { value: DocAccessLevel; label: string; hint: string }[] = [
   { value: 'Viewer', label: 'Can read', hint: 'Opens and reads the document.' },
@@ -102,7 +103,7 @@ export function AccessModal({ detail, onClose }: { detail: DocumentDetail; onClo
               {data.advancedPermissions ? (
                 <div className="acc-adv">
                   <label className="check-row small"><input type="checkbox" checked={block} onChange={(e) => setBlock(e.target.checked)} /> Block instead of share</label>
-                  <label className="acc-until">Ends on <input className="input" type="date" value={until} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setUntil(e.target.value)} /></label>
+                  <label className="acc-until">Ends on <input className="input" type="date" value={until} min={zoneToday()} onChange={(e) => setUntil(e.target.value)} /></label>
                 </div>
               ) : <p className="muted acc-hint"><Icon name="lock" size={13} /><span>Blocking and end dates are on the <Link to="/settings/billing" onClick={onClose}>Business plan</Link>.</span></p>}
             </form>
