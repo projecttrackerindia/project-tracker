@@ -19,7 +19,7 @@ public class WebhookOptions
 {
     public const string Section = "Webhooks";
     public bool WorkerEnabled { get; set; } = true;
-    public int IntervalSeconds { get; set; } = 5;
+    public int IntervalSeconds { get; set; } = 15;
     /// <summary>Development and tests only: allow plain http and addresses on private networks (normally refused so a webhook cannot probe the server's own network).</summary>
     public bool AllowPrivateTargets { get; set; }
     /// <summary>How long new activity waits before it is turned into deliveries, so events that are still being saved are not missed.</summary>

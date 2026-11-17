@@ -10,7 +10,7 @@ public class AiOperationsOptions
 {
     public const string Section = "Ai:Operations";
     public bool WorkerEnabled { get; set; } = true;
-    public int IntervalSeconds { get; set; } = 15;
+    public int IntervalSeconds { get; set; } = 30;
 }
 
 public class AiOperationsWorker(AiOperationsProcessor processor, IOptions<AiOperationsOptions> options, WorkerHeartbeats beats, ILogger<AiOperationsWorker> log) : BackgroundService

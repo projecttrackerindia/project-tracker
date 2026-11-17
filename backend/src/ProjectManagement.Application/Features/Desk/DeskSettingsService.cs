@@ -12,7 +12,7 @@ public class DeskOptions
 {
     public const string Section = "Desk";
     /// <summary>How often the Desk worker takes inbound messages off the queue and checks unaccepted tickets.</summary>
-    public int WorkerIntervalSeconds { get; set; } = 5;
+    public int WorkerIntervalSeconds { get; set; } = 15;
 }
 
 /// <summary>Desk › Integrations. Keys are write-only: the API says whether one is set, never what it is.</summary>

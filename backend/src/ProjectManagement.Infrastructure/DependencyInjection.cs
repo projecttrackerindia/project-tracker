@@ -57,6 +57,15 @@ public static class DependencyInjection
         var provider = config["Database:Provider"] ?? "Postgres";
         var connection = config.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
+        // Npgsql allows 100 pooled connections by default; a db-f1-micro Cloud SQL instance accepts 25 in total. Cap the pool
+        // (Database:MaxPoolSize, default 15) unless the connection string already sets its own limit.
+        if (!provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase)
+            && connection.IndexOf("Pool Size", StringComparison.OrdinalIgnoreCase) < 0
+            && connection.IndexOf("MaxPoolSize", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            var cap = int.TryParse(config["Database:MaxPoolSize"], out var n) && n > 0 ? n : 15;
+            connection = new Npgsql.NpgsqlConnectionStringBuilder(connection) { MaxPoolSize = cap }.ConnectionString;
+        }
 
         services.AddScoped<AiDatabaseCommandInterceptor>();
         services.AddSingleton<TransactionEffectsInterceptor>();

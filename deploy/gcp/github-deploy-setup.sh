@@ -26,7 +26,7 @@ echo "== Deploy account ${DEPLOY_SA}"
 gcloud iam service-accounts describe "$DEPLOY_SA" >/dev/null 2>&1 || \
   gcloud iam service-accounts create "$DEPLOY_SA_NAME" --display-name="ProjectTracker deploys from GitHub" >/dev/null
 for role in roles/cloudbuild.builds.editor roles/storage.admin roles/logging.viewer roles/serviceusage.serviceUsageConsumer \
-            roles/compute.viewer roles/compute.osAdminLogin roles/artifactregistry.reader; do
+            roles/compute.viewer roles/compute.osAdminLogin roles/artifactregistry.reader roles/artifactregistry.writer; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:${DEPLOY_SA}" --role="$role" --condition=None >/dev/null
 done
 # OS Login on a server that runs as its own account also needs "act as" that account.

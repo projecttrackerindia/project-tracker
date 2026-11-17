@@ -9,7 +9,7 @@ public class ReportOptions
 {
     public const string Section = "Reports";
     public bool WorkerEnabled { get; set; } = true;
-    public int IntervalSeconds { get; set; } = 5;
+    public int IntervalSeconds { get; set; } = 15;
 }
 
 /// <summary>Builds queued report files in the background, so asking for a big report never keeps a web request open.</summary>
