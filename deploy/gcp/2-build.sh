@@ -20,12 +20,19 @@ fi
 if [ "$BUILD_ON" = "local" ]; then
   gcloud auth configure-docker "${IMAGES%%/*}" --quiet
   A="${ALIAS:-latest}"
-  docker build -t "${IMAGES}/api:${TAG}" -t "${IMAGES}/api:${A}" --build-arg "APP_RELEASE=${TAG}" backend
-  docker build -t "${IMAGES}/web:${TAG}" -t "${IMAGES}/web:${A}" --build-arg "SITE_URL=https://${DOMAIN}" --build-arg "APP_RELEASE=${TAG}" \
+  # One image at a time: build, push, then delete it and the build cache. Cloud Shell's disk cannot hold all three at once
+  # (the meeting bot alone is ~1.5 GB with its browser), and running out of space mid-build stops the release.
+  one() { local img="$1"; shift
+    docker build -t "${IMAGES}/${img}:${TAG}" -t "${IMAGES}/${img}:${A}" "$@"
+    docker push "${IMAGES}/${img}:${TAG}"; docker push "${IMAGES}/${img}:${A}"
+    docker image rm "${IMAGES}/${img}:${TAG}" "${IMAGES}/${img}:${A}" >/dev/null 2>&1 || true
+    docker builder prune -af >/dev/null 2>&1 || true; }
+  docker system prune -af >/dev/null 2>&1 || true
+  one api --build-arg "APP_RELEASE=${TAG}" backend
+  one web --build-arg "SITE_URL=https://${DOMAIN}" --build-arg "APP_RELEASE=${TAG}" \
     --build-arg "GOOGLE_SITE_VERIFICATION=$(get GOOGLE_SITE_VERIFICATION)" --build-arg "BING_SITE_VERIFICATION=$(get BING_SITE_VERIFICATION)" \
     --build-arg "INDEXNOW_KEY=$(get INDEXNOW_KEY)" frontend
-  docker build -t "${IMAGES}/meetbot:${TAG}" -t "${IMAGES}/meetbot:${A}" apps/meetbot
-  for img in api web meetbot; do docker push "${IMAGES}/${img}:${TAG}"; docker push "${IMAGES}/${img}:${A}"; done
+  one meetbot apps/meetbot
 else
 build --region="${BUILD_REGION:-$REGION}" --machine-type="${BUILD_MACHINE:-e2-highcpu-8}" \
   || build --region=global --machine-type="${BUILD_MACHINE:-e2-highcpu-8}" \
