@@ -20,12 +20,29 @@ fi
 if [ "$BUILD_ON" = "local" ]; then
   gcloud auth configure-docker "${IMAGES%%/*}" --quiet
   A="${ALIAS:-latest}"
-  docker build -t "${IMAGES}/api:${TAG}" -t "${IMAGES}/api:${A}" --build-arg "APP_RELEASE=${TAG}" backend
-  docker build -t "${IMAGES}/web:${TAG}" -t "${IMAGES}/web:${A}" --build-arg "SITE_URL=https://${DOMAIN}" --build-arg "APP_RELEASE=${TAG}" \
+  # One image at a time: build, push, then delete it and the build cache. Cloud Shell's disk cannot hold all three at once
+  # (the meeting bot alone is ~1.5 GB with its browser), and running out of space mid-build stops the release.
+  # Returns non-zero if the build or a push fails (set -e does not apply inside a function used in an "if").
+  one() { local img="$1"; shift; local rc=0
+    docker build -t "${IMAGES}/${img}:${TAG}" -t "${IMAGES}/${img}:${A}" "$@" \
+      && docker push "${IMAGES}/${img}:${TAG}" && docker push "${IMAGES}/${img}:${A}" || rc=$?
+    docker image rm "${IMAGES}/${img}:${TAG}" "${IMAGES}/${img}:${A}" >/dev/null 2>&1 || true
+    docker builder prune -af >/dev/null 2>&1 || true
+    return $rc; }
+  docker system prune -af >/dev/null 2>&1 || true
+  one api --build-arg "APP_RELEASE=${TAG}" backend
+  one web --build-arg "SITE_URL=https://${DOMAIN}" --build-arg "APP_RELEASE=${TAG}" \
     --build-arg "GOOGLE_SITE_VERIFICATION=$(get GOOGLE_SITE_VERIFICATION)" --build-arg "BING_SITE_VERIFICATION=$(get BING_SITE_VERIFICATION)" \
     --build-arg "INDEXNOW_KEY=$(get INDEXNOW_KEY)" frontend
-  docker build -t "${IMAGES}/meetbot:${TAG}" -t "${IMAGES}/meetbot:${A}" apps/meetbot
-  for img in api web meetbot; do docker push "${IMAGES}/${img}:${TAG}"; docker push "${IMAGES}/${img}:${A}"; done
+  # The meeting bot (~1.5 GB with its browser) can still be too big for Cloud Shell's disk. If it does not fit, only that image
+  # is built on Cloud Build's default (small, cheapest) machine, then given the same alias tag.
+  if ! one meetbot apps/meetbot; then
+    echo "Meeting bot did not build here (disk space); building just that image on Cloud Build." >&2
+    docker system prune -af >/dev/null 2>&1 || true
+    gcloud builds submit apps/meetbot --tag "${IMAGES}/meetbot:${TAG}" --region="${BUILD_REGION:-$REGION}" --quiet \
+      || gcloud builds submit apps/meetbot --tag "${IMAGES}/meetbot:${TAG}" --quiet
+    gcloud artifacts docker tags add "${IMAGES}/meetbot:${TAG}" "${IMAGES}/meetbot:${A}" --quiet
+  fi
 else
 build --region="${BUILD_REGION:-$REGION}" --machine-type="${BUILD_MACHINE:-e2-highcpu-8}" \
   || build --region=global --machine-type="${BUILD_MACHINE:-e2-highcpu-8}" \
