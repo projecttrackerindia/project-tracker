@@ -23,7 +23,7 @@ public class WhatsAppOptions
     public bool DeliveryEnabled { get; set; } // Default off; controlled registration/webhook/delivery checks precede activation.
     public int DeliveryUserDailyCap { get; set; } = 10;
     public int DeliveryOrganizationDailyCap { get; set; } = 1000;
-    public int DeliveryIntervalSeconds { get; set; } = 10;
+    public int DeliveryIntervalSeconds { get; set; } = 20;
     public bool ContactLinkingEnabled { get; set; }
     public string? EmbeddedSignupConfigId { get; set; }
     public string? ApiVersion { get; set; }

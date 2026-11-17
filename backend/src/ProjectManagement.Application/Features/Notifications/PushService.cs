@@ -17,7 +17,7 @@ public class PushOptions
 {
     public const string Section = "Push";
     public bool WorkerEnabled { get; set; } = true;
-    public int IntervalSeconds { get; set; } = 10;
+    public int IntervalSeconds { get; set; } = 15;
     /// <summary>Contact for push services ("mailto:..." or an https URL). Empty = the web address of this installation.</summary>
     public string? Subject { get; set; }
     /// <summary>Firebase service-account key (the JSON itself) for pushing to the Android app. Empty = Android devices are not pushed to.</summary>

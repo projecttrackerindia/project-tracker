@@ -29,7 +29,7 @@ public class SupportOptions
     public string GraphVersion { get; set; } = "v23.0";
     public string GraphBaseUrl { get; set; } = "https://graph.facebook.com";
     /// <summary>How often the AI employee looks for chats waiting for an answer.</summary>
-    public int ReplyIntervalSeconds { get; set; } = 3;
+    public int ReplyIntervalSeconds { get; set; } = 10;
 }
 
 public record SupportChannelDto(Guid Id, string Name, Guid? TeamId, string? TeamName, string PhoneNumberId, string BusinessAccountId, string? DisplayPhone, string? VerifiedName,
